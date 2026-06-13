@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Eleccion } from './entities/eleccion.entity';
 import { EleccionesController } from './eleccion.controller';
 import { EleccionesService } from './eleccion.service';
-import { ELECCION_REPOSITORY } from './intefaces/eleccion.repository.interface';
+import { ELECCION_REPOSITORY } from './interfaces/eleccion.repository.interface';
 import { EleccionRepository } from './eleccion.repository';
 
 

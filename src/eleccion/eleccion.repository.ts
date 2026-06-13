@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { IEleccionRepository } from './intefaces/eleccion.repository.interface';
+import { IEleccionRepository } from './interfaces/eleccion.repository.interface';
 import { Eleccion } from './entities/eleccion.entity';
 import { CrearEleccionDto } from './dto/crear-eleccion.dto';
 import { EleccionEstado } from './enums/eleccion-estado.enum';

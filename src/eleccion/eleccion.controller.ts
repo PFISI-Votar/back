@@ -2,7 +2,7 @@ import { Body, Controller, Post } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { Eleccion } from './entities/eleccion.entity';
 import { CrearEleccionDto } from './dto/crear-eleccion.dto';
-import { IEleccionController } from './intefaces/eleccion.controller.interface';
+import { IEleccionController } from './interfaces/eleccion.controller.interface';
 import { EleccionesService } from './eleccion.service';
 
 @ApiTags('elecciones')

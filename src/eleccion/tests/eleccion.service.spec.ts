@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { EleccionesService } from '../eleccion.service';
-import { ELECCION_REPOSITORY } from '../intefaces/eleccion.repository.interface';
+import { ELECCION_REPOSITORY } from '../interfaces/eleccion.repository.interface';
 import { EleccionEstado } from '../enums/eleccion-estado.enum';
 import { UnprocessableEntityException } from '@nestjs/common';
 

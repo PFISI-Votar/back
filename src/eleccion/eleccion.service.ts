@@ -2,9 +2,9 @@
 import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
 import { Eleccion } from './entities/eleccion.entity';
 import { CrearEleccionDto } from './dto/crear-eleccion.dto';
-import { IEleccionService } from './intefaces/eleccion.service.interface';
-import { ELECCION_REPOSITORY } from './intefaces/eleccion.repository.interface';
-import type { IEleccionRepository } from './intefaces/eleccion.repository.interface';
+import { IEleccionService } from './interfaces/eleccion.service.interface';
+import { ELECCION_REPOSITORY } from './interfaces/eleccion.repository.interface';
+import type { IEleccionRepository } from './interfaces/eleccion.repository.interface';
 
 @Injectable()
 export class EleccionesService implements IEleccionService {
