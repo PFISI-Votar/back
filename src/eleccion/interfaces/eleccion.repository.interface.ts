@@ -5,4 +5,5 @@ export const ELECCION_REPOSITORY = 'ELECCION_REPOSITORY';
 
 export interface IEleccionRepository {
   crear(dto: CrearEleccionDto): Promise<Eleccion>;
+  findById(idEleccion: number): Promise<Eleccion | null>;
 }

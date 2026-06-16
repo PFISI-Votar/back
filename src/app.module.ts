@@ -6,6 +6,7 @@ import { AppService } from './app.service';
 import { getDatabaseConfig } from './config/database.config';
 import { envValidationSchema } from './config/env.validation';
 import { EleccionesModule } from './eleccion/eleccion.module';
+import { CategoriasModule } from './categoria/categoria.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { EleccionesModule } from './eleccion/eleccion.module';
       useFactory: getDatabaseConfig,
     }),
     EleccionesModule,
+    CategoriasModule,
   ],
   controllers: [AppController],
   providers: [AppService],

@@ -25,4 +25,8 @@ export class EleccionRepository implements IEleccionRepository {
 
     return this.repository.save(eleccion);
   }
+
+  async findById(idEleccion: number): Promise<Eleccion | null> {
+    return this.repository.findOne({ where: { idEleccion } });
+  }
 }

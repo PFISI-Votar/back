@@ -17,5 +17,6 @@ import { EleccionRepository } from './eleccion.repository';
       useClass: EleccionRepository,
     },
   ],
+  exports: [ELECCION_REPOSITORY],
 })
 export class EleccionesModule {}
