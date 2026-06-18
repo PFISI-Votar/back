@@ -1,5 +1,13 @@
 // src/elections/elections.service.ts
-import { Inject, Injectable, UnprocessableEntityException } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { ConfiguracionDatosCandidatoService } from './configuracion-datos-candidato.service';
 import { Eleccion } from './entities/eleccion.entity';
 import { CrearEleccionDto } from './dto/crear-eleccion.dto';
 import { IEleccionService } from './interfaces/eleccion.service.interface';
@@ -11,6 +19,9 @@ export class EleccionesService implements IEleccionService {
   constructor(
     @Inject(ELECCION_REPOSITORY)
     private readonly eleccionRepository: IEleccionRepository,
+    @InjectRepository(Eleccion)
+    private readonly eleccionOrmRepository: Repository<Eleccion>,
+    private readonly configuracionDatosCandidatoService: ConfiguracionDatosCandidatoService,
   ) {}
 
   async crearEleccion(dto: CrearEleccionDto): Promise<Eleccion> {
@@ -30,6 +41,26 @@ export class EleccionesService implements IEleccionService {
       );
     }
 
-    return this.eleccionRepository.crear(dto);
+    const eleccion = await this.eleccionRepository.crear(dto);
+    await this.configuracionDatosCandidatoService.crearConfiguracionPorDefecto(
+      eleccion.idEleccion,
+    );
+    return eleccion;
+  }
+
+  async listarElecciones(): Promise<Eleccion[]> {
+    return this.eleccionOrmRepository.find({
+      order: { idEleccion: 'DESC' },
+    });
+  }
+
+  async obtenerPorId(idEleccion: number): Promise<Eleccion> {
+    const eleccion = await this.eleccionOrmRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
+    }
+    return eleccion;
   }
 }
