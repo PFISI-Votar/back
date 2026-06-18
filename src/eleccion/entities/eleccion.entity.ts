@@ -16,7 +16,7 @@ export class Eleccion {
   nombre: string;
 
   @Column({ name: 'descripcion', type: 'varchar', nullable: true })
-  descripcion: string;
+  descripcion: string | null;
 
   @Column({ name: 'fecha_inicio', type: 'timestamptz' })
   fechaInicio: Date;
@@ -33,7 +33,7 @@ export class Eleccion {
   estado: EleccionEstado;
 
   @Column({ name: 'minimo_candidatos_por_lista', type: 'int', nullable: true })
-  minimoCandidatosPorLista: number;
+  minimoCandidatosPorLista: number | null;
 
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   fechaCreacion: Date;
