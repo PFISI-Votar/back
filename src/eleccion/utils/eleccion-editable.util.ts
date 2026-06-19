@@ -1,6 +1,6 @@
 import { ConflictException } from '@nestjs/common';
-import { EleccionEstado } from '../enums/eleccion-estado.enum';
-import { Eleccion } from '../entities/eleccion.entity';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 
 export const OFERTA_OFICIALIZADA_MESSAGE =
   'La oferta electoral está oficializada y no admite modificaciones';

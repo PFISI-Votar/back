@@ -1,4 +1,4 @@
-import { isUtcIso8601DateTime } from '../validators/is-utc-iso8601.decorator';
+import { isUtcIso8601DateTime } from '@/common/validators/is-utc-iso8601.decorator';
 
 export const parseUtcDateTime = (value: string): Date => {
   if (!isUtcIso8601DateTime(value)) {

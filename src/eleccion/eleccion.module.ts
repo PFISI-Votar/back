@@ -1,43 +1,22 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { CandidatoDatosValidatorService } from './candidato-datos-validator.service';
-import { CandidatoService } from './candidato.service';
-import { ConfiguracionDatosCandidatoService } from './configuracion-datos-candidato.service';
-import { BoletaService } from './boleta.service';
-import { Eleccion } from './entities/eleccion.entity';
-import { Boleta } from './entities/boleta.entity';
-import { Categoria } from './entities/categoria.entity';
-import { Lista } from './entities/lista.entity';
-import { Candidato } from './entities/candidato.entity';
-import { ConfiguracionDatosCandidato } from './entities/configuracion-datos-candidato.entity';
-import { EleccionesController } from './eleccion.controller';
-import { EleccionesService } from './eleccion.service';
-import { ELECCION_REPOSITORY } from './interfaces/eleccion.repository.interface';
-import { EleccionRepository } from './eleccion.repository';
-import { ListaController } from './lista.controller';
-import { ListaService } from './lista.service';
-import { OficializacionService } from './oficializacion.service';
+import { CandidatoModule } from '@/eleccion/candidato/candidato.module';
+import { EleccionesController } from '@/eleccion/controllers/eleccion.controller';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
+import { ELECCION_REPOSITORY } from '@/eleccion/interfaces/eleccion.repository.interface';
+import { ListaModule } from '@/eleccion/lista/lista.module';
+import { EleccionRepository } from '@/eleccion/repositories/eleccion.repository';
+import { EleccionesService } from '@/eleccion/services/eleccion.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([
-      Eleccion,
-      Boleta,
-      Categoria,
-      Lista,
-      Candidato,
-      ConfiguracionDatosCandidato,
-    ]),
+    TypeOrmModule.forFeature([Eleccion]),
+    ListaModule,
+    CandidatoModule,
   ],
-  controllers: [EleccionesController, ListaController],
+  controllers: [EleccionesController],
   providers: [
     EleccionesService,
-    BoletaService,
-    ListaService,
-    CandidatoService,
-    CandidatoDatosValidatorService,
-    ConfiguracionDatosCandidatoService,
-    OficializacionService,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,

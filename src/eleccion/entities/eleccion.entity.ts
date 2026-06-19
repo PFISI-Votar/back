@@ -5,7 +5,7 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { EleccionEstado } from '../enums/eleccion-estado.enum';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 @Entity('eleccion')
 export class Eleccion {

@@ -1,4 +1,4 @@
-import '../setup-timezone';
+import '@/common/bootstrap/setup-timezone';
 import { config } from 'dotenv';
 import { DataSource, DataSourceOptions } from 'typeorm';
 

@@ -1,5 +1,5 @@
-import { isUtcIso8601DateTime } from './is-utc-iso8601.decorator';
-import { parseUtcDateTime } from '../utils/parse-utc-datetime.util';
+import { isUtcIso8601DateTime } from '@/common/validators/is-utc-iso8601.decorator';
+import { parseUtcDateTime } from '@/common/utils/parse-utc-datetime.util';
 
 describe('UTC datetime validation', () => {
   it('accepts ISO strings with explicit timezone', () => {
