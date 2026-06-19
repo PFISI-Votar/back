@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { IEleccionRepository } from './interfaces/eleccion.repository.interface';
 import { Eleccion } from './entities/eleccion.entity';
 import { CrearEleccionDto } from './dto/crear-eleccion.dto';
+import { parseUtcDateTime } from '../common/utils/parse-utc-datetime.util';
 import { EleccionEstado } from './enums/eleccion-estado.enum';
 
 
@@ -18,8 +19,8 @@ export class EleccionRepository implements IEleccionRepository {
     const eleccion = this.repository.create({
       nombre: dto.nombre,
       descripcion: dto.descripcion,
-      fechaInicio: new Date(dto.fechaInicio),
-      fechaFin: new Date(dto.fechaFin),
+      fechaInicio: parseUtcDateTime(dto.fechaInicio),
+      fechaFin: parseUtcDateTime(dto.fechaFin),
       estado: EleccionEstado.BORRADOR,
     });
 

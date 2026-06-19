@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { ConfiguracionDatosCandidatoService } from './configuracion-datos-candidato.service';
 import { Eleccion } from './entities/eleccion.entity';
 import { CrearEleccionDto } from './dto/crear-eleccion.dto';
+import { parseUtcDateTime } from '../common/utils/parse-utc-datetime.util';
 import { IEleccionService } from './interfaces/eleccion.service.interface';
 import { ELECCION_REPOSITORY } from './interfaces/eleccion.repository.interface';
 import type { IEleccionRepository } from './interfaces/eleccion.repository.interface';
@@ -26,8 +27,8 @@ export class EleccionesService implements IEleccionService {
 
   async crearEleccion(dto: CrearEleccionDto): Promise<Eleccion> {
     const ahora = new Date();
-    const fechaInicio = new Date(dto.fechaInicio);
-    const fechaFin = new Date(dto.fechaFin);
+    const fechaInicio = parseUtcDateTime(dto.fechaInicio);
+    const fechaFin = parseUtcDateTime(dto.fechaFin);
 
     if (fechaInicio <= ahora) {
       throw new UnprocessableEntityException(

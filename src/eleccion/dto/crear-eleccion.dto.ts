@@ -1,6 +1,7 @@
-import { IsString, IsNotEmpty, IsDateString, MaxLength } from 'class-validator';
+import { IsString, IsNotEmpty, MaxLength } from 'class-validator';
 import { Transform } from 'class-transformer';
 import sanitizeHtml from 'sanitize-html';
+import { IsUtcIso8601 } from '../../common/validators/is-utc-iso8601.decorator';
 
 export class CrearEleccionDto {
   @IsString()
@@ -14,11 +15,11 @@ export class CrearEleccionDto {
   @Transform(({ value }) => value ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value)
   descripcion?: string;
 
-  @IsDateString()
+  @IsUtcIso8601()
   @IsNotEmpty()
   fechaInicio: string;
 
-  @IsDateString()
+  @IsUtcIso8601()
   @IsNotEmpty()
   fechaFin: string;
 }
