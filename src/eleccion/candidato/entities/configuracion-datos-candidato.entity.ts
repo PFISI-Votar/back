@@ -3,12 +3,13 @@ import {
   CreateDateColumn,
   Entity,
   JoinColumn,
+  OneToMany,
   OneToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import type { CampoCandidatoDefinicion } from '../interfaces/campo-candidato-definicion.interface';
-import { Eleccion } from './eleccion.entity';
+import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 
 @Entity('configuracion_datos_candidato')
 export class ConfiguracionDatosCandidato {
@@ -22,8 +23,8 @@ export class ConfiguracionDatosCandidato {
   @JoinColumn({ name: 'id_eleccion' })
   eleccion: Eleccion;
 
-  @Column({ name: 'campos', type: 'jsonb' })
-  campos: CampoCandidatoDefinicion[];
+  @OneToMany(() => CampoDatosCandidato, (campo) => campo.configuracion)
+  campos: CampoDatosCandidato[];
 
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   fechaCreacion: Date;

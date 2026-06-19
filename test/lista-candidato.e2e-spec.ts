@@ -5,17 +5,27 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { newDb } from 'pg-mem';
 import { DataSource } from 'typeorm';
-import { EleccionesModule } from '../src/eleccion/eleccion.module';
-import { Eleccion } from '../src/eleccion/entities/eleccion.entity';
-import { Boleta } from '../src/eleccion/entities/boleta.entity';
-import { Categoria } from '../src/eleccion/entities/categoria.entity';
-import { Lista } from '../src/eleccion/entities/lista.entity';
-import { Candidato } from '../src/eleccion/entities/candidato.entity';
-import { ConfiguracionDatosCandidato } from '../src/eleccion/entities/configuracion-datos-candidato.entity';
-import { EleccionEstado } from '../src/eleccion/enums/eleccion-estado.enum';
-import type { CampoCandidatoDefinicion } from '../src/eleccion/interfaces/campo-candidato-definicion.interface';
+import { EleccionesModule } from '@/eleccion/eleccion.module';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
+import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
+import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
+import { Lista } from '@/eleccion/lista/entities/lista.entity';
+import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
+import { ConfiguracionDatosCandidato } from '@/eleccion/candidato/entities/configuracion-datos-candidato.entity';
+import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import type { CampoCandidatoDefinicion } from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
+import { mapDefinicionToEntity } from '@/eleccion/candidato/mappers/campo-datos-candidato.mapper';
 
-const entities = [Eleccion, Boleta, Categoria, Lista, Candidato, ConfiguracionDatosCandidato];
+const entities = [
+  Eleccion,
+  Boleta,
+  Categoria,
+  Lista,
+  Candidato,
+  ConfiguracionDatosCandidato,
+  CampoDatosCandidato,
+];
 
 const camposConfigE2E: CampoCandidatoDefinicion[] = [
   {
@@ -113,10 +123,15 @@ describe('ListaCandidato (e2e)', () => {
 
   const seedConfig = async (eleccionId: number) => {
     const configRepo = dataSource.getRepository(ConfiguracionDatosCandidato);
-    await configRepo.save(
-      configRepo.create({
-        idEleccion: eleccionId,
-        campos: camposConfigE2E,
+    const campoRepo = dataSource.getRepository(CampoDatosCandidato);
+    const config = await configRepo.save(
+      configRepo.create({ idEleccion: eleccionId }),
+    );
+    await campoRepo.save(
+      camposConfigE2E.map((definicion) => {
+        const entity = mapDefinicionToEntity(definicion);
+        entity.idConfiguracion = config.idConfiguracion;
+        return entity;
       }),
     );
   };
@@ -221,9 +236,7 @@ describe('ListaCandidato (e2e)', () => {
       .send({ nombre: 'Lista Modificada' })
       .expect(409);
 
-    await request(app.getHttpServer())
-      .delete(`/listas/${idLista}`)
-      .expect(409);
+    await request(app.getHttpServer()).delete(`/listas/${idLista}`).expect(409);
   });
 
   it('debe retornar 422 por categoría inválida', async () => {
@@ -363,9 +376,11 @@ describe('ListaCandidato (e2e)', () => {
       .expect(422)
       .expect((res) => {
         expect(res.body.errors).toBeDefined();
-        expect(res.body.errors.some((e: { clave: string }) => e.clave === 'legajo_utn')).toBe(
-          true,
-        );
+        expect(
+          res.body.errors.some(
+            (e: { clave: string }) => e.clave === 'legajo_utn',
+          ),
+        ).toBe(true);
       });
   });
 });

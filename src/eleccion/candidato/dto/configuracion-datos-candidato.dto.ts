@@ -18,7 +18,7 @@ import sanitizeHtml from 'sanitize-html';
 import type {
   CampoCandidatoDefinicion,
   TipoCampoCandidato,
-} from '../interfaces/campo-candidato-definicion.interface';
+} from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
 
 const TIPOS_CAMPO: TipoCampoCandidato[] = [
   'texto',
@@ -61,7 +61,9 @@ export class ValidacionCampoCandidatoDto {
   @IsString()
   @MaxLength(255)
   @Transform(({ value }) =>
-    value ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value,
+    value
+      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
+      : value,
   )
   patternMessage?: string;
 }
@@ -72,7 +74,8 @@ export class CampoCandidatoDefinicionDto implements CampoCandidatoDefinicion {
   @IsNotEmpty()
   @MaxLength(50)
   @Matches(/^[a-z][a-z0-9_-]*$/, {
-    message: 'La clave debe usar minúsculas, números y guiones (ej. legajo-utn)',
+    message:
+      'La clave debe usar minúsculas, números y guiones (ej. legajo-utn)',
   })
   clave: string;
 
@@ -80,7 +83,9 @@ export class CampoCandidatoDefinicionDto implements CampoCandidatoDefinicion {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) => sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }))
+  @Transform(({ value }) =>
+    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
+  )
   etiqueta: string;
 
   @ApiProperty({ enum: TIPOS_CAMPO, example: 'texto' })
@@ -96,7 +101,9 @@ export class CampoCandidatoDefinicionDto implements CampoCandidatoDefinicion {
   @IsString()
   @MaxLength(255)
   @Transform(({ value }) =>
-    value ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value,
+    value
+      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
+      : value,
   )
   ejemplo?: string;
 
@@ -105,7 +112,9 @@ export class CampoCandidatoDefinicionDto implements CampoCandidatoDefinicion {
   @IsString()
   @MaxLength(500)
   @Transform(({ value }) =>
-    value ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value,
+    value
+      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
+      : value,
   )
   ayuda?: string;
 

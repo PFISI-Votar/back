@@ -9,15 +9,20 @@ import { Repository } from 'typeorm';
 import {
   ConfiguracionDatosCandidatoResponseDto,
   GuardarConfiguracionDatosCandidatoDto,
-} from './dto/configuracion-datos-candidato.dto';
-import { Candidato } from './entities/candidato.entity';
-import { ConfiguracionDatosCandidato } from './entities/configuracion-datos-candidato.entity';
-import { Eleccion } from './entities/eleccion.entity';
+} from '@/eleccion/candidato/dto/configuracion-datos-candidato.dto';
+import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
+import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
+import { ConfiguracionDatosCandidato } from '@/eleccion/candidato/entities/configuracion-datos-candidato.entity';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import {
   CampoCandidatoDefinicion,
   TipoCampoCandidato,
-} from './interfaces/campo-candidato-definicion.interface';
-import { assertEleccionEditable } from './utils/eleccion-editable.util';
+} from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
+import {
+  mapDefinicionToEntity,
+  mapEntitiesToDefiniciones,
+} from '@/eleccion/candidato/mappers/campo-datos-candidato.mapper';
+import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
 
 const CLAVES_RESERVADAS = new Set([
   'nombre',
@@ -47,35 +52,40 @@ export class ConfiguracionDatosCandidatoService {
   constructor(
     @InjectRepository(ConfiguracionDatosCandidato)
     private readonly configRepository: Repository<ConfiguracionDatosCandidato>,
+    @InjectRepository(CampoDatosCandidato)
+    private readonly campoRepository: Repository<CampoDatosCandidato>,
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
     @InjectRepository(Candidato)
     private readonly candidatoRepository: Repository<Candidato>,
   ) {}
 
-  async crearConfiguracionPorDefecto(idEleccion: number): Promise<ConfiguracionDatosCandidato> {
-    const config = this.configRepository.create({
-      idEleccion,
-      campos: [],
-    });
+  async crearConfiguracionPorDefecto(
+    idEleccion: number,
+  ): Promise<ConfiguracionDatosCandidato> {
+    const config = this.configRepository.create({ idEleccion });
     return this.configRepository.save(config);
   }
 
-  async obtenerPorEleccion(idEleccion: number): Promise<ConfiguracionDatosCandidatoResponseDto> {
+  async obtenerPorEleccion(
+    idEleccion: number,
+  ): Promise<ConfiguracionDatosCandidatoResponseDto> {
     await this.assertEleccionExists(idEleccion);
     const config = await this.findOrCreateConfig(idEleccion);
     const cantidadCandidatos = await this.contarCandidatos(idEleccion);
     return {
       idEleccion,
-      campos: config.campos,
+      campos: mapEntitiesToDefiniciones(config.campos ?? []),
       editable: cantidadCandidatos === 0,
       cantidadCandidatos,
     };
   }
 
-  async obtenerCamposPorEleccion(idEleccion: number): Promise<CampoCandidatoDefinicion[]> {
+  async obtenerCamposPorEleccion(
+    idEleccion: number,
+  ): Promise<CampoCandidatoDefinicion[]> {
     const config = await this.findOrCreateConfig(idEleccion);
-    return config.campos;
+    return mapEntitiesToDefiniciones(config.campos ?? []);
   }
 
   async guardar(
@@ -90,31 +100,61 @@ export class ConfiguracionDatosCandidatoService {
     }
     this.validarDefiniciones(dto.campos);
     const camposOrdenados = [...dto.campos].sort((a, b) => a.orden - b.orden);
-    let config = await this.configRepository.findOne({ where: { idEleccion } });
+    let config = await this.configRepository.findOne({
+      where: { idEleccion },
+    });
     if (!config) {
-      config = this.configRepository.create({ idEleccion, campos: camposOrdenados });
-    } else {
-      config.campos = camposOrdenados;
+      config = await this.configRepository.save(
+        this.configRepository.create({ idEleccion }),
+      );
     }
-    await this.configRepository.save(config);
+    await this.campoRepository.delete({
+      idConfiguracion: config.idConfiguracion,
+    });
+    const camposGuardados =
+      camposOrdenados.length === 0
+        ? []
+        : await this.campoRepository.save(
+            camposOrdenados.map((definicion) => {
+              const entity = mapDefinicionToEntity(definicion);
+              entity.idConfiguracion = config.idConfiguracion;
+              return entity;
+            }),
+          );
     return {
       idEleccion,
-      campos: config.campos,
+      campos: mapEntitiesToDefiniciones(camposGuardados),
       editable: true,
       cantidadCandidatos: 0,
     };
   }
 
-  private async findOrCreateConfig(idEleccion: number): Promise<ConfiguracionDatosCandidato> {
-    let config = await this.configRepository.findOne({ where: { idEleccion } });
+  private async findOrCreateConfig(
+    idEleccion: number,
+  ): Promise<ConfiguracionDatosCandidato> {
+    let config = await this.configRepository.findOne({
+      where: { idEleccion },
+      relations: ['campos'],
+    });
     if (!config) {
       config = await this.crearConfiguracionPorDefecto(idEleccion);
+      config = await this.configRepository.findOne({
+        where: { idConfiguracion: config.idConfiguracion },
+        relations: ['campos'],
+      });
+    }
+    if (!config) {
+      throw new NotFoundException(
+        `Configuración para elección ${idEleccion} no encontrada`,
+      );
     }
     return config;
   }
 
   private async assertEleccionExists(idEleccion: number): Promise<Eleccion> {
-    const eleccion = await this.eleccionRepository.findOne({ where: { idEleccion } });
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
     if (!eleccion) {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
@@ -138,7 +178,9 @@ export class ConfiguracionDatosCandidatoService {
     const ordenes = new Set<number>();
     for (const campo of campos) {
       if (!TIPOS_CAMPO.includes(campo.tipo)) {
-        throw new UnprocessableEntityException(`Tipo de campo inválido: ${campo.tipo}`);
+        throw new UnprocessableEntityException(
+          `Tipo de campo inválido: ${campo.tipo}`,
+        );
       }
       if (CLAVES_RESERVADAS.has(campo.clave)) {
         throw new UnprocessableEntityException(
@@ -173,7 +215,6 @@ export class ConfiguracionDatosCandidatoService {
     }
     if (validacion.pattern) {
       try {
-        // eslint-disable-next-line no-new
         new RegExp(validacion.pattern);
       } catch {
         throw new UnprocessableEntityException(
