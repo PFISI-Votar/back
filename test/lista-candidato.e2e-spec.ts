@@ -210,6 +210,20 @@ describe('ListaCandidato (e2e)', () => {
         },
       })
       .expect(409);
+
+    await request(app.getHttpServer())
+      .post(`/elecciones/${idEleccion}/listas`)
+      .send({ nombre: 'Lista Bloqueada', sigla: 'LB2', color: '#2563eb' })
+      .expect(409);
+
+    await request(app.getHttpServer())
+      .patch(`/listas/${idLista}`)
+      .send({ nombre: 'Lista Modificada' })
+      .expect(409);
+
+    await request(app.getHttpServer())
+      .delete(`/listas/${idLista}`)
+      .expect(409);
   });
 
   it('debe retornar 422 por categoría inválida', async () => {
