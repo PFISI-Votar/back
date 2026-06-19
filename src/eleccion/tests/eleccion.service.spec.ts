@@ -102,4 +102,17 @@ describe('EleccionesService', () => {
     );
     expect(mockEleccionRepository.crear).not.toHaveBeenCalled();
   });
+
+  it('UAT-04: debe lanzar 422 si la fecha de inicio es el momento presente', async () => {
+    const dto = {
+      nombre: 'Elección 2026',
+      fechaInicio: new Date().toISOString(),
+      fechaFin: new Date(Date.now() + 86400000).toISOString(),
+    };
+
+    await expect(service.crearEleccion(dto as any)).rejects.toThrow(
+      UnprocessableEntityException,
+    );
+    expect(mockEleccionRepository.crear).not.toHaveBeenCalled();
+  });
 });
