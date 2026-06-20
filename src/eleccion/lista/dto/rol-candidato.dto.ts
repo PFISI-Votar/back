@@ -1,9 +1,18 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
-import { IsInt, IsNotEmpty, IsString, MaxLength, Min } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength, Min } from 'class-validator';
 import sanitizeHtml from 'sanitize-html';
 
 export class RolCandidatoDto {
+  @ApiPropertyOptional({
+    example: 1,
+    description: 'Identificador del rol existente (solo en actualización)',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  idCategoria?: number;
+
   @ApiProperty({ example: 'Presidente' })
   @IsString()
   @IsNotEmpty()

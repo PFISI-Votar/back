@@ -1,6 +1,7 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -14,6 +15,7 @@ import { ConfiguracionComicioService } from '@/eleccion/configuracion-comicio/se
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { parseUtcDateTime } from '@/common/utils/parse-utc-datetime.util';
+import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
 
 /**
  * Orquesta la creación de comicios en estado BORRADOR.
@@ -48,6 +50,38 @@ export class EleccionesService implements IEleccionService {
       result.categorias,
       result.metodosAutenticacion,
     );
+  }
+
+  async actualizarEleccion(
+    idEleccion: number,
+    dto: ActualizarEleccionDto,
+  ): Promise<EleccionResponseDto> {
+    this.validarFechas(dto);
+    this.validarRoles(dto);
+    this.configuracionComicioService.assertMetodosAutenticacionValidos(
+      dto.metodosAutenticacion,
+    );
+
+    const result = await this.eleccionRepository.actualizarCompleta(
+      idEleccion,
+      dto,
+    );
+    return mapEleccionToResponseDto(
+      result.eleccion,
+      result.categorias,
+      result.metodosAutenticacion,
+    );
+  }
+
+  async eliminarEleccion(idEleccion: number): Promise<void> {
+    const eleccion = await this.eleccionOrmRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
+    }
+    assertEleccionEditable(eleccion);
+    await this.eleccionOrmRepository.remove(eleccion);
   }
 
   async listarElecciones(): Promise<EleccionResponseDto[]> {

@@ -1,3 +1,4 @@
+import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
@@ -24,11 +25,13 @@ const buildValidDto = (): CrearEleccionDto => ({
 
 const mockEleccionRepository = {
   crearCompleta: jest.fn(),
+  actualizarCompleta: jest.fn(),
 };
 
 const mockEleccionOrmRepository = {
   findOne: jest.fn(),
   find: jest.fn(),
+  remove: jest.fn(),
 };
 
 const mockConfigComicioOrmRepository = {
@@ -84,7 +87,10 @@ describe('EleccionesService', () => {
     service = module.get<EleccionesService>(EleccionesService);
   });
 
-  afterEach(() => jest.clearAllMocks());
+  afterEach(() => {
+    jest.clearAllMocks();
+    mockConfigComicioService.assertMetodosAutenticacionValidos.mockReset();
+  });
 
   it('UAT-01: debe crear un comicio en estado BORRADOR con payload completo', async () => {
     const dto = buildValidDto();
@@ -218,6 +224,65 @@ describe('EleccionesService', () => {
     expect(mockEleccionOrmRepository.find).toHaveBeenCalledWith({
       order: { idEleccion: 'DESC' },
     });
+  });
+
+  it('debe actualizar un comicio en BORRADOR', async () => {
+    const dto = buildValidDto();
+    dto.roles = [{ idCategoria: 1, nombre: 'Presidente', maximoPostulantes: 2 }];
+    const eleccionMock = {
+      idEleccion: 1,
+      nombre: dto.nombre,
+      estado: EleccionEstado.BORRADOR,
+      tipoVotacion: dto.tipoVotacion,
+      fechaInicio: new Date(dto.fechaInicio),
+      fechaFin: new Date(dto.fechaFin),
+      descripcion: null,
+    };
+    mockEleccionRepository.actualizarCompleta.mockResolvedValue({
+      eleccion: eleccionMock,
+      categorias: [
+        {
+          idCategoria: 1,
+          nombre: 'Presidente',
+          cantidadCargos: 2,
+          orden: 1,
+        },
+      ],
+      metodosAutenticacion: dto.metodosAutenticacion,
+    });
+
+    const result = await service.actualizarEleccion(1, dto);
+
+    expect(result.roles[0].maximoPostulantes).toBe(2);
+    expect(mockEleccionRepository.actualizarCompleta).toHaveBeenCalledWith(1, dto);
+  });
+
+  it('debe eliminar un comicio en BORRADOR', async () => {
+    const eleccion = {
+      idEleccion: 1,
+      estado: EleccionEstado.BORRADOR,
+    };
+    mockEleccionOrmRepository.findOne.mockResolvedValue(eleccion);
+
+    await service.eliminarEleccion(1);
+
+    expect(mockEleccionOrmRepository.remove).toHaveBeenCalledWith(eleccion);
+  });
+
+  it('debe lanzar 409 al eliminar comicio no editable', async () => {
+    mockEleccionOrmRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.CONFIGURADA,
+    });
+
+    await expect(service.eliminarEleccion(1)).rejects.toThrow(ConflictException);
+    expect(mockEleccionOrmRepository.remove).not.toHaveBeenCalled();
+  });
+
+  it('debe lanzar 404 al eliminar comicio inexistente', async () => {
+    mockEleccionOrmRepository.findOne.mockResolvedValue(null);
+
+    await expect(service.eliminarEleccion(999)).rejects.toThrow(NotFoundException);
   });
 
   it('no debe inyectar dependencias blockchain en el servicio de creación', () => {
