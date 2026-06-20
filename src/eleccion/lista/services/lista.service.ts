@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { BoletaService } from '@/eleccion/lista/services/boleta.service';
 import { CreateListaDto, UpdateListaDto } from '@/eleccion/lista/dto/lista.dto';
 import { ListaResponseDto } from '@/eleccion/lista/dto/lista-response.dto';
+import { mapCategoriaToRolResponse } from '@/eleccion/lista/mappers/categoria.mapper';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
@@ -43,7 +44,7 @@ export class ListaService {
     const boleta = await this.boletaService.ensureBoleta(idEleccion);
     const listas = await this.listaRepository.find({
       where: { idBoleta: boleta.idBoleta },
-      relations: ['candidatos'],
+      relations: ['candidatos', 'candidatos.categoria'],
       order: { idLista: 'ASC' },
     });
     return listas.map((lista) => this.toResponse(lista, true, boleta));
@@ -104,6 +105,10 @@ export class ListaService {
     boleta?: Boleta,
   ): ListaResponseDto {
     const idCategoriaDefault = boleta?.categorias?.[0]?.idCategoria;
+    const roles = (boleta?.categorias ?? [])
+      .slice()
+      .sort((a, b) => a.orden - b.orden)
+      .map(mapCategoriaToRolResponse);
     return {
       idLista: lista.idLista,
       idBoleta: lista.idBoleta,
@@ -114,14 +119,15 @@ export class ListaService {
       listId: lista.listId,
       fechaOficializacion: lista.fechaOficializacion,
       idCategoriaDefault,
+      roles,
       candidatos: includeCandidatos
         ? (lista.candidatos ?? []).map((candidato) => ({
             idCandidato: candidato.idCandidato,
             idLista: candidato.idLista,
             idCategoria: candidato.idCategoria,
+            categoriaNombre: candidato.categoria?.nombre ?? undefined,
             nombre: candidato.nombre,
             apellido: candidato.apellido,
-            cargo: candidato.cargo,
             orden: candidato.orden,
             fotoUrl: candidato.fotoUrl,
             datosAdicionales: candidato.datosAdicionales,

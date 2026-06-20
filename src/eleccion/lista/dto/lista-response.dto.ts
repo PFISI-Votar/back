@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { CandidatoResponseDto } from '@/eleccion/candidato/dto/candidato-response.dto';
+import { RolCandidatoResponseDto } from '@/eleccion/lista/dto/rol-candidato.dto';
 
 export class ListaResponseDto {
   @ApiProperty()
@@ -31,6 +32,12 @@ export class ListaResponseDto {
 
   @ApiPropertyOptional({ description: 'Categoría por defecto de la boleta' })
   idCategoriaDefault?: number;
+
+  @ApiPropertyOptional({
+    type: [RolCandidatoResponseDto],
+    description: 'Roles de candidato definidos en el comicio',
+  })
+  roles?: RolCandidatoResponseDto[];
 }
 
 export class ListaMapeoItemDto {

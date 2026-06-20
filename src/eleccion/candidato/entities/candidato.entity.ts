@@ -33,9 +33,6 @@ export class Candidato {
   @Column({ name: 'apellido', type: 'varchar' })
   apellido: string;
 
-  @Column({ name: 'cargo', type: 'varchar', nullable: true })
-  cargo: string | null;
-
   @Column({ name: 'orden', type: 'int', default: 1 })
   orden: number;
 

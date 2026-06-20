@@ -35,17 +35,6 @@ export class CreateCandidatoDto {
   @Min(1)
   idCategoria: number;
 
-  @ApiPropertyOptional({ example: 'Presidente' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  @Transform(({ value }) =>
-    value
-      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
-      : value,
-  )
-  cargo?: string;
-
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()
   @IsInt()
@@ -93,17 +82,6 @@ export class UpdateCandidatoDto {
   @IsInt()
   @Min(1)
   idCategoria?: number;
-
-  @ApiPropertyOptional({ example: 'Presidente' })
-  @IsOptional()
-  @IsString()
-  @MaxLength(100)
-  @Transform(({ value }) =>
-    value
-      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
-      : value,
-  )
-  cargo?: string;
 
   @ApiPropertyOptional({ example: 1 })
   @IsOptional()

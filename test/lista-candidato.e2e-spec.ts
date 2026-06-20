@@ -13,7 +13,9 @@ import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { ConfiguracionDatosCandidato } from '@/eleccion/candidato/entities/configuracion-datos-candidato.entity';
 import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import type { CampoCandidatoDefinicion } from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
 import { mapDefinicionToEntity } from '@/eleccion/candidato/mappers/campo-datos-candidato.mapper';
 
@@ -25,6 +27,7 @@ const entities = [
   Candidato,
   ConfiguracionDatosCandidato,
   CampoDatosCandidato,
+  ConfiguracionComicio,
 ];
 
 const camposConfigE2E: CampoCandidatoDefinicion[] = [
@@ -144,6 +147,7 @@ describe('ListaCandidato (e2e)', () => {
         fechaInicio: new Date('2026-12-01T10:00:00Z'),
         fechaFin: new Date('2026-12-02T10:00:00Z'),
         estado: EleccionEstado.BORRADOR,
+        tipoVotacion: TipoVotacion.POR_LISTA,
       }),
     );
     idEleccion = eleccion.idEleccion;
@@ -246,6 +250,7 @@ describe('ListaCandidato (e2e)', () => {
         fechaInicio: new Date('2026-12-05T10:00:00Z'),
         fechaFin: new Date('2026-12-06T10:00:00Z'),
         estado: EleccionEstado.BORRADOR,
+        tipoVotacion: TipoVotacion.POR_LISTA,
       }),
     );
     await seedConfig(eleccion.idEleccion);
@@ -273,6 +278,7 @@ describe('ListaCandidato (e2e)', () => {
         fechaInicio: new Date('2026-12-10T10:00:00Z'),
         fechaFin: new Date('2026-12-11T10:00:00Z'),
         estado: EleccionEstado.BORRADOR,
+        tipoVotacion: TipoVotacion.POR_LISTA,
       }),
     );
     await seedConfig(eleccion.idEleccion);
@@ -347,6 +353,7 @@ describe('ListaCandidato (e2e)', () => {
         fechaInicio: new Date('2026-12-12T10:00:00Z'),
         fechaFin: new Date('2026-12-13T10:00:00Z'),
         estado: EleccionEstado.BORRADOR,
+        tipoVotacion: TipoVotacion.POR_LISTA,
       }),
     );
     await seedConfig(eleccion.idEleccion);

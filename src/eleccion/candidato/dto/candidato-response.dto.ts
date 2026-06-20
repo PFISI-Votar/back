@@ -10,14 +10,14 @@ export class CandidatoResponseDto {
   @ApiProperty()
   idCategoria: number;
 
+  @ApiPropertyOptional({ description: 'Nombre del rol/categoría electoral' })
+  categoriaNombre?: string;
+
   @ApiProperty()
   nombre: string;
 
   @ApiProperty()
   apellido: string;
-
-  @ApiPropertyOptional()
-  cargo: string | null;
 
   @ApiProperty()
   orden: number;

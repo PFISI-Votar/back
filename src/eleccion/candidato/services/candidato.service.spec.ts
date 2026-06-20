@@ -21,12 +21,19 @@ const validDatos = {
 describe('CandidatoService', () => {
   let service: CandidatoService;
 
+  const mockQueryBuilder = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    getCount: jest.fn().mockResolvedValue(0),
+  };
+
   const mockCandidatoRepository = {
     create: jest.fn(),
     save: jest.fn(),
     find: jest.fn(),
     findOne: jest.fn(),
     remove: jest.fn(),
+    createQueryBuilder: jest.fn().mockReturnValue(mockQueryBuilder),
   };
 
   const mockCategoriaRepository = {
@@ -89,6 +96,8 @@ describe('CandidatoService', () => {
     mockCategoriaRepository.findOne.mockResolvedValue({
       idCategoria: 1,
       idBoleta: 10,
+      cantidadCargos: 3,
+      nombre: 'Presidente',
     });
     mockConfigService.obtenerCamposPorEleccion.mockResolvedValue([]);
     const savedCandidato = {
@@ -97,13 +106,16 @@ describe('CandidatoService', () => {
       idCategoria: 1,
       nombre: 'Juan',
       apellido: 'Pérez',
-      cargo: null,
       orden: 1,
       fotoUrl: null,
       datosAdicionales: validDatos,
     };
     mockCandidatoRepository.create.mockReturnValue(savedCandidato);
     mockCandidatoRepository.save.mockResolvedValue(savedCandidato);
+    mockCandidatoRepository.findOne.mockResolvedValue({
+      ...savedCandidato,
+      categoria: { nombre: 'Presidente' },
+    });
 
     const result = await service.create(1, {
       nombre: 'Juan',
@@ -114,6 +126,7 @@ describe('CandidatoService', () => {
 
     expect(result.nombre).toBe('Juan');
     expect(result.datosAdicionales.legajo_utn).toBe('14988');
+    expect(result.categoriaNombre).toBe('Presidente');
     expect(mockValidatorService.validateDatosAdicionales).toHaveBeenCalledWith(
       [],
       validDatos,
@@ -127,6 +140,8 @@ describe('CandidatoService', () => {
     mockCategoriaRepository.findOne.mockResolvedValue({
       idCategoria: 1,
       idBoleta: 10,
+      cantidadCargos: 3,
+      nombre: 'Presidente',
     });
     mockConfigService.obtenerCamposPorEleccion.mockResolvedValue([]);
     mockValidatorService.validateDatosAdicionales.mockImplementation(() => {
