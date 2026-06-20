@@ -4,8 +4,11 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToOne,
 } from 'typeorm';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 
 @Entity('eleccion')
 export class Eleccion {
@@ -32,6 +35,13 @@ export class Eleccion {
   })
   estado: EleccionEstado;
 
+  @Column({
+    name: 'tipo_votacion',
+    type: 'enum',
+    enum: TipoVotacion,
+  })
+  tipoVotacion: TipoVotacion;
+
   @Column({ name: 'minimo_candidatos_por_lista', type: 'int', nullable: true })
   minimoCandidatosPorLista: number | null;
 
@@ -40,4 +50,7 @@ export class Eleccion {
 
   @UpdateDateColumn({ name: 'fecha_actualizacion', type: 'timestamptz' })
   fechaActualizacion: Date;
+
+  @OneToOne(() => ConfiguracionComicio, (config) => config.eleccion)
+  configuracionComicio?: ConfiguracionComicio;
 }

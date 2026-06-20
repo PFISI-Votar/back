@@ -1,7 +1,14 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
+import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 
@@ -12,19 +19,19 @@ export class EleccionesController implements IEleccionController {
 
   @Get()
   @ApiOperation({ summary: 'Listar todos los comicios' })
-  @ApiResponse({ status: 200, description: 'OK', type: [Eleccion] })
-  async listarElecciones(): Promise<Eleccion[]> {
+  @ApiResponse({ status: 200, description: 'OK', type: [EleccionResponseDto] })
+  async listarElecciones(): Promise<EleccionResponseDto[]> {
     return this.eleccionesService.listarElecciones();
   }
 
   @Get(':idEleccion')
   @ApiOperation({ summary: 'Obtener comicio por ID' })
   @ApiParam({ name: 'idEleccion', type: Number })
-  @ApiResponse({ status: 200, description: 'OK', type: Eleccion })
+  @ApiResponse({ status: 200, description: 'OK', type: EleccionResponseDto })
   @ApiResponse({ status: 404, description: 'Not Found' })
   async obtenerEleccion(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
-  ): Promise<Eleccion> {
+  ): Promise<EleccionResponseDto> {
     return this.eleccionesService.obtenerPorId(idEleccion);
   }
 
@@ -33,17 +40,19 @@ export class EleccionesController implements IEleccionController {
   @ApiResponse({
     status: 201,
     description: 'Comicio creado exitosamente',
-    type: Eleccion,
+    type: EleccionResponseDto,
   })
   @ApiResponse({
     status: 422,
-    description: 'Inconsistencia temporal en las fechas',
+    description: 'Validación de fechas, roles o métodos de autenticación',
   })
   @ApiResponse({
     status: 400,
     description: 'Datos inválidos o campo mal formado',
   })
-  async crearEleccion(@Body() dto: CrearEleccionDto): Promise<Eleccion> {
+  async crearEleccion(
+    @Body() dto: CrearEleccionDto,
+  ): Promise<EleccionResponseDto> {
     return this.eleccionesService.crearEleccion(dto);
   }
 }
