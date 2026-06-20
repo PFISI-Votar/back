@@ -144,6 +144,17 @@ describe('EleccionesService', () => {
     expect(mockEleccionRepository.crearCompleta).not.toHaveBeenCalled();
   });
 
+  it('debe lanzar 422 si la fecha de cierre está en el pasado', async () => {
+    const dto = buildValidDto();
+    dto.fechaInicio = new Date(Date.now() + 172800000).toISOString();
+    dto.fechaFin = new Date(Date.now() - 86400000).toISOString();
+
+    await expect(service.crearEleccion(dto)).rejects.toThrow(
+      CrearEleccionValidationException,
+    );
+    expect(mockEleccionRepository.crearCompleta).not.toHaveBeenCalled();
+  });
+
   it('debe lanzar 422 si la fecha de inicio es el momento presente', async () => {
     const dto = buildValidDto();
     dto.fechaInicio = new Date().toISOString();

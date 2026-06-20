@@ -44,7 +44,8 @@ export class EleccionesController implements IEleccionController {
   })
   @ApiResponse({
     status: 422,
-    description: 'Validación de fechas, roles o métodos de autenticación',
+    description:
+      'Validación de fechas (pasado u orden), roles o métodos de autenticación',
   })
   @ApiResponse({
     status: 400,

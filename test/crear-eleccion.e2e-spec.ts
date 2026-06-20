@@ -136,13 +136,77 @@ describe('CrearEleccion (e2e)', () => {
       .expect(422);
   });
 
-  it('UAT-04: POST /elecciones retorna 422 sin métodos de autenticación', async () => {
+  it('POST /elecciones retorna 422 si cierre está en el pasado', async () => {
     const payload = buildValidPayload();
-    payload.metodosAutenticacion = [];
+    payload.fechaInicio = new Date(Date.now() + 172800000).toISOString();
+    payload.fechaFin = new Date(Date.now() - 86400000).toISOString();
 
-    await request(app.getHttpServer())
+    const response = await request(app.getHttpServer())
       .post('/elecciones')
       .send(payload)
       .expect(422);
+
+    const body = response.body as {
+      errors?: Array<{ field?: string; message?: string }>;
+    };
+    const fechaFinError = body.errors?.find(
+      (error) => error.field === 'fechaFin',
+    );
+    expect(fechaFinError?.message).toContain('posterior al momento actual');
+  });
+
+  it('UAT-04a: POST /elecciones retorna 422 sin roles de candidato', async () => {
+    const payload = buildValidPayload();
+    payload.roles = [];
+
+    const response = await request(app.getHttpServer())
+      .post('/elecciones')
+      .send(payload)
+      .expect(422);
+
+    const body = response.body as {
+      errors?: Array<{ field?: string; message?: string }>;
+    };
+    const rolesError = body.errors?.find((error) => error.field === 'roles');
+    expect(rolesError?.message).toContain('rol de candidato');
+  });
+
+  it('UAT-04b: POST /elecciones retorna 422 sin métodos de autenticación', async () => {
+    const payload = buildValidPayload();
+    payload.metodosAutenticacion = [];
+
+    const response = await request(app.getHttpServer())
+      .post('/elecciones')
+      .send(payload)
+      .expect(422);
+
+    const body = response.body as {
+      errors?: Array<{ field?: string; message?: string }>;
+    };
+    const authError = body.errors?.find(
+      (error) => error.field === 'metodosAutenticacion',
+    );
+    expect(authError?.message).toContain('método de inicio de sesión');
+  });
+
+  it('sanitiza nombre con scripts maliciosos antes de persistir', async () => {
+    const payload = buildValidPayload();
+    payload.nombre = '<script>alert(1)</script>Comicio Seguro';
+
+    const response = await request(app.getHttpServer())
+      .post('/elecciones')
+      .send(payload)
+      .expect(201);
+
+    const body = response.body as EleccionResponseDto;
+    expect(body.nombre).toBe('Comicio Seguro');
+    expect(body.nombre).not.toContain('<script>');
+
+    const eleccionRepo = dataSource.getRepository(Eleccion);
+    const persisted = await eleccionRepo.findOne({
+      where: { idEleccion: body.idEleccion },
+    });
+    expect(persisted?.nombre).toBe('Comicio Seguro');
+    expect(persisted?.nombre).not.toContain('<script>');
   });
 });

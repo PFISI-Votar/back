@@ -83,6 +83,15 @@ export class EleccionesService implements IEleccionService {
       ]);
     }
 
+    if (fechaFin <= ahora) {
+      throw new CrearEleccionValidationException([
+        {
+          field: 'fechaFin',
+          message: 'La fecha de cierre debe ser posterior al momento actual.',
+        },
+      ]);
+    }
+
     if (fechaFin <= fechaInicio) {
       throw new CrearEleccionValidationException([
         {
