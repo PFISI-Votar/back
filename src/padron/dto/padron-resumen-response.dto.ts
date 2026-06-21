@@ -32,4 +32,16 @@ export class PadronResumenResponseDto {
 
   @ApiProperty({ description: 'Fecha de generación del padrón' })
   fechaGeneracion: Date;
+
+  @ApiProperty({
+    example: 105,
+    description: 'Filas de datos leídas del CSV en la importación',
+  })
+  totalProcesados: number;
+
+  @ApiProperty({
+    example: 5,
+    description: 'Filas omitidas (defectuosas o duplicadas) en la importación',
+  })
+  totalOmitidos: number;
 }

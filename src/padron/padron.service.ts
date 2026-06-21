@@ -6,21 +6,26 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Readable } from 'stream';
-import csvParser from 'csv-parser';
 import { EleccionEstado } from '../eleccion/enums/eleccion-estado.enum';
 import { ImportarPadronResponseDto } from './dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from './dto/listar-votantes-response.dto';
+import { NovedadPadronDto } from './dto/novedad-padron.dto';
 import { PadronResumenResponseDto } from './dto/padron-resumen-response.dto';
+import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dto';
+import { TipoNovedad } from './enums/tipo-novedad.enum';
 import { IPadronService } from './interfaces/padron.service.interface';
 import { PADRON_REPOSITORY } from './interfaces/padron.repository.interface';
 import type { IPadronRepository } from './interfaces/padron.repository.interface';
 import { hashPadron, hashVotante } from './utils/keccak.util';
 
-type FilaCsv = Record<string, string>;
-
 const REGEX_DNI = /^\d{7,9}$/;
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+interface ResultadoProcesamiento {
+  hashesHoja: string[];
+  novedades: NovedadPadronDto[];
+  totalProcesados: number;
+}
 
 @Injectable()
 export class PadronService implements IPadronService {
@@ -49,23 +54,45 @@ export class PadronService implements IPadronService {
       throw new ConflictException('La elección ya tiene un padrón cargado.');
     }
 
-    const filas = await this.parsearCsv(archivo.buffer);
-    if (filas.length === 0) {
+    const { hashesHoja, novedades, totalProcesados } = this.procesarCsv(
+      archivo.buffer,
+    );
+    if (totalProcesados === 0) {
       throw new BadRequestException('El archivo CSV no contiene registros.');
     }
 
-    const hashesHoja = this.procesarFilas(filas);
+    const base = {
+      idEleccion,
+      totalProcesados,
+      totalImportados: hashesHoja.length,
+      totalOmitidos: novedades.length,
+      novedades,
+    };
+
+    // Carga parcial: sólo se persiste si hay al menos una identidad válida.
+    // Con 0 válidas igualmente devolvemos las novedades para que la Autoridad
+    // Electoral pueda descargar el reporte y corregir el archivo.
+    if (hashesHoja.length === 0) {
+      return {
+        ...base,
+        idPadron: null,
+        estado: null,
+        fechaGeneracion: null,
+      };
+    }
 
     const padron = await this.padronRepository.crearPadronConVotantes({
       idEleccion,
       hashPadron: hashPadron(hashesHoja),
       hashesHoja,
+      totalProcesados,
+      totalOmitidos: novedades.length,
+      novedades,
     });
 
     return {
+      ...base,
       idPadron: padron.idPadron,
-      idEleccion,
-      totalImportados: hashesHoja.length,
       estado: padron.estado,
       fechaGeneracion: padron.fechaGeneracion,
     };
@@ -86,6 +113,27 @@ export class PadronService implements IPadronService {
       hashPadron: padron.hashPadron,
       estado: padron.estado,
       fechaGeneracion: padron.fechaGeneracion,
+      totalProcesados: padron.totalProcesados,
+      totalOmitidos: padron.totalOmitidos,
+    };
+  }
+
+  async obtenerReporteNovedades(
+    idEleccion: number,
+  ): Promise<ReporteNovedadesResponseDto> {
+    const padron =
+      await this.padronRepository.obtenerPadronPorEleccion(idEleccion);
+    if (!padron) {
+      throw new NotFoundException(
+        `La elección ${idEleccion} no tiene un padrón cargado.`,
+      );
+    }
+    return {
+      idEleccion,
+      totalProcesados: padron.totalProcesados,
+      totalImportados: padron.totalVotantesHabilitados,
+      totalOmitidos: padron.totalOmitidos,
+      novedades: padron.novedades ?? [],
     };
   }
 
@@ -150,52 +198,96 @@ export class PadronService implements IPadronService {
     }
   }
 
-  private parsearCsv(buffer: Buffer): Promise<FilaCsv[]> {
-    return new Promise<FilaCsv[]>((resolve, reject) => {
-      const filas: FilaCsv[] = [];
-      Readable.from(buffer)
-        .pipe(
-          csvParser({
-            mapHeaders: ({ header }) => header.trim().toLowerCase(),
-          }),
-        )
-        .on('data', (fila: FilaCsv) => filas.push(fila))
-        .on('end', () => resolve(filas))
-        .on('error', () =>
-          reject(
-            new BadRequestException(
-              'El archivo CSV tiene un formato inválido.',
-            ),
-          ),
-        );
-    });
-  }
-
   /**
-   * Valida cada registro, hashea la identidad (DNI + email) con Keccak-256 y
-   * deduplica por hash. Ante cualquier fila inválida cancela la operación.
-   * No registra datos personales en texto plano.
+   * Procesa el CSV línea por línea (la línea 1 es la cabecera). Tolera filas
+   * defectuosas: valida cada registro, hashea la identidad (DNI + email) con
+   * Keccak-256, deduplica por hash preservando la primera aparición válida, y
+   * consolida cada fila omitida en un registro de novedades con su número de
+   * línea físico y motivo. No interrumpe la carga ante anomalías (US-331).
+   *
+   * El reporte de novedades nunca contiene datos personales en texto plano
+   * (Ley 25.326): sólo número de línea y motivo.
    */
-  private procesarFilas(filas: FilaCsv[]): string[] {
+  private procesarCsv(buffer: Buffer): ResultadoProcesamiento {
+    const lineas = buffer
+      .toString('utf-8')
+      .split('\n')
+      .map((linea) => linea.replace(/\r$/, ''));
+
+    const cabecera = (lineas[0] ?? '')
+      .split(',')
+      .map((c) => c.trim().toLowerCase());
+    const indiceDni = cabecera.indexOf('dni');
+    const indiceEmail = cabecera.indexOf('email');
+    if (indiceDni === -1 || indiceEmail === -1) {
+      throw new BadRequestException(
+        'El archivo no tiene las columnas requeridas: dni, email.',
+      );
+    }
+
     const hashesUnicos = new Set<string>();
+    const novedades: NovedadPadronDto[] = [];
+    let totalProcesados = 0;
 
-    filas.forEach((fila, indice) => {
-      const dni = (fila.dni ?? '').trim();
-      const email = (fila.email ?? '').trim();
-      const numeroFila = indice + 1;
+    for (let i = 1; i < lineas.length; i++) {
+      const numeroLinea = i + 1;
+      const linea = lineas[i];
 
+      // Las líneas en blanco no son filas de datos: no se cuentan ni reportan.
+      if (linea.trim() === '') {
+        continue;
+      }
+      totalProcesados++;
+
+      const celdas = linea.split(',');
+      const dni = (celdas[indiceDni] ?? '').trim();
+      const email = (celdas[indiceEmail] ?? '').trim();
+
+      if (dni === '') {
+        novedades.push(this.crearNovedad(numeroLinea, TipoNovedad.DNI_AUSENTE));
+        continue;
+      }
+      if (email === '') {
+        novedades.push(
+          this.crearNovedad(numeroLinea, TipoNovedad.EMAIL_AUSENTE),
+        );
+        continue;
+      }
       if (!REGEX_DNI.test(dni.replace(/\D/g, ''))) {
-        throw new BadRequestException(`DNI inválido en la fila ${numeroFila}.`);
+        novedades.push(
+          this.crearNovedad(numeroLinea, TipoNovedad.DNI_INVALIDO),
+        );
+        continue;
       }
       if (!REGEX_EMAIL.test(email)) {
-        throw new BadRequestException(
-          `Email inválido en la fila ${numeroFila}.`,
+        novedades.push(
+          this.crearNovedad(numeroLinea, TipoNovedad.EMAIL_INVALIDO),
         );
+        continue;
       }
 
-      hashesUnicos.add(hashVotante(dni, email));
-    });
+      const hash = hashVotante(dni, email);
+      if (hashesUnicos.has(hash)) {
+        novedades.push(this.crearNovedad(numeroLinea, TipoNovedad.DUPLICADO));
+        continue;
+      }
+      hashesUnicos.add(hash);
+    }
 
-    return [...hashesUnicos];
+    novedades.sort((a, b) => a.linea - b.linea);
+
+    return { hashesHoja: [...hashesUnicos], novedades, totalProcesados };
+  }
+
+  private crearNovedad(linea: number, tipo: TipoNovedad): NovedadPadronDto {
+    const motivos: Record<TipoNovedad, string> = {
+      [TipoNovedad.DNI_AUSENTE]: 'Campo DNI ausente',
+      [TipoNovedad.EMAIL_AUSENTE]: 'Campo email ausente',
+      [TipoNovedad.DNI_INVALIDO]: 'DNI con formato inválido',
+      [TipoNovedad.EMAIL_INVALIDO]: 'Email con formato inválido',
+      [TipoNovedad.DUPLICADO]:
+        'Registro duplicado - Se preservó la primera aparición',
+    };
+    return { linea, tipo, motivo: `Línea ${linea}: ${motivos[tipo]}` };
   }
 }

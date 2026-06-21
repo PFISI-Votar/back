@@ -1,3 +1,4 @@
+import { NovedadPadronDto } from '../dto/novedad-padron.dto';
 import { Eleccion } from '../../eleccion/entities/eleccion.entity';
 import { PadronElectoral } from '../entities/padron-electoral.entity';
 import { PadronVotante } from '../entities/padron-votante.entity';
@@ -8,6 +9,9 @@ export interface CrearPadronInput {
   idEleccion: number;
   hashPadron: string;
   hashesHoja: string[];
+  totalProcesados: number;
+  totalOmitidos: number;
+  novedades: NovedadPadronDto[];
 }
 
 export interface IPadronRepository {

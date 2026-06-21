@@ -8,6 +8,7 @@ import {
   JoinColumn,
 } from 'typeorm';
 import { Eleccion } from '../../eleccion/entities/eleccion.entity';
+import { NovedadPadronDto } from '../dto/novedad-padron.dto';
 import { PadronEstado } from '../enums/padron-estado.enum';
 import { PadronVotante } from './padron-votante.entity';
 
@@ -41,6 +42,21 @@ export class PadronElectoral {
 
   @CreateDateColumn({ name: 'fecha_generacion', type: 'timestamptz' })
   fechaGeneracion: Date;
+
+  /** Filas de datos (no vacías) leídas del CSV en la importación (US-331). */
+  @Column({ name: 'total_procesados', type: 'int', default: 0 })
+  totalProcesados: number;
+
+  /** Filas omitidas (defectuosas o duplicadas) durante la importación. */
+  @Column({ name: 'total_omitidos', type: 'int', default: 0 })
+  totalOmitidos: number;
+
+  /**
+   * Registro de novedades de la importación, para re-descarga del reporte de
+   * auditoría. Sólo línea + tipo + motivo: nunca PII (Ley 25.326).
+   */
+  @Column({ name: 'novedades', type: 'jsonb', default: () => "'[]'" })
+  novedades: NovedadPadronDto[];
 
   @OneToMany(() => PadronVotante, (votante) => votante.padron, {
     cascade: true,

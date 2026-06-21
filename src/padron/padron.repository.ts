@@ -77,6 +77,9 @@ export class PadronRepository implements IPadronRepository {
         totalVotantesHabilitados: input.hashesHoja.length,
         hashPadron: input.hashPadron,
         estado: PadronEstado.BORRADOR,
+        totalProcesados: input.totalProcesados,
+        totalOmitidos: input.totalOmitidos,
+        novedades: input.novedades,
       });
       const padronGuardado = await manager.save(padron);
 

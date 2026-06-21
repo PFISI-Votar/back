@@ -24,6 +24,7 @@ import { ImportarPadronResponseDto } from './dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from './dto/listar-votantes-response.dto';
 import { PaginacionPadronQueryDto } from './dto/paginacion-padron-query.dto';
 import { PadronResumenResponseDto } from './dto/padron-resumen-response.dto';
+import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dto';
 import { IPadronController } from './interfaces/padron.controller.interface';
 import { PadronService } from './padron.service';
 
@@ -37,7 +38,7 @@ export class PadronController implements IPadronController {
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
     summary:
-      'Importar el padrón electoral desde un archivo CSV, hasheando cada identidad con Keccak-256 (US-330)',
+      'Importar el padrón electoral desde un archivo CSV, hasheando cada identidad con Keccak-256. Tolera filas defectuosas e ignora duplicados (preserva la primera aparición), consolidando las omisiones en un registro de novedades (US-331)',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -51,10 +52,15 @@ export class PadronController implements IPadronController {
   @ApiParam({ name: 'idEleccion', type: Number })
   @ApiResponse({
     status: 201,
-    description: 'Padrón importado correctamente',
+    description:
+      'Padrón importado (total o parcialmente). Incluye totales y el registro de novedades de las filas omitidas.',
     type: ImportarPadronResponseDto,
   })
-  @ApiResponse({ status: 400, description: 'Archivo o formato CSV inválido' })
+  @ApiResponse({
+    status: 400,
+    description:
+      'Archivo vacío, sin registros, o sin las columnas requeridas (dni, email)',
+  })
   @ApiResponse({ status: 404, description: 'Elección inexistente' })
   @ApiResponse({
     status: 409,
@@ -87,6 +93,24 @@ export class PadronController implements IPadronController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<PadronResumenResponseDto> {
     return this.padronService.obtenerResumen(idEleccion);
+  }
+
+  @Get('novedades')
+  @ApiOperation({
+    summary:
+      'Obtener el reporte de novedades persistido de la importación, para re-descargar el archivo de auditoría (US-331)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Reporte de novedades (totales + filas omitidas)',
+    type: ReporteNovedadesResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'La elección no tiene padrón' })
+  async obtenerReporteNovedades(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<ReporteNovedadesResponseDto> {
+    return this.padronService.obtenerReporteNovedades(idEleccion);
   }
 
   @Get('votantes')
