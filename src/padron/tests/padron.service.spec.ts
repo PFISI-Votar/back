@@ -11,6 +11,7 @@ import {
   PADRON_REPOSITORY,
 } from '../interfaces/padron.repository.interface';
 import { PadronEstado } from '../enums/padron-estado.enum';
+import { TipoNovedad } from '../enums/tipo-novedad.enum';
 import { EleccionEstado } from '../../eleccion/enums/eleccion-estado.enum';
 
 const REGEX_KECCAK = /^[0-9a-f]{64}$/;
@@ -45,6 +46,27 @@ function buildCsvValido(cantidad: number): Express.Multer.File {
     const dni = (30000000 + i).toString();
     filas.push(`${dni},votante${i}@frvm.utn.edu.ar`);
   }
+  return buildCsvFile(filas.join('\n'));
+}
+
+/**
+ * Construye el archivo canónico de UAT-01: 105 filas de datos compuestas por
+ * 100 identidades únicas válidas, 3 con campos obligatorios nulos y 2
+ * duplicados de filas previas. Resultado esperado: 100 importadas, 5 omitidas.
+ */
+function buildCsvUat01(): Express.Multer.File {
+  const filas = ['dni,email'];
+  for (let i = 0; i < 100; i++) {
+    const dni = (30000000 + i).toString();
+    filas.push(`${dni},votante${i}@frvm.utn.edu.ar`);
+  }
+  // 3 filas con campos obligatorios nulos
+  filas.push(',sin-dni@frvm.utn.edu.ar');
+  filas.push('30000200,');
+  filas.push(',');
+  // 2 duplicados de identidades ya cargadas
+  filas.push('30000000,votante0@frvm.utn.edu.ar');
+  filas.push('30000001,votante1@frvm.utn.edu.ar');
   return buildCsvFile(filas.join('\n'));
 }
 
@@ -121,7 +143,7 @@ describe('PadronService', () => {
     expect(cargaSerializada).not.toContain(inputEmail);
   });
 
-  it('debe deduplicar identidades repetidas dentro del archivo', async () => {
+  it('debe deduplicar identidades repetidas y reportar el duplicado', async () => {
     const inputArchivo = buildCsvFile(
       'dni,email\n30111222,ana@frvm.utn.edu.ar\n30111222,ana@frvm.utn.edu.ar',
     );
@@ -129,23 +151,50 @@ describe('PadronService', () => {
     const actual = await service.importarPadron(ID_ELECCION, inputArchivo);
 
     expect(actual.totalImportados).toBe(1);
+    expect(actual.totalOmitidos).toBe(1);
+    expect(actual.novedades).toEqual([
+      {
+        linea: 3,
+        tipo: TipoNovedad.DUPLICADO,
+        motivo:
+          'Línea 3: Registro duplicado - Se preservó la primera aparición',
+      },
+    ]);
   });
 
-  it('debe cancelar (400) ante un registro con DNI inválido', async () => {
-    const inputArchivo = buildCsvFile('dni,email\nABC,ana@frvm.utn.edu.ar');
+  it('debe omitir el registro con DNI inválido y continuar con el resto', async () => {
+    const inputArchivo = buildCsvFile(
+      'dni,email\nABC,carla@frvm.utn.edu.ar\n30222333,bruno@frvm.utn.edu.ar',
+    );
 
-    await expect(
-      service.importarPadron(ID_ELECCION, inputArchivo),
-    ).rejects.toThrow(BadRequestException);
-    expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
+    const actual = await service.importarPadron(ID_ELECCION, inputArchivo);
+
+    expect(actual.totalImportados).toBe(1);
+    expect(actual.totalOmitidos).toBe(1);
+    expect(actual.novedades[0]).toEqual({
+      linea: 2,
+      tipo: TipoNovedad.DNI_INVALIDO,
+      motivo: 'Línea 2: DNI con formato inválido',
+    });
+    expect(mockPadronRepository.crearPadronConVotantes).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
-  it('debe cancelar (400) ante un email inválido', async () => {
-    const inputArchivo = buildCsvFile('dni,email\n30111222,no-es-email');
+  it('debe omitir el registro con email inválido y continuar con el resto', async () => {
+    const inputArchivo = buildCsvFile(
+      'dni,email\n30111222,no-es-email\n30222333,bruno@frvm.utn.edu.ar',
+    );
 
-    await expect(
-      service.importarPadron(ID_ELECCION, inputArchivo),
-    ).rejects.toThrow(BadRequestException);
+    const actual = await service.importarPadron(ID_ELECCION, inputArchivo);
+
+    expect(actual.totalImportados).toBe(1);
+    expect(actual.totalOmitidos).toBe(1);
+    expect(actual.novedades[0]).toEqual({
+      linea: 2,
+      tipo: TipoNovedad.EMAIL_INVALIDO,
+      motivo: 'Línea 2: Email con formato inválido',
+    });
   });
 
   it('debe cancelar (400) ante un archivo sin registros', async () => {
@@ -154,6 +203,86 @@ describe('PadronService', () => {
     await expect(
       service.importarPadron(ID_ELECCION, inputArchivo),
     ).rejects.toThrow(BadRequestException);
+    expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
+  });
+
+  it('debe cancelar (400) si el archivo no tiene las columnas requeridas', async () => {
+    const inputArchivo = buildCsvFile(
+      'tipo_documento;numero_documento;observacion\nDNI;12345678;texto suelto',
+    );
+
+    await expect(
+      service.importarPadron(ID_ELECCION, inputArchivo),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
+  });
+
+  it('UAT-01: importa 100 únicas y omite 5 (3 campos nulos + 2 duplicados) sobre 105 filas', async () => {
+    const inputArchivo = buildCsvUat01();
+
+    const actual = await service.importarPadron(ID_ELECCION, inputArchivo);
+
+    expect(actual.totalProcesados).toBe(105);
+    expect(actual.totalImportados).toBe(100);
+    expect(actual.totalOmitidos).toBe(5);
+    expect(actual.novedades).toHaveLength(5);
+
+    // El reporte se persiste para re-descarga (sin PII).
+    const inputPersistido = (
+      mockPadronRepository.crearPadronConVotantes.mock
+        .calls as CrearPadronInput[][]
+    )[0][0];
+    expect(inputPersistido.totalProcesados).toBe(105);
+    expect(inputPersistido.totalOmitidos).toBe(5);
+    expect(inputPersistido.novedades).toHaveLength(5);
+  });
+
+  it('UAT-02: el reporte de novedades lista número de línea exacto, motivo por tipo y ordenado', async () => {
+    // Línea 2 válida; 3 DNI ausente; 4 email ausente; 5 DNI inválido;
+    // 6 email inválido; 7 duplicado de la línea 2.
+    const inputArchivo = buildCsvFile(
+      [
+        'dni,email',
+        '30111222,ana@frvm.utn.edu.ar',
+        ',elena@frvm.utn.edu.ar',
+        '30666777,',
+        'ABC,franco@frvm.utn.edu.ar',
+        '30888999,no-es-email',
+        '30111222,ana@frvm.utn.edu.ar',
+      ].join('\n'),
+    );
+
+    const actual = await service.importarPadron(ID_ELECCION, inputArchivo);
+
+    expect(actual.totalImportados).toBe(1);
+    expect(actual.novedades).toEqual([
+      {
+        linea: 3,
+        tipo: TipoNovedad.DNI_AUSENTE,
+        motivo: 'Línea 3: Campo DNI ausente',
+      },
+      {
+        linea: 4,
+        tipo: TipoNovedad.EMAIL_AUSENTE,
+        motivo: 'Línea 4: Campo email ausente',
+      },
+      {
+        linea: 5,
+        tipo: TipoNovedad.DNI_INVALIDO,
+        motivo: 'Línea 5: DNI con formato inválido',
+      },
+      {
+        linea: 6,
+        tipo: TipoNovedad.EMAIL_INVALIDO,
+        motivo: 'Línea 6: Email con formato inválido',
+      },
+      {
+        linea: 7,
+        tipo: TipoNovedad.DUPLICADO,
+        motivo:
+          'Línea 7: Registro duplicado - Se preservó la primera aparición',
+      },
+    ]);
   });
 
   it('debe rechazar (404) si la elección no existe', async () => {
@@ -184,13 +313,16 @@ describe('PadronService', () => {
   });
 
   describe('obtenerResumen', () => {
-    it('debe devolver el resumen del padrón existente', async () => {
+    it('debe devolver el resumen del padrón existente con los totales de importación', async () => {
       mockPadronRepository.obtenerPadronPorEleccion.mockResolvedValue({
         idPadron: 7,
         totalVotantesHabilitados: 1000,
         hashPadron: 'a'.repeat(64),
         estado: PadronEstado.BORRADOR,
         fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+        totalProcesados: 1005,
+        totalOmitidos: 5,
+        novedades: [],
       });
 
       const actual = await service.obtenerResumen(ID_ELECCION);
@@ -202,6 +334,8 @@ describe('PadronService', () => {
         hashPadron: 'a'.repeat(64),
         estado: PadronEstado.BORRADOR,
         fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+        totalProcesados: 1005,
+        totalOmitidos: 5,
       });
     });
 
@@ -211,6 +345,46 @@ describe('PadronService', () => {
       await expect(service.obtenerResumen(ID_ELECCION)).rejects.toThrow(
         NotFoundException,
       );
+    });
+  });
+
+  describe('obtenerReporteNovedades', () => {
+    it('debe devolver el reporte persistido (totales + novedades)', async () => {
+      const novedadesPersistidas = [
+        {
+          linea: 3,
+          tipo: TipoNovedad.DNI_AUSENTE,
+          motivo: 'Línea 3: Campo DNI ausente',
+        },
+      ];
+      mockPadronRepository.obtenerPadronPorEleccion.mockResolvedValue({
+        idPadron: 7,
+        totalVotantesHabilitados: 100,
+        hashPadron: 'a'.repeat(64),
+        estado: PadronEstado.BORRADOR,
+        fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+        totalProcesados: 105,
+        totalOmitidos: 5,
+        novedades: novedadesPersistidas,
+      });
+
+      const actual = await service.obtenerReporteNovedades(ID_ELECCION);
+
+      expect(actual).toEqual({
+        idEleccion: ID_ELECCION,
+        totalProcesados: 105,
+        totalImportados: 100,
+        totalOmitidos: 5,
+        novedades: novedadesPersistidas,
+      });
+    });
+
+    it('debe rechazar (404) si la elección no tiene padrón', async () => {
+      mockPadronRepository.obtenerPadronPorEleccion.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerReporteNovedades(ID_ELECCION),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 
