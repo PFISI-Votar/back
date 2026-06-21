@@ -1,8 +1,13 @@
-import { Eleccion } from '../entities/eleccion.entity';
-import { CrearEleccionDto } from '../dto/crear-eleccion.dto';
+import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
+import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
+import type { CrearEleccionCompletaResult } from '@/eleccion/repositories/eleccion.repository';
 
 export const ELECCION_REPOSITORY = 'ELECCION_REPOSITORY';
 
 export interface IEleccionRepository {
-  crear(dto: CrearEleccionDto): Promise<Eleccion>;
+  crearCompleta(dto: CrearEleccionDto): Promise<CrearEleccionCompletaResult>;
+  actualizarCompleta(
+    idEleccion: number,
+    dto: ActualizarEleccionDto,
+  ): Promise<CrearEleccionCompletaResult>;
 }
