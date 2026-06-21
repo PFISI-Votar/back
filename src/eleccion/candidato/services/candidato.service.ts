@@ -59,7 +59,9 @@ export class CandidatoService {
       datosAdicionales: dto.datosAdicionales,
     });
     const saved = await this.candidatoRepository.save(candidato);
-    return this.toResponse(await this.findCandidatoWithCategoriaOrFail(saved.idCandidato));
+    return this.toResponse(
+      await this.findCandidatoWithCategoriaOrFail(saved.idCandidato),
+    );
   }
 
   async findAllByLista(idLista: number): Promise<CandidatoResponseDto[]> {
@@ -115,7 +117,9 @@ export class CandidatoService {
       candidato.datosAdicionales = dto.datosAdicionales;
     }
     const saved = await this.candidatoRepository.save(candidato);
-    return this.toResponse(await this.findCandidatoWithCategoriaOrFail(saved.idCandidato));
+    return this.toResponse(
+      await this.findCandidatoWithCategoriaOrFail(saved.idCandidato),
+    );
   }
 
   async remove(idCandidato: number): Promise<void> {

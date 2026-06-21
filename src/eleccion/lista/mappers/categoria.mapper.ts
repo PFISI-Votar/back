@@ -12,6 +12,7 @@ export const mapRolDtoToCategoriaEntity = (
   nombre: rol.nombre,
   descripcion: null,
   cantidadCargos: rol.maximoPostulantes,
+  minimoPostulantes: rol.minimoPostulantes ?? 0,
   orden,
 });
 
@@ -21,5 +22,6 @@ export const mapCategoriaToRolResponse = (
   idCategoria: categoria.idCategoria,
   nombre: categoria.nombre,
   maximoPostulantes: categoria.cantidadCargos,
+  minimoPostulantes: categoria.minimoPostulantes,
   orden: categoria.orden,
 });

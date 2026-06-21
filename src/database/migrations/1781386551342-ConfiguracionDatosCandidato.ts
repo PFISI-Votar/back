@@ -29,9 +29,9 @@ export class ConfiguracionDatosCandidato1781386551342 implements MigrationInterf
         )
       ) WHERE "datos_adicionales" IS NOT NULL`,
     );
-    const elecciones: { id_eleccion: number }[] = await queryRunner.query(
+    const elecciones = (await queryRunner.query(
       `SELECT id_eleccion FROM eleccion`,
-    );
+    )) as { id_eleccion: number }[];
     const camposJson = '[]';
     for (const eleccion of elecciones) {
       await queryRunner.query(

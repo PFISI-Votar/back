@@ -9,25 +9,21 @@ import {
   Min,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import sanitizeHtml from 'sanitize-html';
+import { sanitizePlainText } from '@/common/utils/sanitize-plain-text.util';
 
 export class CreateCandidatoDto {
   @ApiProperty({ example: 'Juan' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   nombre: string;
 
   @ApiProperty({ example: 'Pérez' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   apellido: string;
 
   @ApiProperty({ example: 1 })
@@ -62,9 +58,7 @@ export class UpdateCandidatoDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   nombre?: string;
 
   @ApiPropertyOptional({ example: 'Pérez' })
@@ -72,9 +66,7 @@ export class UpdateCandidatoDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   apellido?: string;
 
   @ApiPropertyOptional({ example: 1 })

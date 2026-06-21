@@ -67,7 +67,7 @@ export class CandidatoDatosValidatorService {
         return [
           {
             clave: campo.clave,
-            message: `Tipo de campo desconocido: ${campo.tipo}`,
+            message: `Tipo de campo desconocido: ${String(campo.tipo)}`,
           },
         ];
     }

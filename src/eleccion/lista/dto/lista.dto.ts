@@ -7,25 +7,21 @@ import {
   MaxLength,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import sanitizeHtml from 'sanitize-html';
+import { sanitizePlainText } from '@/common/utils/sanitize-plain-text.util';
 
 export class CreateListaDto {
   @ApiProperty({ example: 'Lista Renovación' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   nombre: string;
 
   @ApiProperty({ example: 'REN' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(20)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   sigla: string;
 
   @ApiPropertyOptional({ example: '#2563eb' })
@@ -44,9 +40,7 @@ export class UpdateListaDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   nombre?: string;
 
   @ApiPropertyOptional({ example: 'REN' })
@@ -54,9 +48,7 @@ export class UpdateListaDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(20)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   sigla?: string;
 
   @ApiPropertyOptional({ example: '#2563eb' })
