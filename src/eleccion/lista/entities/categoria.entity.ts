@@ -28,6 +28,9 @@ export class Categoria {
   @Column({ name: 'cantidad_cargos', type: 'int', default: 1 })
   cantidadCargos: number;
 
+  @Column({ name: 'minimo_postulantes', type: 'int', default: 0 })
+  minimoPostulantes: number;
+
   @Column({ name: 'orden', type: 'int', default: 1 })
   orden: number;
 }

@@ -14,7 +14,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import sanitizeHtml from 'sanitize-html';
+import {
+  sanitizeOptionalPlainText,
+  sanitizePlainText,
+} from '@/common/utils/sanitize-plain-text.util';
 import type {
   CampoCandidatoDefinicion,
   TipoCampoCandidato,
@@ -60,10 +63,8 @@ export class ValidacionCampoCandidatoDto {
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  @Transform(({ value }) =>
-    value
-      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
-      : value,
+  @Transform(({ value }: { value: unknown }) =>
+    sanitizeOptionalPlainText(value),
   )
   patternMessage?: string;
 }
@@ -83,9 +84,7 @@ export class CampoCandidatoDefinicionDto implements CampoCandidatoDefinicion {
   @IsString()
   @IsNotEmpty()
   @MaxLength(100)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   etiqueta: string;
 
   @ApiProperty({ enum: TIPOS_CAMPO, example: 'texto' })
@@ -100,10 +99,8 @@ export class CampoCandidatoDefinicionDto implements CampoCandidatoDefinicion {
   @IsOptional()
   @IsString()
   @MaxLength(255)
-  @Transform(({ value }) =>
-    value
-      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
-      : value,
+  @Transform(({ value }: { value: unknown }) =>
+    sanitizeOptionalPlainText(value),
   )
   ejemplo?: string;
 
@@ -111,10 +108,8 @@ export class CampoCandidatoDefinicionDto implements CampoCandidatoDefinicion {
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  @Transform(({ value }) =>
-    value
-      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
-      : value,
+  @Transform(({ value }: { value: unknown }) =>
+    sanitizeOptionalPlainText(value),
   )
   ayuda?: string;
 

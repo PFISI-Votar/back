@@ -228,7 +228,9 @@ describe('EleccionesService', () => {
 
   it('debe actualizar un comicio en BORRADOR', async () => {
     const dto = buildValidDto();
-    dto.roles = [{ idCategoria: 1, nombre: 'Presidente', maximoPostulantes: 2 }];
+    dto.roles = [
+      { idCategoria: 1, nombre: 'Presidente', maximoPostulantes: 2 },
+    ];
     const eleccionMock = {
       idEleccion: 1,
       nombre: dto.nombre,
@@ -254,7 +256,10 @@ describe('EleccionesService', () => {
     const result = await service.actualizarEleccion(1, dto);
 
     expect(result.roles[0].maximoPostulantes).toBe(2);
-    expect(mockEleccionRepository.actualizarCompleta).toHaveBeenCalledWith(1, dto);
+    expect(mockEleccionRepository.actualizarCompleta).toHaveBeenCalledWith(
+      1,
+      dto,
+    );
   });
 
   it('debe eliminar un comicio en BORRADOR', async () => {
@@ -275,23 +280,29 @@ describe('EleccionesService', () => {
       estado: EleccionEstado.CONFIGURADA,
     });
 
-    await expect(service.eliminarEleccion(1)).rejects.toThrow(ConflictException);
+    await expect(service.eliminarEleccion(1)).rejects.toThrow(
+      ConflictException,
+    );
     expect(mockEleccionOrmRepository.remove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 404 al eliminar comicio inexistente', async () => {
     mockEleccionOrmRepository.findOne.mockResolvedValue(null);
 
-    await expect(service.eliminarEleccion(999)).rejects.toThrow(NotFoundException);
+    await expect(service.eliminarEleccion(999)).rejects.toThrow(
+      NotFoundException,
+    );
   });
 
   it('no debe inyectar dependencias blockchain en el servicio de creación', () => {
-    const constructorParamTypes: unknown[] =
-      Reflect.getMetadata('design:paramtypes', EleccionesService) ?? [];
+    const constructorParamTypes =
+      (Reflect.getMetadata('design:paramtypes', EleccionesService) as
+        | unknown[]
+        | undefined) ?? [];
     const hasBlockchainProvider = constructorParamTypes.some((type) => {
       const name =
         typeof type === 'function'
-          ? (type as { name?: string }).name ?? ''
+          ? ((type as { name?: string }).name ?? '')
           : '';
       return /blockchain|web3|ethereum|sepolia/i.test(name);
     });

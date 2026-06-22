@@ -10,7 +10,10 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
-import sanitizeHtml from 'sanitize-html';
+import {
+  sanitizeOptionalPlainText,
+  sanitizePlainText,
+} from '@/common/utils/sanitize-plain-text.util';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { IsUtcIso8601 } from '@/common/validators/is-utc-iso8601.decorator';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
@@ -21,19 +24,15 @@ export class CrearEleccionDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   nombre: string;
 
   @ApiPropertyOptional({ example: 'Proceso electoral estudiantil' })
   @IsOptional()
   @IsString()
   @MaxLength(500)
-  @Transform(({ value }) =>
-    value
-      ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} })
-      : value,
+  @Transform(({ value }: { value: unknown }) =>
+    sanitizeOptionalPlainText(value),
   )
   descripcion?: string;
 

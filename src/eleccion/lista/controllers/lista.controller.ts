@@ -17,6 +17,7 @@ import {
 } from '@/eleccion/lista/dto/lista-response.dto';
 import { ListaService } from '@/eleccion/lista/services/lista.service';
 import { OficializacionService } from '@/eleccion/lista/services/oficializacion.service';
+import { MinimoCandidatosViolationResponseDto } from '@/eleccion/rules-engine/dto/minimo-candidatos-violation.dto';
 
 @ApiTags('listas')
 @Controller()
@@ -88,7 +89,9 @@ export class ListaController {
   @ApiResponse({ status: 409, description: 'Conflict — ya oficializado' })
   @ApiResponse({
     status: 422,
-    description: 'Unprocessable Entity — sin listas válidas',
+    description:
+      'Unprocessable Entity — sin listas válidas o candidatos insuficientes',
+    type: MinimoCandidatosViolationResponseDto,
   })
   async oficializar(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
