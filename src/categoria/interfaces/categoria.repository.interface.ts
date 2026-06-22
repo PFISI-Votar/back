@@ -1,4 +1,4 @@
-import { Categoria } from '../entities/categoria.entity';
+import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { CrearCategoriaDto } from '../dto/crear-categoria.dto';
 
 export const CATEGORIA_REPOSITORY = 'CATEGORIA_REPOSITORY';

@@ -1,29 +1,52 @@
-import { IsString, IsNotEmpty, IsDateString, MaxLength } from 'class-validator';
-import { Transform } from 'class-transformer';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Type, Transform } from 'class-transformer';
+import {
+  IsArray, IsEnum, IsNotEmpty, IsOptional,
+  IsString, MaxLength, ValidateNested,
+} from 'class-validator';
 import sanitizeHtml from 'sanitize-html';
+import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
+import { IsUtcIso8601 } from '@/common/validators/is-utc-iso8601.decorator';
+import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
+import { RolCandidatoDto } from '@/eleccion/lista/dto/rol-candidato.dto';
 
 export class CrearEleccionDto {
-  @ApiProperty({ example: 'Elecciones UTN 2026', description: 'Nombre del comicio. Máximo 255 caracteres.', maxLength: 255 })
+  @ApiProperty({ example: 'Elección CEUTI 2026' })
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
   @Transform(({ value }) => sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }))
   nombre: string;
 
-  @ApiProperty({ example: 'Elecciones de centro estudiantil', description: 'Descripción opcional.', required: false, maxLength: 500 })
+  @ApiPropertyOptional({ example: 'Proceso electoral estudiantil' })
+  @IsOptional()
   @IsString()
   @MaxLength(500)
   @Transform(({ value }) => value ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value)
   descripcion?: string;
 
-  @ApiProperty({ example: '2026-09-01T10:00:00Z', description: 'Fecha y hora de inicio en formato ISO 8601.' })
-  @IsDateString()
+  @ApiProperty({ example: '2026-09-01T10:00:00.000Z' })
+  @IsUtcIso8601()
   @IsNotEmpty()
   fechaInicio: string;
 
-  @ApiProperty({ example: '2026-09-01T18:00:00Z', description: 'Fecha y hora de cierre en formato ISO 8601.' })
-  @IsDateString()
+  @ApiProperty({ example: '2026-09-02T22:00:00.000Z' })
+  @IsUtcIso8601()
   @IsNotEmpty()
   fechaFin: string;
+
+  @ApiProperty({ enum: TipoVotacion, example: TipoVotacion.POR_LISTA })
+  @IsEnum(TipoVotacion)
+  tipoVotacion: TipoVotacion;
+
+  @ApiProperty({ type: [RolCandidatoDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => RolCandidatoDto)
+  roles: RolCandidatoDto[];
+
+  @ApiProperty({ enum: MetodoAutenticacion, isArray: true, example: [MetodoAutenticacion.SSO_INSTITUCIONAL] })
+  @IsArray()
+  @IsEnum(MetodoAutenticacion, { each: true })
+  metodosAutenticacion: MetodoAutenticacion[];
 }

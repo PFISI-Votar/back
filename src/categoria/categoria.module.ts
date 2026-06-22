@@ -1,17 +1,15 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { Categoria } from './entities/categoria.entity';
+import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
+import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { CategoriasController } from './categoria.controller';
 import { CategoriasService } from './categoria.service';
 import { CategoriaRepository } from './categoria.repository';
 import { CATEGORIA_REPOSITORY } from './interfaces/categoria.repository.interface';
-import { EleccionesModule } from '../eleccion/eleccion.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Categoria]),
-    EleccionesModule, // para inyectar IEleccionRepository
-  ],
+  imports: [TypeOrmModule.forFeature([Categoria, Boleta, Eleccion])],
   controllers: [CategoriasController],
   providers: [
     CategoriasService,
@@ -20,6 +18,6 @@ import { EleccionesModule } from '../eleccion/eleccion.module';
       useClass: CategoriaRepository,
     },
   ],
-  exports: [CategoriasService], // exportado para que EleccionesService lo use al oficializar
+  exports: [CategoriasService],
 })
 export class CategoriasModule {}

@@ -1,20 +1,27 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Categoria } from './entities/categoria.entity';
+import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
+import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { CrearCategoriaDto } from './dto/crear-categoria.dto';
-import { ICategoriaRepository } from './interfaces/categoria.repository.interface';
+import type { ICategoriaRepository } from './interfaces/categoria.repository.interface';
 
 @Injectable()
 export class CategoriaRepository implements ICategoriaRepository {
   constructor(
     @InjectRepository(Categoria)
     private readonly repository: Repository<Categoria>,
+    @InjectRepository(Boleta)
+    private readonly boletaRepository: Repository<Boleta>,
   ) {}
 
   async crear(idEleccion: number, dto: CrearCategoriaDto): Promise<Categoria> {
+    const boleta = await this.boletaRepository.findOne({ where: { idEleccion } });
+    if (!boleta) {
+      throw new Error(`No existe boleta para la elección ${idEleccion}`);
+    }
     const categoria = this.repository.create({
-      idEleccion,
+      idBoleta: boleta.idBoleta,
       nombre: dto.nombre,
       descripcion: dto.descripcion,
       cantidadCargos: dto.cantidadCargos ?? 1,
@@ -24,38 +31,20 @@ export class CategoriaRepository implements ICategoriaRepository {
   }
 
   async findByEleccion(idEleccion: number): Promise<Categoria[]> {
-    return this.repository.find({
-      where: { idEleccion },
-      order: { orden: 'ASC' },
-    });
+    return this.repository
+      .createQueryBuilder('c')
+      .innerJoin('c.boleta', 'b')
+      .where('b.id_eleccion = :idEleccion', { idEleccion })
+      .orderBy('c.orden', 'ASC')
+      .getMany();
   }
 
   async findById(idCategoria: number): Promise<Categoria | null> {
     return this.repository.findOne({ where: { idCategoria } });
   }
 
-  /**
-   * Retorna true si alguna categoría de la elección tiene cero listas oficializadas.
-   * Usado por la HU 317 CA-3: bloqueo de oficialización por categoría desierta.
-   * La lógica completa de "lista oficializada" se completará en HU 318.
-   
-  async tieneCeroListasOficializadas(idEleccion: number): Promise<boolean> {
-    const resultado = await this.repository
-      .createQueryBuilder('c')
-      .leftJoin(
-        'lista',
-        'l',
-        "l.id_eleccion = c.id_eleccion AND l.id_categoria = c.id_categoria AND l.estado = 'OFICIALIZADA'",
-      )
-      .where('c.id_eleccion = :idEleccion', { idEleccion })
-      .groupBy('c.id_categoria')
-      .having('COUNT(l.id_lista) = 0')
-      .getCount();
-
-    return resultado > 0;
-    */
   async tieneCeroListasOficializadas(_idEleccion: number): Promise<boolean> {
-    // TODO: implementar JOIN con lista cuando esté disponible (HU 318)
-    throw new Error('tieneCeroListasOficializadas: no implementado hasta HU 318');
+    // TODO: implementar JOIN con lista cuando esté disponible (HU-318)
+    throw new Error('tieneCeroListasOficializadas: no implementado hasta HU-318');
   }
 }

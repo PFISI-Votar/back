@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
-import { Categoria } from './entities/categoria.entity';
+import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { CrearCategoriaDto } from './dto/crear-categoria.dto';
 import { CategoriasService } from './categoria.service';
-import { ICategoriaController } from './interfaces/categoria.controller.interace';
+import { ICategoriaController } from './interfaces/categoria.controller.interface';
 
 @ApiTags('categorias')
 @Controller('elecciones/:idEleccion/categorias')

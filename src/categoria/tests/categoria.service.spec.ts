@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { getRepositoryToken } from '@nestjs/typeorm';
 import { CategoriasService } from '../categoria.service';
 import { CATEGORIA_REPOSITORY } from '../interfaces/categoria.repository.interface';
-import { ELECCION_REPOSITORY } from '../../eleccion/interfaces/eleccion.repository.interface';
+import { Eleccion } from '../../eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '../../eleccion/enums/eleccion-estado.enum';
 import {
   BadRequestException,
@@ -10,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { CrearCategoriaDto } from '../dto/crear-categoria.dto';
 
-//Mocks
+// ── Mocks ─────────────────────────────────────────────────────────────────────
 
 const mockCategoriaRepository = {
   crear: jest.fn(),
@@ -19,12 +20,11 @@ const mockCategoriaRepository = {
   tieneCeroListasOficializadas: jest.fn(),
 };
 
-const mockEleccionRepository = {
-  crear: jest.fn(),
-  findById: jest.fn(),
+const mockEleccionOrmRepository = {
+  findOne: jest.fn(),
 };
 
-//Helpers
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
 const eleccionBorrador = {
   idEleccion: 1,
@@ -45,7 +45,7 @@ const dto: CrearCategoriaDto = {
   orden: 1,
 };
 
-//Suite
+// ── Suite ─────────────────────────────────────────────────────────────────────
 
 describe('CategoriasService', () => {
   let service: CategoriasService;
@@ -55,7 +55,7 @@ describe('CategoriasService', () => {
       providers: [
         CategoriasService,
         { provide: CATEGORIA_REPOSITORY, useValue: mockCategoriaRepository },
-        { provide: ELECCION_REPOSITORY, useValue: mockEleccionRepository },
+        { provide: getRepositoryToken(Eleccion), useValue: mockEleccionOrmRepository },
       ],
     }).compile();
 
@@ -64,12 +64,12 @@ describe('CategoriasService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  //crearCategoria
+  // ── crearCategoria ──────────────────────────────────────────────────────────
 
   describe('crearCategoria', () => {
     it('UAT-01: debe crear la categoría en un comicio BORRADOR y retornarla con id asignado', async () => {
       const categoriaCreada = { idCategoria: 1, idEleccion: 1, ...dto };
-      mockEleccionRepository.findById.mockResolvedValue(eleccionBorrador);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(eleccionBorrador);
       mockCategoriaRepository.crear.mockResolvedValue(categoriaCreada);
 
       const result = await service.crearCategoria(1, dto);
@@ -81,7 +81,7 @@ describe('CategoriasService', () => {
     it('UAT-01b: debe aceptar nombre con exactamente 100 caracteres', async () => {
       const dtoLargo: CrearCategoriaDto = { ...dto, nombre: 'A'.repeat(100) };
       const categoriaCreada = { idCategoria: 2, idEleccion: 1, ...dtoLargo };
-      mockEleccionRepository.findById.mockResolvedValue(eleccionBorrador);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(eleccionBorrador);
       mockCategoriaRepository.crear.mockResolvedValue(categoriaCreada);
 
       const result = await service.crearCategoria(1, dtoLargo);
@@ -90,7 +90,7 @@ describe('CategoriasService', () => {
     });
 
     it('UAT-02: debe lanzar 422 si el comicio ya fue oficializado (estado CONFIGURADA)', async () => {
-      mockEleccionRepository.findById.mockResolvedValue(eleccionConfigurada);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(eleccionConfigurada);
 
       await expect(service.crearCategoria(2, dto)).rejects.toThrow(
         UnprocessableEntityException,
@@ -99,7 +99,7 @@ describe('CategoriasService', () => {
     });
 
     it('UAT-02b: debe lanzar 422 si el comicio está ABIERTA', async () => {
-      mockEleccionRepository.findById.mockResolvedValue({
+      mockEleccionOrmRepository.findOne.mockResolvedValue({
         ...eleccionBorrador,
         estado: EleccionEstado.ABIERTA,
       });
@@ -110,7 +110,7 @@ describe('CategoriasService', () => {
     });
 
     it('debe lanzar 404 si la elección no existe', async () => {
-      mockEleccionRepository.findById.mockResolvedValue(null);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(null);
 
       await expect(service.crearCategoria(99, dto)).rejects.toThrow(
         NotFoundException,
@@ -118,9 +118,8 @@ describe('CategoriasService', () => {
     });
 
     it('debe lanzar 400 si el nombre queda vacío tras la sanitización', async () => {
-      // sanitize-html ya limpia el valor; simulamos que llega vacío al service
       const dtoVacio: CrearCategoriaDto = { ...dto, nombre: '' };
-      mockEleccionRepository.findById.mockResolvedValue(eleccionBorrador);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(eleccionBorrador);
 
       await expect(service.crearCategoria(1, dtoVacio)).rejects.toThrow(
         BadRequestException,
@@ -129,7 +128,7 @@ describe('CategoriasService', () => {
     });
   });
 
-  //listarCategorias
+  // ── listarCategorias ────────────────────────────────────────────────────────
 
   describe('listarCategorias', () => {
     it('debe retornar el listado de categorías de la elección ordenado por orden ASC', async () => {
@@ -137,7 +136,7 @@ describe('CategoriasService', () => {
         { idCategoria: 1, nombre: 'Presidente', orden: 1 },
         { idCategoria: 2, nombre: 'Vocales', orden: 2 },
       ];
-      mockEleccionRepository.findById.mockResolvedValue(eleccionBorrador);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(eleccionBorrador);
       mockCategoriaRepository.findByEleccion.mockResolvedValue(categorias);
 
       const result = await service.listarCategorias(1);
@@ -147,7 +146,7 @@ describe('CategoriasService', () => {
     });
 
     it('debe retornar array vacío si la elección no tiene categorías', async () => {
-      mockEleccionRepository.findById.mockResolvedValue(eleccionBorrador);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(eleccionBorrador);
       mockCategoriaRepository.findByEleccion.mockResolvedValue([]);
 
       const result = await service.listarCategorias(1);
@@ -156,7 +155,7 @@ describe('CategoriasService', () => {
     });
 
     it('debe lanzar 404 si la elección no existe', async () => {
-      mockEleccionRepository.findById.mockResolvedValue(null);
+      mockEleccionOrmRepository.findOne.mockResolvedValue(null);
 
       await expect(service.listarCategorias(99)).rejects.toThrow(
         NotFoundException,
@@ -164,7 +163,7 @@ describe('CategoriasService', () => {
     });
   });
 
-  //validarCategoriasParaOficializar
+  // ── validarCategoriasParaOficializar ────────────────────────────────────────
 
   describe('validarCategoriasParaOficializar', () => {
     it('UAT-02 (CA-3): debe lanzar 422 si existe al menos una categoría sin listas oficializadas', async () => {
