@@ -147,6 +147,17 @@ export class EleccionesService implements IEleccionService {
         },
       ]);
     }
+    for (const rol of dto.roles) {
+      const minimo = rol.minimoPostulantes ?? 0;
+      if (minimo > rol.maximoPostulantes) {
+        throw new CrearEleccionValidationException([
+          {
+            field: 'roles',
+            message: `El mínimo de postulantes para "${rol.nombre}" no puede ser mayor al máximo (${rol.maximoPostulantes})`,
+          },
+        ]);
+      }
+    }
   }
 
   private async mapEleccionWithRelations(

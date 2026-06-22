@@ -150,7 +150,7 @@ export class EleccionRepository implements IEleccionRepository {
         .where('lista.id_boleta = :idBoleta', { idBoleta: boleta.idBoleta })
         .groupBy('candidato.id_categoria')
         .addGroupBy('candidato.id_lista')
-        .getRawMany();
+        .getRawMany<CategoriaUsageRow>();
 
       const maxUsageByCategoria = new Map<number, number>();
       const totalUsageByCategoria = new Map<number, number>();
@@ -228,6 +228,7 @@ export class EleccionRepository implements IEleccionRepository {
           }
           categoria.nombre = rol.nombre;
           categoria.cantidadCargos = rol.maximoPostulantes;
+          categoria.minimoPostulantes = rol.minimoPostulantes ?? 0;
           categoria.orden = orden;
           updatedCategorias.push(await categoriaRepo.save(categoria));
           continue;

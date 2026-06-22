@@ -8,7 +8,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import sanitizeHtml from 'sanitize-html';
+import { sanitizePlainText } from '@/common/utils/sanitize-plain-text.util';
 
 export class RolCandidatoDto {
   @ApiPropertyOptional({
@@ -24,10 +24,19 @@ export class RolCandidatoDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(255)
-  @Transform(({ value }) =>
-    sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }),
-  )
+  @Transform(({ value }: { value: unknown }) => sanitizePlainText(value))
   nombre: string;
+
+  @ApiPropertyOptional({
+    example: 0,
+    description:
+      'Cantidad mínima de postulantes requeridos para el rol en cada lista (0 = sin requisito)',
+    default: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  minimoPostulantes?: number;
 
   @ApiProperty({
     example: 1,
@@ -48,6 +57,12 @@ export class RolCandidatoResponseDto {
 
   @ApiProperty()
   maximoPostulantes: number;
+
+  @ApiProperty({
+    description:
+      'Cantidad mínima de postulantes requeridos para el rol en cada lista',
+  })
+  minimoPostulantes: number;
 
   @ApiProperty()
   orden: number;

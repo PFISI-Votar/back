@@ -16,6 +16,7 @@ import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-c
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
+import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import type { CampoCandidatoDefinicion } from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
 import { mapDefinicionToEntity } from '@/eleccion/candidato/mappers/campo-datos-candidato.mapper';
 
@@ -389,5 +390,124 @@ describe('ListaCandidato (e2e)', () => {
           ),
         ).toBe(true);
       });
+  });
+
+  describe('US-319: validar mínimo de candidatos al oficializar', () => {
+    const buildComicioMinimoPayload = () => ({
+      nombre: 'Comicio Mínimo UAT',
+      fechaInicio: new Date(Date.now() + 86400000).toISOString(),
+      fechaFin: new Date(Date.now() + 172800000).toISOString(),
+      tipoVotacion: TipoVotacion.POR_LISTA,
+      roles: [
+        {
+          nombre: 'Presidente',
+          maximoPostulantes: 10,
+          minimoPostulantes: 5,
+        },
+      ],
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+    });
+
+    const crearCandidatoEnLista = async (
+      idLista: number,
+      idCategoria: number,
+      suffix: string,
+    ) => {
+      return request(app.getHttpServer())
+        .post(`/listas/${idLista}/candidatos`)
+        .send({
+          nombre: `Nombre${suffix}`,
+          apellido: `Apellido${suffix}`,
+          idCategoria,
+          datosAdicionales: {
+            legajo_utn: `${14980 + Number(suffix)}`,
+            dni: `${40123450 + Number(suffix)}`,
+            cantidad_avales: 2,
+          },
+        })
+        .expect(201);
+    };
+
+    const seedCamposCandidato = async (eleccionId: number) => {
+      await request(app.getHttpServer())
+        .put(`/elecciones/${eleccionId}/configuracion-datos-candidato`)
+        .send({ campos: camposConfigE2E })
+        .expect(200);
+    };
+
+    it('UAT-01: debe rechazar oficialización con desglose de faltantes', async () => {
+      const eleccionRes = await request(app.getHttpServer())
+        .post('/elecciones')
+        .send(buildComicioMinimoPayload())
+        .expect(201);
+
+      const eleccionId = eleccionRes.body.idEleccion;
+      await seedCamposCandidato(eleccionId);
+
+      const listaRes = await request(app.getHttpServer())
+        .post(`/elecciones/${eleccionId}/listas`)
+        .send({ nombre: 'Lista Deficiente', sigla: 'LD', color: '#2563eb' })
+        .expect(201);
+
+      const idCategoria = eleccionRes.body.roles[0].idCategoria;
+      await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '1');
+      await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '2');
+
+      await request(app.getHttpServer())
+        .post(`/elecciones/${eleccionId}/oficializar`)
+        .expect(422)
+        .expect((res) => {
+          expect(res.body.violations).toBeDefined();
+          expect(res.body.violations).toHaveLength(1);
+          expect(res.body.violations[0].faltantes).toBe(3);
+          expect(res.body.violations[0].cantidadActual).toBe(2);
+          expect(res.body.violations[0].minimoRequerido).toBe(5);
+          expect(res.body.violations[0].message).toContain(
+            'requiere 3 candidato(s) más',
+          );
+        });
+
+      const eleccion = await dataSource.getRepository(Eleccion).findOne({
+        where: { idEleccion: eleccionId },
+      });
+      expect(eleccion?.estado).toBe(EleccionEstado.BORRADOR);
+    });
+
+    it('UAT-02: debe oficializar tras subsanar candidatos faltantes', async () => {
+      const eleccionRes = await request(app.getHttpServer())
+        .post('/elecciones')
+        .send(buildComicioMinimoPayload())
+        .expect(201);
+
+      const eleccionId = eleccionRes.body.idEleccion;
+      await seedCamposCandidato(eleccionId);
+
+      const listaRes = await request(app.getHttpServer())
+        .post(`/elecciones/${eleccionId}/listas`)
+        .send({ nombre: 'Lista Completa', sigla: 'LC', color: '#2563eb' })
+        .expect(201);
+
+      const idCategoria = eleccionRes.body.roles[0].idCategoria;
+      for (let index = 1; index <= 5; index += 1) {
+        await crearCandidatoEnLista(
+          listaRes.body.idLista,
+          idCategoria,
+          String(index + 10),
+        );
+      }
+
+      await request(app.getHttpServer())
+        .post(`/elecciones/${eleccionId}/oficializar`)
+        .expect(201)
+        .expect((res) => {
+          expect(res.body.estado).toBe(EleccionEstado.CONFIGURADA);
+          expect(res.body.mapeo).toHaveLength(1);
+        });
+
+      const eleccion = await dataSource.getRepository(Eleccion).findOne({
+        where: { idEleccion: eleccionId },
+      });
+      expect(eleccion?.estado).toBe(EleccionEstado.CONFIGURADA);
+    });
   });
 });

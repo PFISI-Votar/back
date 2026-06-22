@@ -17,6 +17,8 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
+import { MinimoCandidatosViolationException } from '@/eleccion/rules-engine/exceptions/minimo-candidatos-violation.exception';
+import { RulesEngineService } from '@/eleccion/rules-engine/rules-engine.service';
 
 @Injectable()
 export class OficializacionService {
@@ -29,6 +31,7 @@ export class OficializacionService {
     private readonly boletaRepository: Repository<Boleta>,
     private readonly boletaService: BoletaService,
     private readonly dataSource: DataSource,
+    private readonly rulesEngineService: RulesEngineService,
   ) {}
 
   async oficializar(idEleccion: number): Promise<OficializarResponseDto> {
@@ -45,6 +48,10 @@ export class OficializacionService {
         'No existe boleta electoral para oficializar',
       );
     }
+    const boletaConCategorias = await this.boletaRepository.findOne({
+      where: { idBoleta: boleta.idBoleta },
+      relations: ['categorias'],
+    });
     const listas = await this.listaRepository.find({
       where: { idBoleta: boleta.idBoleta, estado: EstadoLista.BORRADOR },
       relations: ['candidatos'],
@@ -57,6 +64,24 @@ export class OficializacionService {
       throw new UnprocessableEntityException(
         'Debe existir al menos una lista con candidatos para oficializar',
       );
+    }
+    const minimoValidation = this.rulesEngineService.validateMinimoCandidatos({
+      categorias: (boletaConCategorias?.categorias ?? []).map((categoria) => ({
+        idCategoria: categoria.idCategoria,
+        nombre: categoria.nombre,
+        minimoPostulantes: categoria.minimoPostulantes,
+      })),
+      listas: listasConCandidatos.map((lista) => ({
+        idLista: lista.idLista,
+        nombre: lista.nombre,
+        sigla: lista.sigla,
+        candidatos: (lista.candidatos ?? []).map((candidato) => ({
+          idCategoria: candidato.idCategoria,
+        })),
+      })),
+    });
+    if (!minimoValidation.valid) {
+      throw new MinimoCandidatosViolationException(minimoValidation.violations);
     }
     const now = new Date();
     const mapeo: ListaMapeoItemDto[] = [];
