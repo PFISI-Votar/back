@@ -4,8 +4,13 @@ import { Repository } from 'typeorm';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
+import { ActualizarCategoriaDto } from './dto/actualizar-categoria.dto';
 import { CrearCategoriaDto } from './dto/crear-categoria.dto';
 import type { ICategoriaRepository } from './interfaces/categoria.repository.interface';
+
+type CategoriaUsageRow = {
+  count: string;
+};
 
 @Injectable()
 export class CategoriaRepository implements ICategoriaRepository {
@@ -31,11 +36,51 @@ export class CategoriaRepository implements ICategoriaRepository {
     const categoria = this.repository.create({
       idBoleta: boleta.idBoleta,
       nombre: dto.nombre,
-      descripcion: dto.descripcion,
-      cantidadCargos: dto.cantidadCargos ?? 1,
+      descripcion: dto.descripcion ?? null,
+      cantidadCargos: dto.maximoPostulantes,
+      minimoPostulantes: dto.minimoPostulantes ?? 0,
       orden: dto.orden ?? maxOrden + 1,
     });
     return this.repository.save(categoria);
+  }
+
+  async actualizar(
+    idEleccion: number,
+    idCategoria: number,
+    dto: ActualizarCategoriaDto,
+  ): Promise<Categoria> {
+    const categoria = await this.findByIdAndEleccion(idEleccion, idCategoria);
+    if (!categoria) {
+      throw new NotFoundException(
+        `No se encontró la categoría ${idCategoria} en la elección ${idEleccion}.`,
+      );
+    }
+    if (dto.nombre !== undefined) {
+      categoria.nombre = dto.nombre;
+    }
+    if (dto.descripcion !== undefined) {
+      categoria.descripcion = dto.descripcion ?? null;
+    }
+    if (dto.minimoPostulantes !== undefined) {
+      categoria.minimoPostulantes = dto.minimoPostulantes;
+    }
+    if (dto.maximoPostulantes !== undefined) {
+      categoria.cantidadCargos = dto.maximoPostulantes;
+    }
+    if (dto.orden !== undefined) {
+      categoria.orden = dto.orden;
+    }
+    return this.repository.save(categoria);
+  }
+
+  async eliminar(idEleccion: number, idCategoria: number): Promise<void> {
+    const categoria = await this.findByIdAndEleccion(idEleccion, idCategoria);
+    if (!categoria) {
+      throw new NotFoundException(
+        `No se encontró la categoría ${idCategoria} en la elección ${idEleccion}.`,
+      );
+    }
+    await this.repository.remove(categoria);
   }
 
   async findByEleccion(idEleccion: number): Promise<Categoria[]> {
@@ -49,6 +94,18 @@ export class CategoriaRepository implements ICategoriaRepository {
 
   async findById(idCategoria: number): Promise<Categoria | null> {
     return this.repository.findOne({ where: { idCategoria } });
+  }
+
+  async findByIdAndEleccion(
+    idEleccion: number,
+    idCategoria: number,
+  ): Promise<Categoria | null> {
+    return this.repository
+      .createQueryBuilder('c')
+      .innerJoin('c.boleta', 'b')
+      .where('b.id_eleccion = :idEleccion', { idEleccion })
+      .andWhere('c.id_categoria = :idCategoria', { idCategoria })
+      .getOne();
   }
 
   async tieneCeroListasOficializadas(idEleccion: number): Promise<boolean> {
@@ -69,5 +126,23 @@ export class CategoriaRepository implements ICategoriaRepository {
       })
       .getCount();
     return categoriasDesiertas > 0;
+  }
+
+  async obtenerMaximoUsoEnLista(idCategoria: number): Promise<number> {
+    const row = await this.repository.manager
+      .createQueryBuilder(Candidato, 'candidato')
+      .select('COUNT(*)', 'count')
+      .where('candidato.id_categoria = :idCategoria', { idCategoria })
+      .groupBy('candidato.id_lista')
+      .orderBy('count', 'DESC')
+      .limit(1)
+      .getRawOne<CategoriaUsageRow>();
+    return row ? Number(row.count) : 0;
+  }
+
+  async contarCandidatos(idCategoria: number): Promise<number> {
+    return this.repository.manager.count(Candidato, {
+      where: { idCategoria },
+    });
   }
 }

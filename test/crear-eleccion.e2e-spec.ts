@@ -35,7 +35,6 @@ const buildValidPayload = () => ({
   fechaInicio: new Date(Date.now() + 86400000).toISOString(),
   fechaFin: new Date(Date.now() + 172800000).toISOString(),
   tipoVotacion: TipoVotacion.POR_LISTA,
-  roles: [{ nombre: 'Presidente', maximoPostulantes: 1 }],
   metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
 });
 
@@ -91,7 +90,7 @@ describe('CrearEleccion (e2e)', () => {
     }
   });
 
-  it('UAT-01: POST /elecciones crea comicio en BORRADOR con roles y auth', async () => {
+  it('UAT-01: POST /elecciones crea comicio en BORRADOR sin categorías iniciales', async () => {
     const response = await request(app.getHttpServer())
       .post('/elecciones')
       .send(buildValidPayload())
@@ -100,7 +99,7 @@ describe('CrearEleccion (e2e)', () => {
     const body = response.body as EleccionResponseDto;
     expect(body.estado).toBe(EleccionEstado.BORRADOR);
     expect(body.tipoVotacion).toBe(TipoVotacion.POR_LISTA);
-    expect(body.roles).toHaveLength(1);
+    expect(body.roles).toHaveLength(0);
     expect(body.metodosAutenticacion).toContain(
       MetodoAutenticacion.SSO_INSTITUCIONAL,
     );
@@ -153,22 +152,6 @@ describe('CrearEleccion (e2e)', () => {
       (error) => error.field === 'fechaFin',
     );
     expect(fechaFinError?.message).toContain('posterior al momento actual');
-  });
-
-  it('UAT-04a: POST /elecciones retorna 422 sin roles de candidato', async () => {
-    const payload = buildValidPayload();
-    payload.roles = [];
-
-    const response = await request(app.getHttpServer())
-      .post('/elecciones')
-      .send(payload)
-      .expect(422);
-
-    const body = response.body as {
-      errors?: Array<{ field?: string; message?: string }>;
-    };
-    const rolesError = body.errors?.find((error) => error.field === 'roles');
-    expect(rolesError?.message).toContain('rol de candidato');
   });
 
   it('UAT-04b: POST /elecciones retorna 422 sin métodos de autenticación', async () => {

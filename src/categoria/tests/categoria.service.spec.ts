@@ -15,9 +15,14 @@ import { CrearCategoriaDto } from '../dto/crear-categoria.dto';
 
 const mockCategoriaRepository = {
   crear: jest.fn(),
+  actualizar: jest.fn(),
+  eliminar: jest.fn(),
   findByEleccion: jest.fn(),
   findById: jest.fn(),
+  findByIdAndEleccion: jest.fn(),
   tieneCeroListasOficializadas: jest.fn(),
+  obtenerMaximoUsoEnLista: jest.fn(),
+  contarCandidatos: jest.fn(),
 };
 
 const mockEleccionOrmRepository = {
@@ -41,7 +46,8 @@ const eleccionConfigurada = {
 const dto: CrearCategoriaDto = {
   nombre: 'Presidente',
   descripcion: 'Cargo principal',
-  cantidadCargos: 1,
+  minimoPostulantes: 0,
+  maximoPostulantes: 1,
   orden: 1,
 };
 

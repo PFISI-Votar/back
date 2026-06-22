@@ -9,7 +9,6 @@ const buildValidPlain = () => ({
   fechaInicio: new Date(Date.now() + 86400000).toISOString(),
   fechaFin: new Date(Date.now() + 172800000).toISOString(),
   tipoVotacion: TipoVotacion.POR_LISTA,
-  roles: [{ nombre: 'Presidente', maximoPostulantes: 1 }],
   metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
 });
 

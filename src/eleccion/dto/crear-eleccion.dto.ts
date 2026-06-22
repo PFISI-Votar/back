@@ -1,8 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { Type, Transform } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import {
   IsArray, IsEnum, IsNotEmpty, IsOptional,
-  IsString, MaxLength, ValidateNested,
+  IsString, MaxLength,
 } from 'class-validator';
 import {
   sanitizeOptionalPlainText,
@@ -11,7 +11,6 @@ import {
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { IsUtcIso8601 } from '@/common/validators/is-utc-iso8601.decorator';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
-import { RolCandidatoDto } from '@/eleccion/lista/dto/rol-candidato.dto';
 
 export class CrearEleccionDto {
   @ApiProperty({ example: 'Elección CEUTI 2026' })
@@ -43,12 +42,6 @@ export class CrearEleccionDto {
   @ApiProperty({ enum: TipoVotacion, example: TipoVotacion.POR_LISTA })
   @IsEnum(TipoVotacion)
   tipoVotacion: TipoVotacion;
-
-  @ApiProperty({ type: [RolCandidatoDto] })
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => RolCandidatoDto)
-  roles: RolCandidatoDto[];
 
   @ApiProperty({ enum: MetodoAutenticacion, isArray: true, example: [MetodoAutenticacion.SSO_INSTITUCIONAL] })
   @IsArray()

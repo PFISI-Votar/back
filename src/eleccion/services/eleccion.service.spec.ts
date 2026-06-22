@@ -19,7 +19,6 @@ const buildValidDto = (): CrearEleccionDto => ({
   fechaInicio: new Date(Date.now() + 86400000).toISOString(),
   fechaFin: new Date(Date.now() + 172800000).toISOString(),
   tipoVotacion: TipoVotacion.POR_LISTA,
-  roles: [{ nombre: 'Presidente', maximoPostulantes: 1 }],
   metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
 });
 
@@ -103,14 +102,7 @@ describe('EleccionesService', () => {
       fechaFin: new Date(dto.fechaFin),
       descripcion: null,
     };
-    const categoriasMock = [
-      {
-        idCategoria: 1,
-        nombre: 'Presidente',
-        cantidadCargos: 1,
-        orden: 1,
-      },
-    ];
+    const categoriasMock: never[] = [];
     mockEleccionRepository.crearCompleta.mockResolvedValue({
       eleccion: eleccionMock,
       categorias: categoriasMock,
@@ -121,7 +113,7 @@ describe('EleccionesService', () => {
 
     expect(result.estado).toBe(EleccionEstado.BORRADOR);
     expect(result.tipoVotacion).toBe(TipoVotacion.POR_LISTA);
-    expect(result.roles).toHaveLength(1);
+    expect(result.roles).toHaveLength(0);
     expect(result.metodosAutenticacion).toEqual(dto.metodosAutenticacion);
     expect(mockEleccionRepository.crearCompleta).toHaveBeenCalledWith(dto);
     expect(
@@ -171,15 +163,6 @@ describe('EleccionesService', () => {
     expect(mockEleccionRepository.crearCompleta).not.toHaveBeenCalled();
   });
 
-  it('UAT-04a: debe lanzar 422 si no hay roles de candidato', async () => {
-    const dto = buildValidDto();
-    dto.roles = [];
-
-    await expect(service.crearEleccion(dto)).rejects.toThrow(
-      CrearEleccionValidationException,
-    );
-    expect(mockEleccionRepository.crearCompleta).not.toHaveBeenCalled();
-  });
 
   it('UAT-04b: debe lanzar 422 si no hay métodos de autenticación', async () => {
     const dto = buildValidDto();
@@ -228,9 +211,6 @@ describe('EleccionesService', () => {
 
   it('debe actualizar un comicio en BORRADOR', async () => {
     const dto = buildValidDto();
-    dto.roles = [
-      { idCategoria: 1, nombre: 'Presidente', maximoPostulantes: 2 },
-    ];
     const eleccionMock = {
       idEleccion: 1,
       nombre: dto.nombre,
