@@ -32,5 +32,6 @@ import { EleccionesService } from '@/eleccion/services/eleccion.service';
       useClass: EleccionRepository,
     },
   ],
+  exports: [ELECCION_REPOSITORY],
 })
 export class EleccionesModule {}
