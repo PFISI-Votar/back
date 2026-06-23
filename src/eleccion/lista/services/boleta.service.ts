@@ -50,21 +50,7 @@ export class BoletaService {
       relations: ['categorias'],
     });
     if (existingBoleta) {
-      if (existingBoleta.categorias?.length > 0) {
-        return existingBoleta;
-      }
-      const categoria = this.categoriaRepository.create({
-        idBoleta: existingBoleta.idBoleta,
-        nombre: 'General',
-        descripcion: 'Categoría general',
-        cantidadCargos: 1,
-        orden: 1,
-      });
-      await this.categoriaRepository.save(categoria);
-      return this.boletaRepository.findOneOrFail({
-        where: { idBoleta: existingBoleta.idBoleta },
-        relations: ['categorias'],
-      });
+      return existingBoleta;
     }
     const eleccion = await this.eleccionRepository.findOne({
       where: { idEleccion },
@@ -78,14 +64,6 @@ export class BoletaService {
       estado: EstadoBoleta.BORRADOR,
     });
     const savedBoleta = await this.boletaRepository.save(boleta);
-    const categoria = this.categoriaRepository.create({
-      idBoleta: savedBoleta.idBoleta,
-      nombre: 'General',
-      descripcion: 'Categoría general',
-      cantidadCargos: 1,
-      orden: 1,
-    });
-    await this.categoriaRepository.save(categoria);
     return this.boletaRepository.findOneOrFail({
       where: { idBoleta: savedBoleta.idBoleta },
       relations: ['categorias'],

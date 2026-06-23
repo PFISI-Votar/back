@@ -2,6 +2,7 @@ import { UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { CategoriasService } from '@/categoria/categoria.service';
 import { BoletaService } from '@/eleccion/lista/services/boleta.service';
 import { OficializacionService } from '@/eleccion/lista/services/oficializacion.service';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
@@ -21,6 +22,9 @@ describe('OficializacionService', () => {
   const mockBoletaRepository = { findOne: jest.fn() };
   const mockBoletaService = {
     findBoletaByEleccion: jest.fn(),
+  };
+  const mockCategoriasService = {
+    validarCategoriasParaOficializar: jest.fn(),
   };
 
   const mockTransactionManager = {
@@ -58,6 +62,7 @@ describe('OficializacionService', () => {
         { provide: getRepositoryToken(Boleta), useValue: mockBoletaRepository },
         { provide: BoletaService, useValue: mockBoletaService },
         { provide: DataSource, useValue: mockDataSource },
+        { provide: CategoriasService, useValue: mockCategoriasService },
       ],
     }).compile();
 
@@ -65,6 +70,23 @@ describe('OficializacionService', () => {
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  it('debe lanzar 422 si hay categorías sin listas con candidatos', async () => {
+    mockEleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.BORRADOR,
+    });
+    mockCategoriasService.validarCategoriasParaOficializar.mockRejectedValue(
+      new UnprocessableEntityException(
+        'El comicio no puede oficializarse: existe al menos una categoría sin listas oficializadas.',
+      ),
+    );
+
+    await expect(service.oficializar(1)).rejects.toThrow(
+      UnprocessableEntityException,
+    );
+    expect(mockBoletaService.findBoletaByEleccion).not.toHaveBeenCalled();
+  });
 
   it('debe asignar list_id secuencial al oficializar', async () => {
     const eleccion = {
@@ -96,6 +118,9 @@ describe('OficializacionService', () => {
     ];
 
     mockEleccionRepository.findOne.mockResolvedValue(eleccion);
+    mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
+      undefined,
+    );
     mockBoletaService.findBoletaByEleccion.mockResolvedValue(boleta);
     mockBoletaRepository.findOne.mockResolvedValue(mockBoletaConCategorias);
     mockListaRepository.find.mockResolvedValue(listas);
@@ -116,6 +141,9 @@ describe('OficializacionService', () => {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
     });
+    mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
+      undefined,
+    );
     mockBoletaService.findBoletaByEleccion.mockResolvedValue({ idBoleta: 10 });
     mockBoletaRepository.findOne.mockResolvedValue({
       idBoleta: 10,
@@ -147,6 +175,9 @@ describe('OficializacionService', () => {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
     });
+    mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
+      undefined,
+    );
     mockBoletaService.findBoletaByEleccion.mockResolvedValue({ idBoleta: 10 });
     mockBoletaRepository.findOne.mockResolvedValue(mockBoletaConCategorias);
     mockListaRepository.find.mockResolvedValue([

@@ -6,6 +6,7 @@ import { App } from 'supertest/types';
 import { newDb } from 'pg-mem';
 import { DataSource } from 'typeorm';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
+import { CategoriasModule } from '@/categoria/categoria.module';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
@@ -102,6 +103,7 @@ describe('ListaCandidato (e2e)', () => {
           },
         }),
         EleccionesModule,
+        CategoriasModule,
       ],
     }).compile();
 
@@ -140,6 +142,23 @@ describe('ListaCandidato (e2e)', () => {
     );
   };
 
+  const crearCategoriaE2E = async (
+    eleccionId: number,
+    payload: {
+      nombre: string
+      maximoPostulantes: number
+      minimoPostulantes?: number
+    } = {
+      nombre: 'Presidente',
+      maximoPostulantes: 1,
+      minimoPostulantes: 0,
+    },
+  ) =>
+    request(app.getHttpServer())
+      .post(`/elecciones/${eleccionId}/categorias`)
+      .send(payload)
+      .expect(201);
+
   it('UAT-01: ciclo completo CRUD en comicio BORRADOR', async () => {
     const eleccionRepo = dataSource.getRepository(Eleccion);
     const eleccion = await eleccionRepo.save(
@@ -162,11 +181,8 @@ describe('ListaCandidato (e2e)', () => {
     idLista = listaRes.body.idLista;
     expect(listaRes.body.nombre).toBe('Lista Test');
 
-    const boleta = await dataSource.getRepository(Boleta).findOne({
-      where: { idEleccion },
-      relations: ['categorias'],
-    });
-    idCategoria = boleta!.categorias[0].idCategoria;
+    const categoriaRes = await crearCategoriaE2E(idEleccion);
+    idCategoria = categoriaRes.body.idCategoria;
 
     const candidatoRes = await request(app.getHttpServer())
       .post(`/listas/${idLista}/candidatos`)
@@ -315,17 +331,14 @@ describe('ListaCandidato (e2e)', () => {
       .send({ nombre: 'Lista Config', sigla: 'LC', color: '#2563eb' })
       .expect(201);
 
-    const boleta = await dataSource.getRepository(Boleta).findOne({
-      where: { idEleccion: eleccion.idEleccion },
-      relations: ['categorias'],
-    });
+    const categoriaRes = await crearCategoriaE2E(eleccion.idEleccion);
 
     const candidatoRes = await request(app.getHttpServer())
       .post(`/listas/${listaRes.body.idLista}/candidatos`)
       .send({
         nombre: 'Ana',
         apellido: 'López',
-        idCategoria: boleta!.categorias[0].idCategoria,
+        idCategoria: categoriaRes.body.idCategoria,
         datosAdicionales: { propuesta: 'Mi plan de gobierno' },
       })
       .expect(201);
@@ -364,17 +377,14 @@ describe('ListaCandidato (e2e)', () => {
       .send({ nombre: 'Lista Val', sigla: 'LV', color: '#2563eb' })
       .expect(201);
 
-    const boleta = await dataSource.getRepository(Boleta).findOne({
-      where: { idEleccion: eleccion.idEleccion },
-      relations: ['categorias'],
-    });
+    const categoriaRes = await crearCategoriaE2E(eleccion.idEleccion);
 
     await request(app.getHttpServer())
       .post(`/listas/${listaRes.body.idLista}/candidatos`)
       .send({
         nombre: 'Pedro',
         apellido: 'Ruiz',
-        idCategoria: boleta!.categorias[0].idCategoria,
+        idCategoria: categoriaRes.body.idCategoria,
         datosAdicionales: {
           legajo_utn: 'abc',
           dni: '40123456',
@@ -398,13 +408,6 @@ describe('ListaCandidato (e2e)', () => {
       fechaInicio: new Date(Date.now() + 86400000).toISOString(),
       fechaFin: new Date(Date.now() + 172800000).toISOString(),
       tipoVotacion: TipoVotacion.POR_LISTA,
-      roles: [
-        {
-          nombre: 'Presidente',
-          maximoPostulantes: 10,
-          minimoPostulantes: 5,
-        },
-      ],
       metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
     });
 
@@ -449,7 +452,12 @@ describe('ListaCandidato (e2e)', () => {
         .send({ nombre: 'Lista Deficiente', sigla: 'LD', color: '#2563eb' })
         .expect(201);
 
-      const idCategoria = eleccionRes.body.roles[0].idCategoria;
+      const categoriaRes = await crearCategoriaE2E(eleccionId, {
+        nombre: 'Presidente',
+        maximoPostulantes: 10,
+        minimoPostulantes: 5,
+      });
+      const idCategoria = categoriaRes.body.idCategoria;
       await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '1');
       await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '2');
 
@@ -487,7 +495,12 @@ describe('ListaCandidato (e2e)', () => {
         .send({ nombre: 'Lista Completa', sigla: 'LC', color: '#2563eb' })
         .expect(201);
 
-      const idCategoria = eleccionRes.body.roles[0].idCategoria;
+      const categoriaRes = await crearCategoriaE2E(eleccionId, {
+        nombre: 'Presidente',
+        maximoPostulantes: 10,
+        minimoPostulantes: 5,
+      });
+      const idCategoria = categoriaRes.body.idCategoria;
       for (let index = 1; index <= 5; index += 1) {
         await crearCandidatoEnLista(
           listaRes.body.idLista,

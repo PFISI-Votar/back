@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { CategoriasModule } from '@/categoria/categoria.module';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { RulesEngineModule } from '@/eleccion/rules-engine/rules-engine.module';
 import { ListaController } from '@/eleccion/lista/controllers/lista.controller';
@@ -14,6 +15,7 @@ import { OficializacionService } from '@/eleccion/lista/services/oficializacion.
   imports: [
     TypeOrmModule.forFeature([Eleccion, Lista, Boleta, Categoria]),
     RulesEngineModule,
+    CategoriasModule,
   ],
   controllers: [ListaController],
   providers: [ListaService, BoletaService, OficializacionService],
