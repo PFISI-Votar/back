@@ -109,23 +109,16 @@ export class CategoriaRepository implements ICategoriaRepository {
   }
 
   async tieneCeroListasOficializadas(idEleccion: number): Promise<boolean> {
-    const categoriasDesiertas = await this.repository
-      .createQueryBuilder('c')
-      .innerJoin('c.boleta', 'b')
-      .where('b.id_eleccion = :idEleccion', { idEleccion })
-      .andWhere((qb) => {
-        const subQuery = qb
-          .subQuery()
-          .select('1')
-          .from(Candidato, 'cand')
-          .innerJoin('cand.lista', 'l')
-          .where('l.id_boleta = b.id_boleta')
-          .andWhere('cand.id_categoria = c.id_categoria')
-          .getQuery();
-        return `NOT EXISTS ${subQuery}`;
-      })
-      .getCount();
-    return categoriasDesiertas > 0;
+    const categorias = await this.findByEleccion(idEleccion);
+
+    for (const categoria of categorias) {
+      const candidatos = await this.contarCandidatos(categoria.idCategoria);
+      if (candidatos === 0) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async obtenerMaximoUsoEnLista(idCategoria: number): Promise<number> {
