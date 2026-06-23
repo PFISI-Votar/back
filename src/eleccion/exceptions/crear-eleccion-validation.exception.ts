@@ -1,16 +1,17 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 
-export type CrearEleccionFieldError = {
-  field: 'roles' | 'metodosAutenticacion' | 'fechaInicio' | 'fechaFin';
+export type CrearEleccionValidationField =
+  | 'metodosAutenticacion'
+  | 'fechaInicio'
+  | 'fechaFin';
+
+export type CrearEleccionValidationError = {
+  field: CrearEleccionValidationField;
   message: string;
 };
 
 export class CrearEleccionValidationException extends UnprocessableEntityException {
-  constructor(errors: CrearEleccionFieldError[]) {
-    super({
-      statusCode: 422,
-      message: 'Validación de creación de comicio fallida',
-      errors,
-    });
+  constructor(errors: CrearEleccionValidationError[]) {
+    super({ message: 'Error de validación al crear el comicio', errors });
   }
 }

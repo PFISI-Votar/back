@@ -50,7 +50,7 @@ describe('BoletaService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
-  it('ensureBoleta no debe duplicar categoría General si ya existen roles', async () => {
+  it('ensureBoleta debe retornar la boleta existente sin crear categorías automáticas', async () => {
     const existingBoleta = {
       idBoleta: 1,
       idEleccion: 1,

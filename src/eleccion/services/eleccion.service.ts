@@ -39,7 +39,6 @@ export class EleccionesService implements IEleccionService {
 
   async crearEleccion(dto: CrearEleccionDto): Promise<EleccionResponseDto> {
     this.validarFechas(dto);
-    this.validarRoles(dto);
     this.configuracionComicioService.assertMetodosAutenticacionValidos(
       dto.metodosAutenticacion,
     );
@@ -57,7 +56,6 @@ export class EleccionesService implements IEleccionService {
     dto: ActualizarEleccionDto,
   ): Promise<EleccionResponseDto> {
     this.validarFechas(dto);
-    this.validarRoles(dto);
     this.configuracionComicioService.assertMetodosAutenticacionValidos(
       dto.metodosAutenticacion,
     );
@@ -134,29 +132,6 @@ export class EleccionesService implements IEleccionService {
             'La fecha de cierre debe ser posterior a la fecha de inicio.',
         },
       ]);
-    }
-  }
-
-  private validarRoles(dto: CrearEleccionDto): void {
-    if (!dto.roles || dto.roles.length === 0) {
-      throw new CrearEleccionValidationException([
-        {
-          field: 'roles',
-          message:
-            'Debe definir al menos un rol de candidato según el tipo de votación.',
-        },
-      ]);
-    }
-    for (const rol of dto.roles) {
-      const minimo = rol.minimoPostulantes ?? 0;
-      if (minimo > rol.maximoPostulantes) {
-        throw new CrearEleccionValidationException([
-          {
-            field: 'roles',
-            message: `El mínimo de postulantes para "${rol.nombre}" no puede ser mayor al máximo (${rol.maximoPostulantes})`,
-          },
-        ]);
-      }
     }
   }
 

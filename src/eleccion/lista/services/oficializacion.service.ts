@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { CategoriasService } from '@/categoria/categoria.service';
 import { BoletaService } from '@/eleccion/lista/services/boleta.service';
 import {
   ListaMapeoItemDto,
@@ -32,6 +33,7 @@ export class OficializacionService {
     private readonly boletaService: BoletaService,
     private readonly dataSource: DataSource,
     private readonly rulesEngineService: RulesEngineService,
+    private readonly categoriasService: CategoriasService,
   ) {}
 
   async oficializar(idEleccion: number): Promise<OficializarResponseDto> {
@@ -42,6 +44,7 @@ export class OficializacionService {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
     assertEleccionEditable(eleccion);
+    await this.categoriasService.validarCategoriasParaOficializar(idEleccion);
     const boleta = await this.boletaService.findBoletaByEleccion(idEleccion);
     if (!boleta) {
       throw new UnprocessableEntityException(
