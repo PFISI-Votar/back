@@ -122,7 +122,7 @@ describe('CrearEleccion (e2e)', () => {
       .expect(422);
 
     const body = response.body as { message?: string };
-    expect(body.message).toContain('Validación de creación de comicio');
+    expect(body.message).toContain('Error de validación al crear el comicio');
   });
 
   it('UAT-03: POST /elecciones retorna 422 si apertura está en el pasado', async () => {
