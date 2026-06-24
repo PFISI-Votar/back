@@ -20,7 +20,10 @@
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "makemigrations": "node -r tsconfig-paths/register ./node_modules/typeorm/cli-ts-node-commonjs.js migration:generate -d src/database/data-source.ts src/database/migrations/migration",
-    "migrate": "node -r tsconfig-paths/register ./node_modules/typeorm/cli-ts-node-commonjs.js migration:run -d src/database/data-source.ts"
+    "migrate": "node -r tsconfig-paths/register ./node_modules/typeorm/cli-ts-node-commonjs.js migration:run -d src/database/data-source.ts",
+    "seed:nacionales-2023": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-nacionales-2023.ts",
+    "seed:paso": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-paso.ts",
+    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-demo.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
