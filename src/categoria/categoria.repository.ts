@@ -22,7 +22,9 @@ export class CategoriaRepository implements ICategoriaRepository {
   ) {}
 
   async crear(idEleccion: number, dto: CrearCategoriaDto): Promise<Categoria> {
-    const boleta = await this.boletaRepository.findOne({ where: { idEleccion } });
+    const boleta = await this.boletaRepository.findOne({
+      where: { idEleccion },
+    });
     if (!boleta) {
       throw new NotFoundException(
         `No existe boleta para la elección ${idEleccion}`,

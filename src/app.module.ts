@@ -8,6 +8,7 @@ import { getDatabaseConfig } from '@/config/database.config';
 import { envValidationSchema } from '@/config/env.validation';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
 import { PadronModule } from '@/padron/padron.module';
+import { AuthModule } from '@/auth/auth.module';
 import { VotoModule } from '@/voto/voto.module';
 
 @Module({
@@ -22,6 +23,7 @@ import { VotoModule } from '@/voto/voto.module';
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
+    AuthModule,
     EleccionesModule,
     PadronModule,
     VotoModule,

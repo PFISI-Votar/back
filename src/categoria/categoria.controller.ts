@@ -1,5 +1,15 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { ActualizarCategoriaDto } from './dto/actualizar-categoria.dto';
 import { CrearCategoriaDto } from './dto/crear-categoria.dto';
@@ -7,12 +17,15 @@ import { CategoriasService } from './categoria.service';
 import { ICategoriaController } from './interfaces/categoria.controller.interface';
 
 @ApiTags('categorias')
+@AdminAuth()
 @Controller('elecciones/:idEleccion/categorias')
 export class CategoriasController implements ICategoriaController {
   constructor(private readonly categoriasService: CategoriasService) {}
 
   @Post()
-  @ApiOperation({ summary: 'Crear una categoría en un comicio en estado BORRADOR' })
+  @ApiOperation({
+    summary: 'Crear una categoría en un comicio en estado BORRADOR',
+  })
   @ApiParam({ name: 'idEleccion', type: Number })
   @ApiResponse({ status: 201, type: Categoria })
   async crearCategoria(

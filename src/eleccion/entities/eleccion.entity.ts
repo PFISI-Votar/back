@@ -1,6 +1,10 @@
 import {
-  Entity, PrimaryGeneratedColumn, Column,
-  CreateDateColumn, UpdateDateColumn, OneToOne,
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  UpdateDateColumn,
+  OneToOne,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -30,7 +34,12 @@ export class Eleccion {
   fechaFin: Date;
 
   @ApiProperty({ enum: EleccionEstado, example: EleccionEstado.BORRADOR })
-  @Column({ name: 'estado', type: 'enum', enum: EleccionEstado, default: EleccionEstado.BORRADOR })
+  @Column({
+    name: 'estado',
+    type: 'enum',
+    enum: EleccionEstado,
+    default: EleccionEstado.BORRADOR,
+  })
   estado: EleccionEstado;
 
   @ApiProperty({ enum: TipoVotacion, example: TipoVotacion.POR_LISTA })

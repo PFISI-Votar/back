@@ -6,5 +6,8 @@ export const ELECCION_REPOSITORY = 'ELECCION_REPOSITORY';
 
 export interface IEleccionRepository {
   crearCompleta(dto: CrearEleccionDto): Promise<CrearEleccionCompletaResult>;
-  actualizarCompleta(idEleccion: number, dto: ActualizarEleccionDto): Promise<CrearEleccionCompletaResult>;
+  actualizarCompleta(
+    idEleccion: number,
+    dto: ActualizarEleccionDto,
+  ): Promise<CrearEleccionCompletaResult>;
 }
