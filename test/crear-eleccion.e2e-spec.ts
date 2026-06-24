@@ -1,10 +1,15 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import request from 'supertest';
 import { App } from 'supertest/types';
 import { newDb } from 'pg-mem';
 import { DataSource } from 'typeorm';
+import { AuditLog } from '@/audit/entities/audit-log.entity';
+import { AuthModule } from '@/auth/auth.module';
+import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
+import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
@@ -18,6 +23,10 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
+import {
+  createAuthedRequest,
+  type AuthedRequest,
+} from './helpers/auth-test.helper';
 
 const entities = [
   Eleccion,
@@ -28,6 +37,8 @@ const entities = [
   ConfiguracionDatosCandidato,
   CampoDatosCandidato,
   ConfiguracionComicio,
+  AutoridadElectoral,
+  AuditLog,
 ];
 
 const buildValidPayload = () => ({
@@ -41,6 +52,8 @@ const buildValidPayload = () => ({
 describe('CrearEleccion (e2e)', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
+  let adminToken: string;
+  let req: AuthedRequest;
 
   beforeAll(async () => {
     const db = newDb({ autoCreateForeignKeyIndices: true });
@@ -55,6 +68,15 @@ describe('CrearEleccion (e2e)', () => {
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [
+            () => ({
+              JWT_SECRET: 'test-secret-for-e2e-tests-min-16',
+              JWT_EXPIRES_IN: '8h',
+            }),
+          ],
+        }),
         TypeOrmModule.forRootAsync({
           useFactory: () => ({
             type: 'postgres' as const,
@@ -66,6 +88,7 @@ describe('CrearEleccion (e2e)', () => {
             return dataSource;
           },
         }),
+        AuthModule,
         EleccionesModule,
       ],
     }).compile();
@@ -79,6 +102,12 @@ describe('CrearEleccion (e2e)', () => {
       }),
     );
     await app.init();
+
+    adminToken = app.get(JwtService).sign({
+      sub: '14988',
+      role: JwtRole.ELECTION_ADMIN,
+    });
+    req = createAuthedRequest(app, adminToken);
   }, 30000);
 
   afterAll(async () => {
@@ -91,7 +120,7 @@ describe('CrearEleccion (e2e)', () => {
   });
 
   it('UAT-01: POST /elecciones crea comicio en BORRADOR sin categorías iniciales', async () => {
-    const response = await request(app.getHttpServer())
+    const response = await req
       .post('/elecciones')
       .send(buildValidPayload())
       .expect(201);
@@ -116,10 +145,7 @@ describe('CrearEleccion (e2e)', () => {
     payload.fechaInicio = new Date(Date.now() + 172800000).toISOString();
     payload.fechaFin = new Date(Date.now() + 86400000).toISOString();
 
-    const response = await request(app.getHttpServer())
-      .post('/elecciones')
-      .send(payload)
-      .expect(422);
+    const response = await req.post('/elecciones').send(payload).expect(422);
 
     const body = response.body as { message?: string };
     expect(body.message).toContain('Error de validación al crear el comicio');
@@ -129,10 +155,7 @@ describe('CrearEleccion (e2e)', () => {
     const payload = buildValidPayload();
     payload.fechaInicio = new Date(Date.now() - 86400000).toISOString();
 
-    await request(app.getHttpServer())
-      .post('/elecciones')
-      .send(payload)
-      .expect(422);
+    await req.post('/elecciones').send(payload).expect(422);
   });
 
   it('POST /elecciones retorna 422 si cierre está en el pasado', async () => {
@@ -140,10 +163,7 @@ describe('CrearEleccion (e2e)', () => {
     payload.fechaInicio = new Date(Date.now() + 172800000).toISOString();
     payload.fechaFin = new Date(Date.now() - 86400000).toISOString();
 
-    const response = await request(app.getHttpServer())
-      .post('/elecciones')
-      .send(payload)
-      .expect(422);
+    const response = await req.post('/elecciones').send(payload).expect(422);
 
     const body = response.body as {
       errors?: Array<{ field?: string; message?: string }>;
@@ -158,10 +178,7 @@ describe('CrearEleccion (e2e)', () => {
     const payload = buildValidPayload();
     payload.metodosAutenticacion = [];
 
-    const response = await request(app.getHttpServer())
-      .post('/elecciones')
-      .send(payload)
-      .expect(422);
+    const response = await req.post('/elecciones').send(payload).expect(422);
 
     const body = response.body as {
       errors?: Array<{ field?: string; message?: string }>;
@@ -176,10 +193,7 @@ describe('CrearEleccion (e2e)', () => {
     const payload = buildValidPayload();
     payload.nombre = '<script>alert(1)</script>Comicio Seguro';
 
-    const response = await request(app.getHttpServer())
-      .post('/elecciones')
-      .send(payload)
-      .expect(201);
+    const response = await req.post('/elecciones').send(payload).expect(201);
 
     const body = response.body as EleccionResponseDto;
     expect(body.nombre).toBe('Comicio Seguro');

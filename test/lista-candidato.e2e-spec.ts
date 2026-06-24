@@ -1,7 +1,8 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import request from 'supertest';
 import { App } from 'supertest/types';
 import { newDb } from 'pg-mem';
 import { DataSource } from 'typeorm';
@@ -20,6 +21,14 @@ import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import type { CampoCandidatoDefinicion } from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
 import { mapDefinicionToEntity } from '@/eleccion/candidato/mappers/campo-datos-candidato.mapper';
+import { AuditLog } from '@/audit/entities/audit-log.entity';
+import { AuthModule } from '@/auth/auth.module';
+import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
+import { JwtRole } from '@/auth/enums/jwt-role.enum';
+import {
+  createAuthedRequest,
+  type AuthedRequest,
+} from './helpers/auth-test.helper';
 
 const entities = [
   Eleccion,
@@ -30,6 +39,8 @@ const entities = [
   ConfiguracionDatosCandidato,
   CampoDatosCandidato,
   ConfiguracionComicio,
+  AutoridadElectoral,
+  AuditLog,
 ];
 
 const camposConfigE2E: CampoCandidatoDefinicion[] = [
@@ -77,6 +88,8 @@ describe('ListaCandidato (e2e)', () => {
   let idEleccion: number;
   let idLista: number;
   let idCategoria: number;
+  let adminToken: string;
+  let req: AuthedRequest;
 
   beforeAll(async () => {
     const db = newDb({ autoCreateForeignKeyIndices: true });
@@ -91,6 +104,15 @@ describe('ListaCandidato (e2e)', () => {
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [
+        ConfigModule.forRoot({
+          isGlobal: true,
+          load: [
+            () => ({
+              JWT_SECRET: 'test-secret-for-e2e-tests-min-16',
+              JWT_EXPIRES_IN: '8h',
+            }),
+          ],
+        }),
         TypeOrmModule.forRootAsync({
           useFactory: () => ({
             type: 'postgres' as const,
@@ -102,6 +124,7 @@ describe('ListaCandidato (e2e)', () => {
             return dataSource;
           },
         }),
+        AuthModule,
         EleccionesModule,
         CategoriasModule,
       ],
@@ -116,6 +139,12 @@ describe('ListaCandidato (e2e)', () => {
       }),
     );
     await app.init();
+
+    adminToken = app.get(JwtService).sign({
+      sub: '14988',
+      role: JwtRole.ELECTION_ADMIN,
+    });
+    req = createAuthedRequest(app, adminToken);
   }, 30000);
 
   afterAll(async () => {
@@ -145,19 +174,16 @@ describe('ListaCandidato (e2e)', () => {
   const crearCategoriaE2E = async (
     eleccionId: number,
     payload: {
-      nombre: string
-      maximoPostulantes: number
-      minimoPostulantes?: number
+      nombre: string;
+      maximoPostulantes: number;
+      minimoPostulantes?: number;
     } = {
       nombre: 'Presidente',
       maximoPostulantes: 1,
       minimoPostulantes: 0,
     },
   ) =>
-    request(app.getHttpServer())
-      .post(`/elecciones/${eleccionId}/categorias`)
-      .send(payload)
-      .expect(201);
+    req.post(`/elecciones/${eleccionId}/categorias`).send(payload).expect(201);
 
   it('UAT-01: ciclo completo CRUD en comicio BORRADOR', async () => {
     const eleccionRepo = dataSource.getRepository(Eleccion);
@@ -173,7 +199,7 @@ describe('ListaCandidato (e2e)', () => {
     idEleccion = eleccion.idEleccion;
     await seedConfig(idEleccion);
 
-    const listaRes = await request(app.getHttpServer())
+    const listaRes = await req
       .post(`/elecciones/${idEleccion}/listas`)
       .send({ nombre: 'Lista Test', sigla: 'LT', color: '#2563eb' })
       .expect(201);
@@ -184,7 +210,7 @@ describe('ListaCandidato (e2e)', () => {
     const categoriaRes = await crearCategoriaE2E(idEleccion);
     idCategoria = categoriaRes.body.idCategoria;
 
-    const candidatoRes = await request(app.getHttpServer())
+    const candidatoRes = await req
       .post(`/listas/${idLista}/candidatos`)
       .send({
         nombre: 'Juan',
@@ -196,7 +222,7 @@ describe('ListaCandidato (e2e)', () => {
 
     const idCandidato = candidatoRes.body.idCandidato;
 
-    await request(app.getHttpServer())
+    await req
       .patch(`/candidatos/${idCandidato}`)
       .send({ nombre: 'Juán' })
       .expect(200)
@@ -204,13 +230,11 @@ describe('ListaCandidato (e2e)', () => {
         expect(res.body.nombre).toBe('Juán');
       });
 
-    await request(app.getHttpServer())
-      .delete(`/candidatos/${idCandidato}`)
-      .expect(200);
+    await req.delete(`/candidatos/${idCandidato}`).expect(200);
   });
 
   it('UAT-02: debe retornar 409 al modificar tras oficialización', async () => {
-    const candidatoRes = await request(app.getHttpServer())
+    const candidatoRes = await req
       .post(`/listas/${idLista}/candidatos`)
       .send({
         nombre: 'María',
@@ -224,16 +248,14 @@ describe('ListaCandidato (e2e)', () => {
       })
       .expect(201);
 
-    await request(app.getHttpServer())
-      .post(`/elecciones/${idEleccion}/oficializar`)
-      .expect(201);
+    await req.post(`/elecciones/${idEleccion}/oficializar`).expect(201);
 
-    await request(app.getHttpServer())
+    await req
       .patch(`/candidatos/${candidatoRes.body.idCandidato}`)
       .send({ nombre: 'Modificado' })
       .expect(409);
 
-    await request(app.getHttpServer())
+    await req
       .post(`/listas/${idLista}/candidatos`)
       .send({
         nombre: 'Nuevo',
@@ -247,17 +269,17 @@ describe('ListaCandidato (e2e)', () => {
       })
       .expect(409);
 
-    await request(app.getHttpServer())
+    await req
       .post(`/elecciones/${idEleccion}/listas`)
       .send({ nombre: 'Lista Bloqueada', sigla: 'LB2', color: '#2563eb' })
       .expect(409);
 
-    await request(app.getHttpServer())
+    await req
       .patch(`/listas/${idLista}`)
       .send({ nombre: 'Lista Modificada' })
       .expect(409);
 
-    await request(app.getHttpServer()).delete(`/listas/${idLista}`).expect(409);
+    await req.delete(`/listas/${idLista}`).expect(409);
   });
 
   it('debe retornar 422 por categoría inválida', async () => {
@@ -272,12 +294,12 @@ describe('ListaCandidato (e2e)', () => {
     );
     await seedConfig(eleccion.idEleccion);
 
-    const listaRes = await request(app.getHttpServer())
+    const listaRes = await req
       .post(`/elecciones/${eleccion.idEleccion}/listas`)
       .send({ nombre: 'Lista 422', sigla: 'L4', color: '#2563eb' })
       .expect(201);
 
-    await request(app.getHttpServer())
+    await req
       .post(`/listas/${listaRes.body.idLista}/candidatos`)
       .send({
         nombre: 'Sin',
@@ -300,7 +322,7 @@ describe('ListaCandidato (e2e)', () => {
     );
     await seedConfig(eleccion.idEleccion);
 
-    await request(app.getHttpServer())
+    await req
       .get(`/elecciones/${eleccion.idEleccion}/configuracion-datos-candidato`)
       .expect(200)
       .expect((res) => {
@@ -318,7 +340,7 @@ describe('ListaCandidato (e2e)', () => {
       },
     ];
 
-    await request(app.getHttpServer())
+    await req
       .put(`/elecciones/${eleccion.idEleccion}/configuracion-datos-candidato`)
       .send({ campos: nuevaConfig })
       .expect(200)
@@ -326,14 +348,14 @@ describe('ListaCandidato (e2e)', () => {
         expect(res.body.campos[0].clave).toBe('propuesta');
       });
 
-    const listaRes = await request(app.getHttpServer())
+    const listaRes = await req
       .post(`/elecciones/${eleccion.idEleccion}/listas`)
       .send({ nombre: 'Lista Config', sigla: 'LC', color: '#2563eb' })
       .expect(201);
 
     const categoriaRes = await crearCategoriaE2E(eleccion.idEleccion);
 
-    const candidatoRes = await request(app.getHttpServer())
+    const candidatoRes = await req
       .post(`/listas/${listaRes.body.idLista}/candidatos`)
       .send({
         nombre: 'Ana',
@@ -343,16 +365,16 @@ describe('ListaCandidato (e2e)', () => {
       })
       .expect(201);
 
-    await request(app.getHttpServer())
+    await req
       .put(`/elecciones/${eleccion.idEleccion}/configuracion-datos-candidato`)
       .send({ campos: nuevaConfig })
       .expect(409);
 
-    await request(app.getHttpServer())
+    await req
       .delete(`/candidatos/${candidatoRes.body.idCandidato}`)
       .expect(200);
 
-    await request(app.getHttpServer())
+    await req
       .get(`/elecciones/${eleccion.idEleccion}/configuracion-datos-candidato`)
       .expect(200)
       .expect((res) => {
@@ -372,14 +394,14 @@ describe('ListaCandidato (e2e)', () => {
     );
     await seedConfig(eleccion.idEleccion);
 
-    const listaRes = await request(app.getHttpServer())
+    const listaRes = await req
       .post(`/elecciones/${eleccion.idEleccion}/listas`)
       .send({ nombre: 'Lista Val', sigla: 'LV', color: '#2563eb' })
       .expect(201);
 
     const categoriaRes = await crearCategoriaE2E(eleccion.idEleccion);
 
-    await request(app.getHttpServer())
+    await req
       .post(`/listas/${listaRes.body.idLista}/candidatos`)
       .send({
         nombre: 'Pedro',
@@ -416,7 +438,7 @@ describe('ListaCandidato (e2e)', () => {
       idCategoria: number,
       suffix: string,
     ) => {
-      return request(app.getHttpServer())
+      return req
         .post(`/listas/${idLista}/candidatos`)
         .send({
           nombre: `Nombre${suffix}`,
@@ -432,14 +454,14 @@ describe('ListaCandidato (e2e)', () => {
     };
 
     const seedCamposCandidato = async (eleccionId: number) => {
-      await request(app.getHttpServer())
+      await req
         .put(`/elecciones/${eleccionId}/configuracion-datos-candidato`)
         .send({ campos: camposConfigE2E })
         .expect(200);
     };
 
     it('UAT-01: debe rechazar oficialización con desglose de faltantes', async () => {
-      const eleccionRes = await request(app.getHttpServer())
+      const eleccionRes = await req
         .post('/elecciones')
         .send(buildComicioMinimoPayload())
         .expect(201);
@@ -447,7 +469,7 @@ describe('ListaCandidato (e2e)', () => {
       const eleccionId = eleccionRes.body.idEleccion;
       await seedCamposCandidato(eleccionId);
 
-      const listaRes = await request(app.getHttpServer())
+      const listaRes = await req
         .post(`/elecciones/${eleccionId}/listas`)
         .send({ nombre: 'Lista Deficiente', sigla: 'LD', color: '#2563eb' })
         .expect(201);
@@ -461,7 +483,7 @@ describe('ListaCandidato (e2e)', () => {
       await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '1');
       await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '2');
 
-      await request(app.getHttpServer())
+      await req
         .post(`/elecciones/${eleccionId}/oficializar`)
         .expect(422)
         .expect((res) => {
@@ -482,7 +504,7 @@ describe('ListaCandidato (e2e)', () => {
     });
 
     it('UAT-02: debe oficializar tras subsanar candidatos faltantes', async () => {
-      const eleccionRes = await request(app.getHttpServer())
+      const eleccionRes = await req
         .post('/elecciones')
         .send(buildComicioMinimoPayload())
         .expect(201);
@@ -490,7 +512,7 @@ describe('ListaCandidato (e2e)', () => {
       const eleccionId = eleccionRes.body.idEleccion;
       await seedCamposCandidato(eleccionId);
 
-      const listaRes = await request(app.getHttpServer())
+      const listaRes = await req
         .post(`/elecciones/${eleccionId}/listas`)
         .send({ nombre: 'Lista Completa', sigla: 'LC', color: '#2563eb' })
         .expect(201);
@@ -509,7 +531,7 @@ describe('ListaCandidato (e2e)', () => {
         );
       }
 
-      await request(app.getHttpServer())
+      await req
         .post(`/elecciones/${eleccionId}/oficializar`)
         .expect(201)
         .expect((res) => {

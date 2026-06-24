@@ -61,7 +61,10 @@ describe('CategoriasService', () => {
       providers: [
         CategoriasService,
         { provide: CATEGORIA_REPOSITORY, useValue: mockCategoriaRepository },
-        { provide: getRepositoryToken(Eleccion), useValue: mockEleccionOrmRepository },
+        {
+          provide: getRepositoryToken(Eleccion),
+          useValue: mockEleccionOrmRepository,
+        },
       ],
     }).compile();
 
@@ -176,7 +179,9 @@ describe('CategoriasService', () => {
       mockCategoriaRepository.findByEleccion.mockResolvedValue([
         { idCategoria: 1, nombre: 'Presidente' },
       ]);
-      mockCategoriaRepository.tieneCeroListasOficializadas.mockResolvedValue(true);
+      mockCategoriaRepository.tieneCeroListasOficializadas.mockResolvedValue(
+        true,
+      );
 
       await expect(service.validarCategoriasParaOficializar(1)).rejects.toThrow(
         UnprocessableEntityException,
@@ -195,7 +200,9 @@ describe('CategoriasService', () => {
       mockCategoriaRepository.findByEleccion.mockResolvedValue([
         { idCategoria: 1, nombre: 'Presidente' },
       ]);
-      mockCategoriaRepository.tieneCeroListasOficializadas.mockResolvedValue(false);
+      mockCategoriaRepository.tieneCeroListasOficializadas.mockResolvedValue(
+        false,
+      );
 
       await expect(
         service.validarCategoriasParaOficializar(1),
