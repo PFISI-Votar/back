@@ -1,3 +1,4 @@
+import cookieParser from 'cookie-parser';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
@@ -11,6 +12,7 @@ import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
+import { RefreshSession } from '@/auth/entities/refresh-session.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
@@ -35,6 +37,7 @@ const entities = [
   CampoDatosCandidato,
   ConfiguracionComicio,
   AutoridadElectoral,
+  RefreshSession,
   AuditLog,
 ];
 
@@ -69,8 +72,10 @@ describe('AuthAdmin (e2e) — US-313', () => {
           load: [
             () => ({
               JWT_SECRET: 'test-secret-for-e2e-tests-min-16',
-              JWT_EXPIRES_IN: '8h',
+              JWT_ACCESS_EXPIRES_IN: '15m',
+              JWT_REFRESH_EXPIRES_IN: '8h',
               AUTOGESTION_BASE_URL: 'https://autogestion.test',
+              DEVELOPMENT: true,
             }),
           ],
         }),
@@ -94,6 +99,7 @@ describe('AuthAdmin (e2e) — US-313', () => {
       .compile();
 
     app = moduleFixture.createNestApplication();
+    app.use(cookieParser());
     app.useGlobalPipes(
       new ValidationPipe({
         whitelist: true,
@@ -172,7 +178,7 @@ describe('AuthAdmin (e2e) — US-313', () => {
     expect(latest.timestamp).toBeDefined();
   });
 
-  it('POST /auth/login emite JWT con role election_admin para autoridad registrada', async () => {
+  it('POST /auth/login establece cookies HttpOnly y devuelve solo el usuario', async () => {
     mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
       persona: {
         legajo: '14988',
@@ -188,14 +194,89 @@ describe('AuthAdmin (e2e) — US-313', () => {
       .expect(200);
 
     const body = response.body as {
-      accessToken: string;
       user: { role: string; sub: string };
+      accessToken?: string;
     };
-    expect(body.accessToken).toBeDefined();
+    expect(body.accessToken).toBeUndefined();
     expect(body.user.role).toBe(JwtRole.ELECTION_ADMIN);
 
-    const decoded = jwtService.decode(body.accessToken);
+    const cookieHeader = (response.headers['set-cookie'] as string[]).join(';');
+    expect(cookieHeader).toContain('votar_refresh_token=');
+    expect(cookieHeader).toContain('votar_access_token=');
+    expect(cookieHeader.toLowerCase()).toContain('httponly');
+
+    const accessTokenMatch = cookieHeader.match(/votar_access_token=([^;]+)/);
+    const accessToken = accessTokenMatch?.[1];
+    expect(accessToken).toBeDefined();
+    const decoded = jwtService.decode(accessToken as string);
     expect(decoded.role).toBe(JwtRole.ELECTION_ADMIN);
+  });
+
+  it('GET /elecciones funciona con cookie de access tras login', async () => {
+    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
+      persona: {
+        legajo: '14988',
+        nombre: 'Admin',
+        apellido: 'Test',
+        email: 'admin@test.local',
+      },
+    });
+
+    const agent = request.agent(app.getHttpServer());
+    await agent
+      .post('/auth/login')
+      .send({ nick: 'votar.admin', password: 'secret' })
+      .expect(200);
+
+    await agent.get('/elecciones').expect(200);
+  });
+
+  it('POST /auth/refresh renueva access token con cookie de sesión', async () => {
+    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
+      persona: {
+        legajo: '14988',
+        nombre: 'Admin',
+        apellido: 'Test',
+        email: 'admin@test.local',
+      },
+    });
+
+    const agent = request.agent(app.getHttpServer());
+    await agent
+      .post('/auth/login')
+      .send({ nick: 'votar.admin', password: 'secret' })
+      .expect(200);
+
+    const refreshResponse = await agent.post('/auth/refresh').expect(200);
+    const refreshBody = refreshResponse.body as {
+      user: { role: string };
+      accessToken?: string;
+    };
+
+    expect(refreshBody.accessToken).toBeUndefined();
+    expect(refreshBody.user.role).toBe(JwtRole.ELECTION_ADMIN);
+    expect(
+      (refreshResponse.headers['set-cookie'] as string[]).join(';'),
+    ).toContain('votar_access_token=');
+  });
+
+  it('POST /auth/logout revoca la sesión de refresh', async () => {
+    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
+      persona: {
+        legajo: '14988',
+        nombre: 'Admin',
+        email: 'admin@test.local',
+      },
+    });
+
+    const agent = request.agent(app.getHttpServer());
+    await agent
+      .post('/auth/login')
+      .send({ nick: 'votar.admin', password: 'secret' })
+      .expect(200);
+
+    await agent.post('/auth/logout').expect(204);
+    await agent.post('/auth/refresh').expect(401);
   });
 
   it('POST /auth/login emite JWT con role voter para usuario sin autoridad', async () => {

@@ -24,6 +24,7 @@ import { mapDefinicionToEntity } from '@/eleccion/candidato/mappers/campo-datos-
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
+import { RefreshSession } from '@/auth/entities/refresh-session.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import {
   createAuthedRequest,
@@ -40,6 +41,7 @@ const entities = [
   CampoDatosCandidato,
   ConfiguracionComicio,
   AutoridadElectoral,
+  RefreshSession,
   AuditLog,
 ];
 
@@ -109,7 +111,8 @@ describe('ListaCandidato (e2e)', () => {
           load: [
             () => ({
               JWT_SECRET: 'test-secret-for-e2e-tests-min-16',
-              JWT_EXPIRES_IN: '8h',
+              JWT_ACCESS_EXPIRES_IN: '15m',
+              JWT_REFRESH_EXPIRES_IN: '8h',
             }),
           ],
         }),
