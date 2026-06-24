@@ -7,8 +7,19 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CreateListaDto, UpdateListaDto } from '@/eleccion/lista/dto/lista.dto';
 import {
   ListaMapeoItemDto,
@@ -62,6 +73,46 @@ export class ListaController {
     @Body() dto: UpdateListaDto,
   ): Promise<ListaResponseDto> {
     return this.listaService.update(idLista, dto);
+  }
+
+  @Patch('listas/:idLista/logo')
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Subir o reemplazar logotipo de lista' })
+  @ApiParam({ name: 'idLista', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { logo: { type: 'string', format: 'binary' } },
+      required: ['logo'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'OK', type: ListaResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad Request — imagen inválida' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({ status: 409, description: 'Conflict — comicio oficializado' })
+  async subirLogoLista(
+    @Param('idLista', ParseIntPipe) idLista: number,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<ListaResponseDto> {
+    return this.listaService.updateLogo(idLista, file);
+  }
+
+  @Delete('listas/:idLista/logo')
+  @ApiOperation({ summary: 'Eliminar logotipo de lista' })
+  @ApiParam({ name: 'idLista', type: Number })
+  @ApiResponse({ status: 200, description: 'OK', type: ListaResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({ status: 409, description: 'Conflict — comicio oficializado' })
+  async eliminarLogoLista(
+    @Param('idLista', ParseIntPipe) idLista: number,
+  ): Promise<ListaResponseDto> {
+    return this.listaService.removeLogo(idLista);
   }
 
   @Delete('listas/:idLista')

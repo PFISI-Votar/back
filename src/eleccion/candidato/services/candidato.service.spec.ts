@@ -11,6 +11,7 @@ import { ListaService } from '@/eleccion/lista/services/lista.service';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { ElectoralImageService } from '@/common/images/electoral-image.service';
 
 const validDatos = {
   legajo_utn: '14988',
@@ -52,6 +53,11 @@ describe('CandidatoService', () => {
     validateDatosAdicionales: jest.fn(),
   };
 
+  const mockElectoralImageService = {
+    saveImage: jest.fn(),
+    deleteIfManagedUrl: jest.fn(),
+  };
+
   const mockListaContext = {
     idLista: 1,
     idBoleta: 10,
@@ -81,6 +87,7 @@ describe('CandidatoService', () => {
           provide: CandidatoDatosValidatorService,
           useValue: mockValidatorService,
         },
+        { provide: ElectoralImageService, useValue: mockElectoralImageService },
       ],
     }).compile();
 

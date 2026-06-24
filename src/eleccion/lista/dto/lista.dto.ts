@@ -32,6 +32,12 @@ export class CreateListaDto {
     message: 'El color debe ser un código hexadecimal válido (ej. #2563eb)',
   })
   color?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  logoUrl?: string;
 }
 
 export class UpdateListaDto {
@@ -59,4 +65,10 @@ export class UpdateListaDto {
     message: 'El color debe ser un código hexadecimal válido (ej. #2563eb)',
   })
   color?: string;
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  logoUrl?: string;
 }

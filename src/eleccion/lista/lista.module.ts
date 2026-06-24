@@ -10,6 +10,7 @@ import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { BoletaService } from '@/eleccion/lista/services/boleta.service';
 import { ListaService } from '@/eleccion/lista/services/lista.service';
 import { OficializacionService } from '@/eleccion/lista/services/oficializacion.service';
+import { ElectoralImageService } from '@/common/images/electoral-image.service';
 
 @Module({
   imports: [
@@ -18,7 +19,12 @@ import { OficializacionService } from '@/eleccion/lista/services/oficializacion.
     CategoriasModule,
   ],
   controllers: [ListaController],
-  providers: [ListaService, BoletaService, OficializacionService],
+  providers: [
+    ListaService,
+    BoletaService,
+    OficializacionService,
+    ElectoralImageService,
+  ],
   exports: [ListaService, BoletaService],
 })
 export class ListaModule {}

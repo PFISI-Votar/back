@@ -16,6 +16,7 @@ import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { ListaService } from '@/eleccion/lista/services/lista.service';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
+import { ElectoralImageService } from '@/common/images/electoral-image.service';
 
 @Injectable()
 export class CandidatoService {
@@ -27,6 +28,7 @@ export class CandidatoService {
     private readonly listaService: ListaService,
     private readonly configuracionDatosCandidatoService: ConfiguracionDatosCandidatoService,
     private readonly candidatoDatosValidatorService: CandidatoDatosValidatorService,
+    private readonly electoralImageService: ElectoralImageService,
   ) {}
 
   async create(
@@ -80,6 +82,7 @@ export class CandidatoService {
   ): Promise<CandidatoResponseDto> {
     const candidato = await this.findCandidatoWithEleccionOrFail(idCandidato);
     assertEleccionEditable(candidato.lista.boleta.eleccion);
+    let previousFotoUrl: string | null | undefined;
     if (dto.idCategoria !== undefined) {
       const categoria = await this.validateCategoriaBelongsToBoleta(
         dto.idCategoria,
@@ -102,6 +105,7 @@ export class CandidatoService {
       candidato.orden = dto.orden;
     }
     if (dto.fotoUrl !== undefined) {
+      previousFotoUrl = candidato.fotoUrl;
       candidato.fotoUrl = dto.fotoUrl;
     }
     if (dto.datosAdicionales !== undefined) {
@@ -117,6 +121,48 @@ export class CandidatoService {
       candidato.datosAdicionales = dto.datosAdicionales;
     }
     const saved = await this.candidatoRepository.save(candidato);
+    if (previousFotoUrl !== undefined && previousFotoUrl !== saved.fotoUrl) {
+      await this.electoralImageService.deleteIfManagedUrl(previousFotoUrl);
+    }
+    return this.toResponse(
+      await this.findCandidatoWithCategoriaOrFail(saved.idCandidato),
+    );
+  }
+
+  async updateFoto(
+    idCandidato: number,
+    file: Express.Multer.File,
+  ): Promise<CandidatoResponseDto> {
+    const candidato = await this.findCandidatoWithEleccionOrFail(idCandidato);
+    assertEleccionEditable(candidato.lista.boleta.eleccion);
+
+    const previousFotoUrl = candidato.fotoUrl;
+    const nextFotoUrl = await this.electoralImageService.saveImage(
+      file,
+      'candidato-foto',
+    );
+
+    try {
+      candidato.fotoUrl = nextFotoUrl;
+      const saved = await this.candidatoRepository.save(candidato);
+      await this.electoralImageService.deleteIfManagedUrl(previousFotoUrl);
+      return this.toResponse(
+        await this.findCandidatoWithCategoriaOrFail(saved.idCandidato),
+      );
+    } catch (error) {
+      await this.electoralImageService.deleteIfManagedUrl(nextFotoUrl);
+      throw error;
+    }
+  }
+
+  async removeFoto(idCandidato: number): Promise<CandidatoResponseDto> {
+    const candidato = await this.findCandidatoWithEleccionOrFail(idCandidato);
+    assertEleccionEditable(candidato.lista.boleta.eleccion);
+
+    const previousFotoUrl = candidato.fotoUrl;
+    candidato.fotoUrl = null;
+    const saved = await this.candidatoRepository.save(candidato);
+    await this.electoralImageService.deleteIfManagedUrl(previousFotoUrl);
     return this.toResponse(
       await this.findCandidatoWithCategoriaOrFail(saved.idCandidato),
     );
@@ -126,6 +172,7 @@ export class CandidatoService {
     const candidato = await this.findCandidatoWithEleccionOrFail(idCandidato);
     assertEleccionEditable(candidato.lista.boleta.eleccion);
     await this.candidatoRepository.remove(candidato);
+    await this.electoralImageService.deleteIfManagedUrl(candidato.fotoUrl);
   }
 
   private async findCandidatoWithEleccionOrFail(

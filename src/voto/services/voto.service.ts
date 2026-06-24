@@ -248,6 +248,7 @@ export class VotoService {
           agrupacionPolitica: lista.nombre,
           numeroLista: lista.listId ?? lista.idLista,
           colorLista: lista.color,
+          logoListaUrl: lista.logoUrl,
           fotoUrl: candidato.fotoUrl,
         })),
     );

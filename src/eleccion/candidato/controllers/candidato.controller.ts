@@ -8,8 +8,19 @@ import {
   Patch,
   Post,
   Put,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBody,
+  ApiConsumes,
+  ApiOperation,
+  ApiParam,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { CandidatoService } from '@/eleccion/candidato/services/candidato.service';
 import { ConfiguracionDatosCandidatoService } from '@/eleccion/candidato/services/configuracion-datos-candidato.service';
 import {
@@ -77,6 +88,46 @@ export class CandidatoController {
     @Body() dto: UpdateCandidatoDto,
   ): Promise<CandidatoResponseDto> {
     return this.candidatoService.update(idCandidato, dto);
+  }
+
+  @Patch('candidatos/:idCandidato/foto')
+  @UseInterceptors(
+    FileInterceptor('foto', {
+      storage: memoryStorage(),
+      limits: { fileSize: 2 * 1024 * 1024 },
+    }),
+  )
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Subir o reemplazar fotografía de candidato' })
+  @ApiParam({ name: 'idCandidato', type: Number })
+  @ApiBody({
+    schema: {
+      type: 'object',
+      properties: { foto: { type: 'string', format: 'binary' } },
+      required: ['foto'],
+    },
+  })
+  @ApiResponse({ status: 200, description: 'OK', type: CandidatoResponseDto })
+  @ApiResponse({ status: 400, description: 'Bad Request — imagen inválida' })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({ status: 409, description: 'Conflict — comicio oficializado' })
+  async subirFotoCandidato(
+    @Param('idCandidato', ParseIntPipe) idCandidato: number,
+    @UploadedFile() file: Express.Multer.File,
+  ): Promise<CandidatoResponseDto> {
+    return this.candidatoService.updateFoto(idCandidato, file);
+  }
+
+  @Delete('candidatos/:idCandidato/foto')
+  @ApiOperation({ summary: 'Eliminar fotografía de candidato' })
+  @ApiParam({ name: 'idCandidato', type: Number })
+  @ApiResponse({ status: 200, description: 'OK', type: CandidatoResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({ status: 409, description: 'Conflict — comicio oficializado' })
+  async eliminarFotoCandidato(
+    @Param('idCandidato', ParseIntPipe) idCandidato: number,
+  ): Promise<CandidatoResponseDto> {
+    return this.candidatoService.removeFoto(idCandidato);
   }
 
   @Delete('candidatos/:idCandidato')

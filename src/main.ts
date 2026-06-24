@@ -1,11 +1,13 @@
 import '@/common/bootstrap/setup-timezone';
+import { join } from 'node:path';
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from '@/app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -16,6 +18,9 @@ async function bootstrap() {
   );
 
   app.enableCors();
+  app.useStaticAssets(join(process.cwd(), process.env.UPLOADS_DIR ?? 'uploads'), {
+    prefix: '/uploads/',
+  });
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('VOTAR API')
