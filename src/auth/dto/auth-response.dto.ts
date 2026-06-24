@@ -17,10 +17,9 @@ export class AuthUserDto {
 
 export class AuthResponseDto {
   @ApiProperty({
-    description: 'JWT de acceso emitido por VOTAR',
+    type: AuthUserDto,
+    description:
+      'Perfil del usuario autenticado. Los tokens se entregan solo en cookies HttpOnly.',
   })
-  accessToken: string;
-
-  @ApiProperty({ type: AuthUserDto })
   user: AuthUserDto;
 }
