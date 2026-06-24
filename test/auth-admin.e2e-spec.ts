@@ -71,7 +71,6 @@ describe('AuthAdmin (e2e) — US-313', () => {
               JWT_SECRET: 'test-secret-for-e2e-tests-min-16',
               JWT_EXPIRES_IN: '8h',
               AUTOGESTION_BASE_URL: 'https://autogestion.test',
-              AUTOGESTION_USER_AGENT: 'test',
             }),
           ],
         }),

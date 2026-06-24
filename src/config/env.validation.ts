@@ -13,6 +13,5 @@ export const envValidationSchema = Joi.object({
   AUTOGESTION_BASE_URL: Joi.string()
     .uri()
     .default('https://webservice.frvm.utn.edu.ar/autogestion'),
-  AUTOGESTION_USER_AGENT: Joi.string().default('votar-back/1.0'),
   ELECTION_ADMIN_SEED_NICK: Joi.string().optional(),
 });

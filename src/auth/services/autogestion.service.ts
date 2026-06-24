@@ -12,15 +12,11 @@ import {
 @Injectable()
 export class AutogestionService {
   private readonly baseUrl: string;
-  private readonly userAgent: string;
 
   constructor(private readonly configService: ConfigService) {
     this.baseUrl =
       this.configService.get<string>('AUTOGESTION_BASE_URL') ??
       'https://webservice.frvm.utn.edu.ar/autogestion';
-    this.userAgent =
-      this.configService.get<string>('AUTOGESTION_USER_AGENT') ??
-      'votar-back/1.0';
   }
 
   async login(nick: string, password: string): Promise<string> {
@@ -28,7 +24,6 @@ export class AutogestionService {
       method: 'POST',
       headers: {
         Accept: '*/*',
-        'User-Agent': this.userAgent,
         nick,
         password,
       },
@@ -53,7 +48,6 @@ export class AutogestionService {
     const response = await fetch(`${this.baseUrl}/usuarios`, {
       headers: {
         Accept: '*/*',
-        'User-Agent': this.userAgent,
         nick,
         Authorization: `Basic ${auth}`,
       },

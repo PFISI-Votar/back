@@ -10,7 +10,6 @@ describe('AutogestionService', () => {
     get: jest.fn((key: string) => {
       const config: Record<string, string> = {
         AUTOGESTION_BASE_URL: 'https://autogestion.test',
-        AUTOGESTION_USER_AGENT: 'test-agent',
       };
       return config[key];
     }),
