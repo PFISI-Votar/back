@@ -20,6 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { CreateListaDto, UpdateListaDto } from '@/eleccion/lista/dto/lista.dto';
 import {
   ListaMapeoItemDto,
@@ -31,6 +32,7 @@ import { OficializacionService } from '@/eleccion/lista/services/oficializacion.
 import { MinimoCandidatosViolationResponseDto } from '@/eleccion/rules-engine/dto/minimo-candidatos-violation.dto';
 
 @ApiTags('listas')
+@AdminAuth()
 @Controller()
 export class ListaController {
   constructor(

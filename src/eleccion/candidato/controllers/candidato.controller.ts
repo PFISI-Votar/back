@@ -21,6 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { CandidatoService } from '@/eleccion/candidato/services/candidato.service';
 import { ConfiguracionDatosCandidatoService } from '@/eleccion/candidato/services/configuracion-datos-candidato.service';
 import {
@@ -34,6 +35,7 @@ import {
 } from '@/eleccion/candidato/dto/configuracion-datos-candidato.dto';
 
 @ApiTags('candidatos')
+@AdminAuth()
 @Controller()
 export class CandidatoController {
   constructor(

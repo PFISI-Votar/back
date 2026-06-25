@@ -3,7 +3,6 @@ import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 
 const BASE_URL = 'https://webservice.frvm.utn.edu.ar/autogestion';
-const USER_AGENT = 'votar-back-autogestion-script/1.0';
 
 const promptHidden = (query) =>
   new Promise((resolve) => {
@@ -67,7 +66,6 @@ const login = async (nick, password) => {
     method: 'POST',
     headers: {
       Accept: '*/*',
-      'User-Agent': USER_AGENT,
       nick,
       password,
     },
@@ -87,7 +85,6 @@ const fetchUsuario = async (nick, hash) => {
   const response = await fetch(`${BASE_URL}/usuarios`, {
     headers: {
       Accept: '*/*',
-      'User-Agent': USER_AGENT,
       nick,
       Authorization: `Basic ${auth}`,
     },

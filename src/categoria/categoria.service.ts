@@ -56,10 +56,8 @@ export class CategoriasService implements ICategoriaService {
     if (dto.nombre !== undefined) {
       this.assertNombreValido(dto.nombre);
     }
-    const minimo =
-      dto.minimoPostulantes ?? categoria.minimoPostulantes;
-    const maximo =
-      dto.maximoPostulantes ?? categoria.cantidadCargos;
+    const minimo = dto.minimoPostulantes ?? categoria.minimoPostulantes;
+    const maximo = dto.maximoPostulantes ?? categoria.cantidadCargos;
     this.assertMinimoMaximoValidos(minimo, maximo);
     if (dto.maximoPostulantes !== undefined) {
       const maxUsage =

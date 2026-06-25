@@ -11,6 +11,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
@@ -18,6 +19,7 @@ import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.i
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 
 @ApiTags('elecciones')
+@AdminAuth()
 @Controller('elecciones')
 export class EleccionesController implements IEleccionController {
   constructor(private readonly eleccionesService: EleccionesService) {}

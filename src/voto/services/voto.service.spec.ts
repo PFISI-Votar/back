@@ -1,7 +1,4 @@
-import {
-  BadRequestException,
-  ConflictException,
-} from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
@@ -155,9 +152,9 @@ describe('VotoService', () => {
     );
     const service = createService(repositories);
 
-    await expect(service.obtenerBoletaDigital(1, VOTANTE_HASH)).resolves.toEqual(
-      expect.objectContaining({ idEleccion: 1 })
-    );
+    await expect(
+      service.obtenerBoletaDigital(1, VOTANTE_HASH),
+    ).resolves.toEqual(expect.objectContaining({ idEleccion: 1 }));
   });
 
   it('rechaza más de una selección en la misma categoría', async () => {
