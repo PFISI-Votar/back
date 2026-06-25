@@ -57,7 +57,7 @@ export class CandidatoService {
       nombre: dto.nombre,
       apellido: dto.apellido,
       orden: dto.orden ?? 1,
-      fotoUrl: dto.fotoUrl ?? null,
+      fotoUrl: null,
       datosAdicionales: dto.datosAdicionales,
     });
     const saved = await this.candidatoRepository.save(candidato);
@@ -82,7 +82,6 @@ export class CandidatoService {
   ): Promise<CandidatoResponseDto> {
     const candidato = await this.findCandidatoWithEleccionOrFail(idCandidato);
     assertEleccionEditable(candidato.lista.boleta.eleccion);
-    let previousFotoUrl: string | null | undefined;
     if (dto.idCategoria !== undefined) {
       const categoria = await this.validateCategoriaBelongsToBoleta(
         dto.idCategoria,
@@ -104,10 +103,6 @@ export class CandidatoService {
     if (dto.orden !== undefined) {
       candidato.orden = dto.orden;
     }
-    if (dto.fotoUrl !== undefined) {
-      previousFotoUrl = candidato.fotoUrl;
-      candidato.fotoUrl = dto.fotoUrl;
-    }
     if (dto.datosAdicionales !== undefined) {
       const idEleccion = candidato.lista.boleta.eleccion.idEleccion;
       const campos =
@@ -121,9 +116,6 @@ export class CandidatoService {
       candidato.datosAdicionales = dto.datosAdicionales;
     }
     const saved = await this.candidatoRepository.save(candidato);
-    if (previousFotoUrl !== undefined && previousFotoUrl !== saved.fotoUrl) {
-      await this.electoralImageService.deleteIfManagedUrl(previousFotoUrl);
-    }
     return this.toResponse(
       await this.findCandidatoWithCategoriaOrFail(saved.idCandidato),
     );

@@ -37,12 +37,6 @@ export class CreateCandidatoDto {
   @Min(1)
   orden?: number;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  fotoUrl?: string;
-
   @ApiProperty({
     example: { legajo_utn: '14988', dni: '40123456', cantidad_avales: 3 },
     description:
@@ -80,12 +74,6 @@ export class UpdateCandidatoDto {
   @IsInt()
   @Min(1)
   orden?: number;
-
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  fotoUrl?: string;
 
   @ApiPropertyOptional({
     example: { legajo_utn: '14988', dni: '40123456', cantidad_avales: 3 },

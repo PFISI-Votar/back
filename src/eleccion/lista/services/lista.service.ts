@@ -35,7 +35,7 @@ export class ListaService {
       nombre: dto.nombre,
       sigla: dto.sigla,
       color: dto.color ?? null,
-      logoUrl: dto.logoUrl ?? null,
+      logoUrl: null,
       estado: EstadoLista.BORRADOR,
     });
     const saved = await this.listaRepository.save(lista);
@@ -59,7 +59,6 @@ export class ListaService {
   ): Promise<ListaResponseDto> {
     const lista = await this.findListaWithEleccionOrFail(idLista);
     assertEleccionEditable(lista.boleta.eleccion);
-    let previousLogoUrl: string | null | undefined;
     if (dto.nombre !== undefined) {
       lista.nombre = dto.nombre;
     }
@@ -69,14 +68,7 @@ export class ListaService {
     if (dto.color !== undefined) {
       lista.color = dto.color;
     }
-    if (dto.logoUrl !== undefined) {
-      previousLogoUrl = lista.logoUrl;
-      lista.logoUrl = dto.logoUrl;
-    }
     const saved = await this.listaRepository.save(lista);
-    if (previousLogoUrl !== undefined && previousLogoUrl !== saved.logoUrl) {
-      await this.electoralImageService.deleteIfManagedUrl(previousLogoUrl);
-    }
     const boletaWithCategorias = await this.boletaService.ensureBoleta(
       lista.boleta.eleccion.idEleccion,
     );
