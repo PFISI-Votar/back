@@ -1,8 +1,12 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform } from 'class-transformer';
 import {
-  IsArray, IsEnum, IsNotEmpty, IsOptional,
-  IsString, MaxLength,
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  MaxLength,
 } from 'class-validator';
 import {
   sanitizeOptionalPlainText,
@@ -43,7 +47,11 @@ export class CrearEleccionDto {
   @IsEnum(TipoVotacion)
   tipoVotacion: TipoVotacion;
 
-  @ApiProperty({ enum: MetodoAutenticacion, isArray: true, example: [MetodoAutenticacion.SSO_INSTITUCIONAL] })
+  @ApiProperty({
+    enum: MetodoAutenticacion,
+    isArray: true,
+    example: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+  })
   @IsArray()
   @IsEnum(MetodoAutenticacion, { each: true })
   metodosAutenticacion: MetodoAutenticacion[];

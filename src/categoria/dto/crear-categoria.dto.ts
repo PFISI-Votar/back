@@ -31,13 +31,18 @@ export class CrearCategoriaDto {
   })
   @IsOptional()
   @IsString()
-  @MaxLength(500, { message: 'La descripción no puede superar los 500 caracteres.' })
-  @Transform(({ value }: { value: unknown }) => sanitizeOptionalPlainText(value))
+  @MaxLength(500, {
+    message: 'La descripción no puede superar los 500 caracteres.',
+  })
+  @Transform(({ value }: { value: unknown }) =>
+    sanitizeOptionalPlainText(value),
+  )
   descripcion?: string;
 
   @ApiPropertyOptional({
     example: 0,
-    description: 'Mínimo de postulantes requeridos por lista para esta categoría.',
+    description:
+      'Mínimo de postulantes requeridos por lista para esta categoría.',
     default: 0,
   })
   @IsOptional()
@@ -47,7 +52,8 @@ export class CrearCategoriaDto {
 
   @ApiProperty({
     example: 1,
-    description: 'Máximo de postulantes permitidos por lista para esta categoría.',
+    description:
+      'Máximo de postulantes permitidos por lista para esta categoría.',
   })
   @IsInt({ message: 'El máximo de postulantes debe ser un número entero.' })
   @Min(1, { message: 'El máximo de postulantes debe ser al menos 1.' })

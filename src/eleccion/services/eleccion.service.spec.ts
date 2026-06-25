@@ -163,7 +163,6 @@ describe('EleccionesService', () => {
     expect(mockEleccionRepository.crearCompleta).not.toHaveBeenCalled();
   });
 
-
   it('UAT-04b: debe lanzar 422 si no hay métodos de autenticación', async () => {
     const dto = buildValidDto();
     mockConfigComicioService.assertMetodosAutenticacionValidos.mockImplementation(

@@ -3,7 +3,10 @@ import { ActualizarCategoriaDto } from '../dto/actualizar-categoria.dto';
 import { CrearCategoriaDto } from '../dto/crear-categoria.dto';
 
 export interface ICategoriaService {
-  crearCategoria(idEleccion: number, dto: CrearCategoriaDto): Promise<Categoria>;
+  crearCategoria(
+    idEleccion: number,
+    dto: CrearCategoriaDto,
+  ): Promise<Categoria>;
   actualizarCategoria(
     idEleccion: number,
     idCategoria: number,

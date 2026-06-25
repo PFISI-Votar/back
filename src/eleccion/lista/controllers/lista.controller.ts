@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { CreateListaDto, UpdateListaDto } from '@/eleccion/lista/dto/lista.dto';
 import {
   ListaMapeoItemDto,
@@ -20,6 +21,7 @@ import { OficializacionService } from '@/eleccion/lista/services/oficializacion.
 import { MinimoCandidatosViolationResponseDto } from '@/eleccion/rules-engine/dto/minimo-candidatos-violation.dto';
 
 @ApiTags('listas')
+@AdminAuth()
 @Controller()
 export class ListaController {
   constructor(

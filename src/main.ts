@@ -1,11 +1,23 @@
 import '@/common/bootstrap/setup-timezone';
 import { ValidationPipe } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import cookieParser from 'cookie-parser';
 import { AppModule } from '@/app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
+
+  app.use(cookieParser());
+
+  const frontendUrl =
+    configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
+  app.enableCors({
+    origin: frontendUrl,
+    credentials: true,
+  });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -14,8 +26,6 @@ async function bootstrap() {
       transform: true,
     }),
   );
-
-  app.enableCors();
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('VOTAR API')

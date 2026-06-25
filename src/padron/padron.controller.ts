@@ -12,7 +12,6 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
-  ApiBearerAuth,
   ApiBody,
   ApiConsumes,
   ApiOperation,
@@ -20,6 +19,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { ImportarPadronResponseDto } from './dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from './dto/listar-votantes-response.dto';
 import { PaginacionPadronQueryDto } from './dto/paginacion-padron-query.dto';
@@ -29,7 +29,7 @@ import { IPadronController } from './interfaces/padron.controller.interface';
 import { PadronService } from './padron.service';
 
 @ApiTags('padron')
-@ApiBearerAuth()
+@AdminAuth()
 @Controller('elecciones/:idEleccion/padron')
 export class PadronController implements IPadronController {
   constructor(private readonly padronService: PadronService) {}
