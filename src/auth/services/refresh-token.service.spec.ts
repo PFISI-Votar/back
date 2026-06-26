@@ -15,7 +15,7 @@ describe('RefreshTokenService', () => {
   beforeEach(async () => {
     repository = {
       create: jest.fn((data) => data as RefreshSession),
-      save: jest.fn(async (entity) => entity as RefreshSession),
+      save: jest.fn((entity) => entity as RefreshSession),
       findOne: jest.fn(),
     };
 

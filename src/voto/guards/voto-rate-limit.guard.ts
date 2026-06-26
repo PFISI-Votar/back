@@ -5,7 +5,7 @@ import {
   HttpStatus,
   Injectable,
 } from '@nestjs/common';
-import type { VotanteRequest } from '@/voto/guards/votante-session.guard';
+import type { VoterAuthenticatedRequest } from '@/auth/interfaces/voter-authenticated-request.interface';
 
 const WINDOW_MS = 60_000;
 const MAX_ATTEMPTS = 5;
@@ -15,9 +15,11 @@ export class VotoRateLimitGuard implements CanActivate {
   private readonly attempts = new Map<string, number[]>();
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<VotanteRequest>();
+    const request = context
+      .switchToHttp()
+      .getRequest<VoterAuthenticatedRequest>();
     const idEleccion = String(request.params.idEleccion);
-    const votanteHash = request.votanteHash ?? request.ip ?? 'anonimo';
+    const votanteHash = request.user?.votanteHash ?? request.ip ?? 'anonimo';
     const key = `${idEleccion}:${votanteHash}`;
     const now = Date.now();
     const recentAttempts = (this.attempts.get(key) ?? []).filter(

@@ -7,7 +7,8 @@ import { ACCESS_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
 import { JwtPayload } from '@/auth/interfaces/jwt-payload.interface';
 
 const extractAccessTokenFromCookie = (request: Request): string | null => {
-  const token = request.cookies?.[ACCESS_COOKIE_NAME];
+  const cookies = request.cookies as Record<string, unknown> | undefined;
+  const token = cookies?.[ACCESS_COOKIE_NAME];
   if (typeof token === 'string' && token.length > 0) {
     return token;
   }

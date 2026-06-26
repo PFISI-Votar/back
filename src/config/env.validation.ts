@@ -12,6 +12,7 @@ export const envValidationSchema = Joi.object({
   UPLOADS_DIR: Joi.string().default('uploads'),
   JWT_SECRET: Joi.string().min(16).required(),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
+  JWT_VOTER_ACCESS_EXPIRES_IN: Joi.string().default('30m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('8h'),
   JWT_EXPIRES_IN: Joi.string().optional(),
   AUTOGESTION_BASE_URL: Joi.string()

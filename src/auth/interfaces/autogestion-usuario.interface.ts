@@ -4,6 +4,9 @@ export interface AutogestionPersona {
   apellido?: string;
   email?: string;
   mail?: string;
+  dni?: string;
+  documento?: string;
+  numeroDocumento?: string;
 }
 
 export interface AutogestionUsuarioResponse {

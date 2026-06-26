@@ -1,5 +1,12 @@
-import { BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
+import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { VotoConfirmacionEstado } from '@/voto/entities/voto-confirmacion.entity';
@@ -23,12 +30,14 @@ const createRepositories = () => {
         idEleccion: 1,
         nombre: 'Comicio UTN',
         estado: EleccionEstado.ABIERTA,
+        tipoVotacion: TipoVotacion.POR_LISTA,
       }),
     },
     configuracionRepository: {
       findOne: jest.fn().mockResolvedValue({
         idEleccion: 1,
         permitirVotoEnBlanco: false,
+        metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
       }),
     },
     boletaRepository: {
@@ -123,6 +132,30 @@ const createService = (repositories = createRepositories()) =>
   );
 
 describe('VotoService', () => {
+  it('devuelve la configuración pública de la BUD sin autenticación', async () => {
+    const service = createService();
+
+    const actual = await service.obtenerConfiguracionBud(1);
+
+    expect(actual).toEqual({
+      idEleccion: 1,
+      nombre: 'Comicio UTN',
+      estado: EleccionEstado.ABIERTA,
+      tipoVotacion: TipoVotacion.POR_LISTA,
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+    });
+  });
+
+  it('lanza NotFoundException si el comicio no existe al obtener configuración BUD', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue(null);
+    const service = createService(repositories);
+
+    await expect(service.obtenerConfiguracionBud(99)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
   it('devuelve la boleta digital ordenada y con foto nullable', async () => {
     const repositories = createRepositories();
     const service = createService(repositories);
@@ -145,16 +178,16 @@ describe('VotoService', () => {
     });
   });
 
-  it('permite obtener la boleta con sesión demo sin validar padrón', async () => {
+  it('rechaza la boleta cuando el votante no está habilitado en el padrón', async () => {
     const repositories = createRepositories();
     repositories.padronVotanteRepository.createQueryBuilder.mockReturnValue(
       createQueryBuilderMock(0),
     );
     const service = createService(repositories);
 
-    await expect(
-      service.obtenerBoletaDigital(1, VOTANTE_HASH),
-    ).resolves.toEqual(expect.objectContaining({ idEleccion: 1 }));
+    await expect(service.obtenerBoletaDigital(1, VOTANTE_HASH)).rejects.toThrow(
+      ForbiddenException,
+    );
   });
 
   it('rechaza más de una selección en la misma categoría', async () => {
