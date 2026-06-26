@@ -10,6 +10,7 @@ import { ConfiguracionDatosCandidatoService } from '@/eleccion/candidato/service
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { ListaModule } from '@/eleccion/lista/lista.module';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
+import { ElectoralImageService } from '@/common/images/electoral-image.service';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
     CandidatoService,
     ConfiguracionDatosCandidatoService,
     CandidatoDatosValidatorService,
+    ElectoralImageService,
   ],
   exports: [ConfiguracionDatosCandidatoService, CandidatoService],
 })

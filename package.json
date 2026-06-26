@@ -21,6 +21,9 @@
     "test:e2e": "jest --config ./test/jest-e2e.json",
     "makemigrations": "node -r tsconfig-paths/register ./node_modules/typeorm/cli-ts-node-commonjs.js migration:generate -d src/database/data-source.ts src/database/migrations/migration",
     "migrate": "node -r tsconfig-paths/register ./node_modules/typeorm/cli-ts-node-commonjs.js migration:run -d src/database/data-source.ts",
+    "seed:nacionales-2023": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-nacionales-2023.ts",
+    "seed:paso": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-paso.ts",
+    "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-demo.ts",
     "admin:register": "node scripts/register-election-admin.mjs"
   },
   "dependencies": {
@@ -47,6 +50,7 @@
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
     "sanitize-html": "^2.17.5",
+    "sharp": "^0.35.2",
     "typeorm": "^0.3.20"
   },
   "devDependencies": {

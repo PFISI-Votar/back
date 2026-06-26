@@ -7,6 +7,7 @@ import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
+import { ElectoralImageService } from '@/common/images/electoral-image.service';
 
 const mockEleccion: Eleccion = {
   idEleccion: 1,
@@ -47,6 +48,11 @@ describe('ListaService', () => {
     findBoletaByEleccion: jest.fn(),
   };
 
+  const mockElectoralImageService = {
+    saveImage: jest.fn(),
+    deleteIfManagedUrl: jest.fn(),
+  };
+
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -57,6 +63,7 @@ describe('ListaService', () => {
           useValue: mockEleccionRepository,
         },
         { provide: BoletaService, useValue: mockBoletaService },
+        { provide: ElectoralImageService, useValue: mockElectoralImageService },
       ],
     }).compile();
 

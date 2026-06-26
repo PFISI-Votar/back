@@ -10,6 +10,7 @@ import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
+import { ElectoralImageService } from '@/common/images/electoral-image.service';
 
 @Injectable()
 export class ListaService {
@@ -19,6 +20,7 @@ export class ListaService {
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
     private readonly boletaService: BoletaService,
+    private readonly electoralImageService: ElectoralImageService,
   ) {}
 
   async create(
@@ -33,6 +35,7 @@ export class ListaService {
       nombre: dto.nombre,
       sigla: dto.sigla,
       color: dto.color ?? null,
+      logoUrl: null,
       estado: EstadoLista.BORRADOR,
     });
     const saved = await this.listaRepository.save(lista);
@@ -72,10 +75,57 @@ export class ListaService {
     return this.toResponse(saved, false, boletaWithCategorias);
   }
 
+  async updateLogo(
+    idLista: number,
+    file: Express.Multer.File,
+  ): Promise<ListaResponseDto> {
+    const lista = await this.findListaWithEleccionOrFail(idLista);
+    assertEleccionEditable(lista.boleta.eleccion);
+
+    const previousLogoUrl = lista.logoUrl;
+    const nextLogoUrl = await this.electoralImageService.saveImage(
+      file,
+      'lista-logo',
+    );
+
+    try {
+      lista.logoUrl = nextLogoUrl;
+      const saved = await this.listaRepository.save(lista);
+      await this.electoralImageService.deleteIfManagedUrl(previousLogoUrl);
+      const boletaWithCategorias = await this.boletaService.ensureBoleta(
+        lista.boleta.eleccion.idEleccion,
+      );
+      return this.toResponse(saved, false, boletaWithCategorias);
+    } catch (error) {
+      await this.electoralImageService.deleteIfManagedUrl(nextLogoUrl);
+      throw error;
+    }
+  }
+
+  async removeLogo(idLista: number): Promise<ListaResponseDto> {
+    const lista = await this.findListaWithEleccionOrFail(idLista);
+    assertEleccionEditable(lista.boleta.eleccion);
+
+    const previousLogoUrl = lista.logoUrl;
+    lista.logoUrl = null;
+    const saved = await this.listaRepository.save(lista);
+    await this.electoralImageService.deleteIfManagedUrl(previousLogoUrl);
+    const boletaWithCategorias = await this.boletaService.ensureBoleta(
+      lista.boleta.eleccion.idEleccion,
+    );
+    return this.toResponse(saved, false, boletaWithCategorias);
+  }
+
   async remove(idLista: number): Promise<void> {
     const lista = await this.findListaWithEleccionOrFail(idLista);
     assertEleccionEditable(lista.boleta.eleccion);
     await this.listaRepository.remove(lista);
+    await this.electoralImageService.deleteIfManagedUrl(lista.logoUrl);
+    await Promise.all(
+      (lista.candidatos ?? []).map((candidato) =>
+        this.electoralImageService.deleteIfManagedUrl(candidato.fotoUrl),
+      ),
+    );
   }
 
   async findListaWithEleccionOrFail(idLista: number): Promise<Lista> {
@@ -115,6 +165,7 @@ export class ListaService {
       nombre: lista.nombre,
       sigla: lista.sigla,
       color: lista.color,
+      logoUrl: lista.logoUrl,
       estado: lista.estado,
       listId: lista.listId,
       fechaOficializacion: lista.fechaOficializacion,

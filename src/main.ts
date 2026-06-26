@@ -1,13 +1,15 @@
 import '@/common/bootstrap/setup-timezone';
+import { join } from 'node:path';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '@/app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
 
   app.use(cookieParser());
@@ -25,6 +27,13 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
       transform: true,
     }),
+  );
+
+  app.useStaticAssets(
+    join(process.cwd(), process.env.UPLOADS_DIR ?? 'uploads'),
+    {
+      prefix: '/uploads/',
+    },
   );
 
   const swaggerConfig = new DocumentBuilder()

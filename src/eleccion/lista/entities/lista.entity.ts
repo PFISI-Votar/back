@@ -31,6 +31,9 @@ export class Lista {
   @Column({ name: 'color', type: 'varchar', nullable: true })
   color: string | null;
 
+  @Column({ name: 'logo_url', type: 'varchar', nullable: true })
+  logoUrl: string | null;
+
   @Column({ name: 'fecha_oficializacion', type: 'timestamptz', nullable: true })
   fechaOficializacion: Date | null;
 

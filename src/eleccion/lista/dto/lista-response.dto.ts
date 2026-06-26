@@ -18,6 +18,9 @@ export class ListaResponseDto {
   @ApiPropertyOptional()
   color: string | null;
 
+  @ApiPropertyOptional()
+  logoUrl: string | null;
+
   @ApiProperty()
   estado: string;
 

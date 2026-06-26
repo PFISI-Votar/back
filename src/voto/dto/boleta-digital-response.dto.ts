@@ -37,6 +37,9 @@ export class CandidatoBoletaDigitalDto {
   colorLista: string | null;
 
   @ApiPropertyOptional({ nullable: true })
+  logoListaUrl: string | null;
+
+  @ApiPropertyOptional({ nullable: true })
   fotoUrl: string | null;
 }
 
