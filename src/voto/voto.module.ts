@@ -7,9 +7,9 @@ import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
+import { BudPublicController } from '@/voto/controllers/bud-public.controller';
 import { VotoController } from '@/voto/controllers/voto.controller';
 import { VotoConfirmacion } from '@/voto/entities/voto-confirmacion.entity';
-import { VotanteSessionGuard } from '@/voto/guards/votante-session.guard';
 import { VotoRateLimitGuard } from '@/voto/guards/voto-rate-limit.guard';
 import { VotoService } from '@/voto/services/voto.service';
 
@@ -26,7 +26,7 @@ import { VotoService } from '@/voto/services/voto.service';
       VotoConfirmacion,
     ]),
   ],
-  controllers: [VotoController],
-  providers: [VotoService, VotanteSessionGuard, VotoRateLimitGuard],
+  controllers: [BudPublicController, VotoController],
+  providers: [VotoService, VotoRateLimitGuard],
 })
 export class VotoModule {}

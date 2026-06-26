@@ -23,6 +23,11 @@
 
 ## Description
 
+API backend del proyecto **VOTAR** (NestJS). Incluye autenticación de Autoridad Electoral y **login de votante BUD (US-312)**.
+
+- Guía UAT votante: [`docs/us-312-voter-login-uat.md`](docs/us-312-voter-login-uat.md)
+- Swagger local: `http://localhost:{PORT}/api` → tag `auth-votante`
+
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
 ## Project setup

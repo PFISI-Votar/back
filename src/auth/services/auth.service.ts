@@ -39,9 +39,7 @@ export class AuthService {
     const hash = await this.autogestionService.login(nick, dto.password);
     const usuario = await this.autogestionService.fetchUsuario(nick, hash);
     if (!usuario.persona) {
-      throw new UnauthorizedException(
-        'No se encontraron datos de persona para este usuario',
-      );
+      throw new UnauthorizedException('Credenciales institucionales inválidas');
     }
     const persona = usuario.persona;
     const sub = persona.legajo?.toString() ?? nick;

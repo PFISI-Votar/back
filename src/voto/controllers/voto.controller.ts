@@ -10,32 +10,28 @@ import {
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
-  ApiHeader,
   ApiOperation,
   ApiParam,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { Roles } from '@/auth/decorators/roles.decorator';
+import { JwtRole } from '@/auth/enums/jwt-role.enum';
+import { RolesGuard } from '@/auth/guards/roles.guard';
+import { VoterElectionGuard } from '@/auth/guards/voter-election.guard';
+import { VoterJwtAuthGuard } from '@/auth/guards/voter-jwt-auth.guard';
+import type { VoterAuthenticatedRequest } from '@/auth/interfaces/voter-authenticated-request.interface';
 import { BoletaDigitalResponseDto } from '@/voto/dto/boleta-digital-response.dto';
 import { ConfirmarVotoDto } from '@/voto/dto/confirmar-voto.dto';
 import { ConfirmarVotoResponseDto } from '@/voto/dto/confirmar-voto-response.dto';
-import {
-  VotanteSessionGuard,
-  VOTANTE_TOKEN_HEADER,
-} from '@/voto/guards/votante-session.guard';
-import type { VotanteRequest } from '@/voto/guards/votante-session.guard';
 import { VotoRateLimitGuard } from '@/voto/guards/voto-rate-limit.guard';
 import { VotoService } from '@/voto/services/voto.service';
 
 @ApiTags('voto')
 @ApiBearerAuth()
-@ApiHeader({
-  name: VOTANTE_TOKEN_HEADER,
-  description: 'Token de sesión de votante. MVP: hash de hoja del padrón.',
-  required: true,
-})
 @Controller('elecciones/:idEleccion')
-@UseGuards(VotanteSessionGuard)
+@UseGuards(VoterJwtAuthGuard, RolesGuard, VoterElectionGuard)
+@Roles(JwtRole.VOTER)
 export class VotoController {
   constructor(private readonly votoService: VotoService) {}
 
@@ -48,11 +44,11 @@ export class VotoController {
   @ApiResponse({ status: 404, description: 'Comicio o boleta no encontrada' })
   obtenerBoletaDigital(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
-    @Req() request: VotanteRequest,
+    @Req() request: VoterAuthenticatedRequest,
   ): Promise<BoletaDigitalResponseDto> {
     return this.votoService.obtenerBoletaDigital(
       idEleccion,
-      request.votanteHash,
+      request.user.votanteHash,
     );
   }
 
@@ -72,8 +68,12 @@ export class VotoController {
   confirmarVoto(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
     @Body() dto: ConfirmarVotoDto,
-    @Req() request: VotanteRequest,
+    @Req() request: VoterAuthenticatedRequest,
   ): Promise<ConfirmarVotoResponseDto> {
-    return this.votoService.confirmarVoto(idEleccion, dto, request.votanteHash);
+    return this.votoService.confirmarVoto(
+      idEleccion,
+      dto,
+      request.user.votanteHash,
+    );
   }
 }

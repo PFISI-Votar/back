@@ -7,6 +7,7 @@ import { PadronController } from './padron.controller';
 import { PadronService } from './padron.service';
 import { PadronRepository } from './padron.repository';
 import { PADRON_REPOSITORY } from './interfaces/padron.repository.interface';
+import { PadronEligibilityService } from './services/padron-eligibility.service';
 
 @Module({
   imports: [
@@ -15,10 +16,12 @@ import { PADRON_REPOSITORY } from './interfaces/padron.repository.interface';
   controllers: [PadronController],
   providers: [
     PadronService,
+    PadronEligibilityService,
     {
       provide: PADRON_REPOSITORY,
       useClass: PadronRepository,
     },
   ],
+  exports: [PadronEligibilityService],
 })
 export class PadronModule {}

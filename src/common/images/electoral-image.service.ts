@@ -71,7 +71,10 @@ export class ElectoralImageService {
     const targetPath = resolve(this.uploadRoot, relativePath);
     const rootWithSeparator = `${this.uploadRoot}${sep}`;
 
-    if (targetPath !== this.uploadRoot && !targetPath.startsWith(rootWithSeparator)) {
+    if (
+      targetPath !== this.uploadRoot &&
+      !targetPath.startsWith(rootWithSeparator)
+    ) {
       return;
     }
 

@@ -19,6 +19,7 @@ import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
+import { BudConfigResponseDto } from '@/voto/dto/bud-config-response.dto';
 import {
   BoletaDigitalResponseDto,
   CandidatoBoletaDigitalDto,
@@ -65,10 +66,35 @@ export class VotoService {
     private readonly votoConfirmacionRepository: Repository<VotoConfirmacion>,
   ) {}
 
+  async obtenerConfiguracionBud(
+    idEleccion: number,
+  ): Promise<BudConfigResponseDto> {
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      throw new NotFoundException('Comicio no encontrado');
+    }
+    const configuracion = await this.configuracionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!configuracion) {
+      throw new NotFoundException('Configuración del comicio no encontrada');
+    }
+    return {
+      idEleccion: eleccion.idEleccion,
+      nombre: eleccion.nombre,
+      estado: eleccion.estado,
+      tipoVotacion: eleccion.tipoVotacion,
+      metodosAutenticacion: configuracion.metodosAutenticacion,
+    };
+  }
+
   async obtenerBoletaDigital(
     idEleccion: number,
     votanteHash: string,
   ): Promise<BoletaDigitalResponseDto> {
+    await this.assertVotanteHabilitado(idEleccion, votanteHash);
     const oferta = await this.obtenerOfertaVoto(idEleccion);
 
     return {
@@ -87,6 +113,7 @@ export class VotoService {
     dto: ConfirmarVotoDto,
     votanteHash: string,
   ): Promise<ConfirmarVotoResponseDto> {
+    await this.assertVotanteHabilitado(idEleccion, votanteHash);
     const oferta = await this.obtenerOfertaVoto(idEleccion);
     this.validarSelecciones(oferta, dto);
 
