@@ -1,0 +1,6 @@
+export enum MerkleTreeEstado {
+  GENERADO = 'GENERADO',
+  ACTIVO = 'ACTIVO',
+  PUBLICADO_ON_CHAIN = 'PUBLICADO_ON_CHAIN',
+  OBSOLETO = 'OBSOLETO',
+}

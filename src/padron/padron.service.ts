@@ -12,11 +12,14 @@ import { ListarVotantesResponseDto } from './dto/listar-votantes-response.dto';
 import { NovedadPadronDto } from './dto/novedad-padron.dto';
 import { PadronResumenResponseDto } from './dto/padron-resumen-response.dto';
 import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dto';
+import { MerkleProofResponseDto } from './dto/merkle-proof-response.dto';
+import { MerkleResumenResponseDto } from './dto/merkle-resumen-response.dto';
 import { TipoNovedad } from './enums/tipo-novedad.enum';
 import { IPadronService } from './interfaces/padron.service.interface';
 import { PADRON_REPOSITORY } from './interfaces/padron.repository.interface';
 import type { IPadronRepository } from './interfaces/padron.repository.interface';
-import { hashPadron, hashVotante } from './utils/keccak.util';
+import { MerkleBuilderService } from './services/merkle-builder.service';
+import { hashVotante } from './utils/keccak.util';
 
 const REGEX_DNI = /^\d{7,9}$/;
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -32,6 +35,7 @@ export class PadronService implements IPadronService {
   constructor(
     @Inject(PADRON_REPOSITORY)
     private readonly padronRepository: IPadronRepository,
+    private readonly merkleBuilderService: MerkleBuilderService,
   ) {}
 
   async importarPadron(
@@ -81,10 +85,14 @@ export class PadronService implements IPadronService {
       };
     }
 
+    const merkleResult = this.merkleBuilderService.buildFromLeaves(hashesHoja);
+
     const padron = await this.padronRepository.crearPadronConVotantes({
       idEleccion,
-      hashPadron: hashPadron(hashesHoja),
-      hashesHoja,
+      hashPadron: merkleResult.merkleRootCompact,
+      sortedLeaves: merkleResult.sortedLeaves,
+      merkleRoot: merkleResult.merkleRoot,
+      merkleTreeDump: merkleResult.treeDump,
       totalProcesados,
       totalOmitidos: novedades.length,
       novedades,
@@ -184,6 +192,55 @@ export class PadronService implements IPadronService {
       );
     }
     await this.padronRepository.eliminarPadronPorEleccion(idEleccion);
+  }
+
+  async obtenerMerkle(idEleccion: number): Promise<MerkleResumenResponseDto> {
+    const merkle =
+      await this.padronRepository.obtenerMerklePorEleccion(idEleccion);
+    if (!merkle) {
+      throw new NotFoundException(
+        `La elección ${idEleccion} no tiene un árbol Merkle consolidado.`,
+      );
+    }
+    return {
+      merkleRoot: merkle.merkleRoot,
+      totalHojas: merkle.totalHojas,
+      version: merkle.version,
+      estado: merkle.estado,
+      fechaGeneracion: merkle.fechaGeneracion,
+    };
+  }
+
+  async obtenerProofVotante(
+    idEleccion: number,
+    hashHoja: string,
+  ): Promise<MerkleProofResponseDto> {
+    const votante = await this.padronRepository.buscarVotantePorHash(
+      idEleccion,
+      hashHoja,
+    );
+    if (!votante) {
+      throw new NotFoundException(
+        `No se encontró la hoja ${hashHoja} en el padrón de la elección ${idEleccion}.`,
+      );
+    }
+    const merkle =
+      await this.padronRepository.obtenerMerklePorEleccion(idEleccion);
+    if (!merkle) {
+      throw new NotFoundException(
+        `La elección ${idEleccion} no tiene un árbol Merkle consolidado.`,
+      );
+    }
+    const merkleProof = this.merkleBuilderService.getProof(
+      merkle.treeDump,
+      votante.indiceHoja,
+    );
+    return {
+      hashHoja: votante.hashHoja,
+      indiceHoja: votante.indiceHoja,
+      merkleProof,
+      merkleRoot: merkle.merkleRoot,
+    };
   }
 
   private validarArchivo(archivo: Express.Multer.File): void {

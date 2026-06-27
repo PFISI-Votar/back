@@ -25,6 +25,8 @@ import { ListarVotantesResponseDto } from './dto/listar-votantes-response.dto';
 import { PaginacionPadronQueryDto } from './dto/paginacion-padron-query.dto';
 import { PadronResumenResponseDto } from './dto/padron-resumen-response.dto';
 import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dto';
+import { MerkleProofResponseDto } from './dto/merkle-proof-response.dto';
+import { MerkleResumenResponseDto } from './dto/merkle-resumen-response.dto';
 import { IPadronController } from './interfaces/padron.controller.interface';
 import { PadronService } from './padron.service';
 
@@ -113,10 +115,58 @@ export class PadronController implements IPadronController {
     return this.padronService.obtenerReporteNovedades(idEleccion);
   }
 
+  @Get('merkle')
+  @ApiOperation({
+    summary:
+      'Obtener el sello de integridad Merkle del padrón consolidado (VOTAR-334)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Resumen del árbol Merkle del padrón',
+    type: MerkleResumenResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'La elección no tiene padrón consolidado',
+  })
+  async obtenerMerkle(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<MerkleResumenResponseDto> {
+    return this.padronService.obtenerMerkle(idEleccion);
+  }
+
+  @Get('votantes/:hashHoja/proof')
+  @ApiOperation({
+    summary:
+      'Obtener la prueba de pertenencia Merkle de una hoja del padrón (auditoría, VOTAR-334)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiParam({
+    name: 'hashHoja',
+    type: String,
+    description: 'Hash Keccak-256 de la hoja (64 hex, sin 0x)',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Prueba de pertenencia calculada on-demand',
+    type: MerkleProofResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Hoja o árbol Merkle no encontrado',
+  })
+  async obtenerProofVotante(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Param('hashHoja') hashHoja: string,
+  ): Promise<MerkleProofResponseDto> {
+    return this.padronService.obtenerProofVotante(idEleccion, hashHoja);
+  }
+
   @Get('votantes')
   @ApiOperation({
     summary:
-      'Listar las hojas del padrón (hash Keccak-256 + índice) de forma paginada, para auditoría',
+      'Listar las hojas del padrón (hash Keccak-256 + índice Merkle canónico) de forma paginada, para auditoría',
   })
   @ApiParam({ name: 'idEleccion', type: Number })
   @ApiResponse({

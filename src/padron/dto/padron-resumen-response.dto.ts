@@ -23,7 +23,8 @@ export class PadronResumenResponseDto {
 
   @ApiProperty({
     example: 'a1b2c3…',
-    description: 'Hash Keccak-256 del padrón completo (64 hex)',
+    description:
+      'Raíz Merkle Keccak-256 del padrón (64 hex, sin prefijo 0x). Sello de integridad del comicio.',
   })
   hashPadron: string;
 

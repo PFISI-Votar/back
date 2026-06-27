@@ -10,6 +10,7 @@ import {
 import { Eleccion } from '../../eleccion/entities/eleccion.entity';
 import { NovedadPadronDto } from '../dto/novedad-padron.dto';
 import { PadronEstado } from '../enums/padron-estado.enum';
+import { MerkleTree } from './merkle-tree.entity';
 import { PadronVotante } from './padron-votante.entity';
 
 /**
@@ -62,4 +63,9 @@ export class PadronElectoral {
     cascade: true,
   })
   votantes: PadronVotante[];
+
+  @OneToOne(() => MerkleTree, (merkleTree) => merkleTree.padron, {
+    cascade: true,
+  })
+  merkleTree: MerkleTree;
 }

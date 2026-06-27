@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Eleccion } from '../eleccion/entities/eleccion.entity';
+import { MerkleTree } from './entities/merkle-tree.entity';
 import { PadronElectoral } from './entities/padron-electoral.entity';
 import { PadronVotante } from './entities/padron-votante.entity';
+import { MerkleTreeEstado } from './enums/merkle-tree-estado.enum';
 import { PadronEstado } from './enums/padron-estado.enum';
 import {
   CrearPadronInput,
@@ -15,6 +17,8 @@ export class PadronRepository implements IPadronRepository {
   constructor(
     @InjectRepository(PadronElectoral)
     private readonly padronRepository: Repository<PadronElectoral>,
+    @InjectRepository(MerkleTree)
+    private readonly merkleTreeRepository: Repository<MerkleTree>,
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
     private readonly dataSource: DataSource,
@@ -36,6 +40,24 @@ export class PadronRepository implements IPadronRepository {
   ): Promise<PadronElectoral | null> {
     return this.padronRepository.findOne({
       where: { eleccion: { idEleccion } },
+    });
+  }
+
+  obtenerMerklePorEleccion(idEleccion: number): Promise<MerkleTree | null> {
+    return this.merkleTreeRepository.findOne({
+      where: { padron: { eleccion: { idEleccion } } },
+    });
+  }
+
+  buscarVotantePorHash(
+    idEleccion: number,
+    hashHoja: string,
+  ): Promise<PadronVotante | null> {
+    return this.dataSource.getRepository(PadronVotante).findOne({
+      where: {
+        hashHoja,
+        padron: { eleccion: { idEleccion } },
+      },
     });
   }
 
@@ -74,7 +96,7 @@ export class PadronRepository implements IPadronRepository {
     return this.dataSource.transaction(async (manager) => {
       const padron = manager.create(PadronElectoral, {
         eleccion: { idEleccion: input.idEleccion } as Eleccion,
-        totalVotantesHabilitados: input.hashesHoja.length,
+        totalVotantesHabilitados: input.sortedLeaves.length,
         hashPadron: input.hashPadron,
         estado: PadronEstado.BORRADOR,
         totalProcesados: input.totalProcesados,
@@ -83,7 +105,7 @@ export class PadronRepository implements IPadronRepository {
       });
       const padronGuardado = await manager.save(padron);
 
-      const votantes = input.hashesHoja.map((hashHoja, indiceHoja) =>
+      const votantes = input.sortedLeaves.map(({ hashHoja, indiceHoja }) =>
         manager.create(PadronVotante, {
           padron: padronGuardado,
           indiceHoja,
@@ -91,6 +113,16 @@ export class PadronRepository implements IPadronRepository {
         }),
       );
       await manager.save(votantes);
+
+      const merkleTree = manager.create(MerkleTree, {
+        padron: padronGuardado,
+        merkleRoot: input.merkleRoot,
+        totalHojas: input.sortedLeaves.length,
+        version: 1,
+        estado: MerkleTreeEstado.GENERADO,
+        treeDump: input.merkleTreeDump,
+      });
+      await manager.save(merkleTree);
 
       return padronGuardado;
     });
