@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Eleccion } from '../eleccion/entities/eleccion.entity';
@@ -107,6 +108,7 @@ export class PadronRepository implements IPadronRepository {
 
       const votantes = input.sortedLeaves.map(({ hashHoja, indiceHoja }) =>
         manager.create(PadronVotante, {
+          idPadronVotante: randomUUID(),
           padron: padronGuardado,
           indiceHoja,
           hashHoja,

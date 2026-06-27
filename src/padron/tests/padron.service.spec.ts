@@ -14,6 +14,8 @@ import { PadronEstado } from '../enums/padron-estado.enum';
 import { TipoNovedad } from '../enums/tipo-novedad.enum';
 import { EleccionEstado } from '../../eleccion/enums/eleccion-estado.enum';
 import { MerkleBuilderService } from '../services/merkle-builder.service';
+import { MerkleTreeEstado } from '../enums/merkle-tree-estado.enum';
+import { hashVotante } from '../utils/keccak.util';
 
 const REGEX_KECCAK = /^[0-9a-f]{64}$/;
 const ID_ELECCION = 42;
@@ -23,6 +25,8 @@ const mockPadronRepository = {
   existePadronParaEleccion: jest.fn(),
   crearPadronConVotantes: jest.fn(),
   obtenerPadronPorEleccion: jest.fn(),
+  obtenerMerklePorEleccion: jest.fn(),
+  buscarVotantePorHash: jest.fn(),
   listarVotantesPaginado: jest.fn(),
   eliminarPadronPorEleccion: jest.fn(),
 };
@@ -551,6 +555,100 @@ describe('PadronService', () => {
       expect(
         mockPadronRepository.eliminarPadronPorEleccion,
       ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('obtenerMerkle', () => {
+    it('debe devolver el resumen del árbol Merkle consolidado', async () => {
+      const fechaGeneracion = new Date('2026-06-20T00:00:00Z');
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue({
+        merkleRoot: `0x${'a'.repeat(64)}`,
+        totalHojas: 4,
+        version: 1,
+        estado: MerkleTreeEstado.GENERADO,
+        fechaGeneracion,
+      });
+
+      const actual = await service.obtenerMerkle(ID_ELECCION);
+
+      expect(actual).toEqual({
+        merkleRoot: `0x${'a'.repeat(64)}`,
+        totalHojas: 4,
+        version: 1,
+        estado: MerkleTreeEstado.GENERADO,
+        fechaGeneracion,
+      });
+    });
+
+    it('debe rechazar (404) si la elección no tiene árbol Merkle', async () => {
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue(null);
+
+      await expect(service.obtenerMerkle(ID_ELECCION)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('obtenerProofVotante', () => {
+    it('debe calcular una proof válida on-demand para una hoja del padrón', async () => {
+      const merkleBuilder = new MerkleBuilderService();
+      const leaves = [
+        hashVotante('30111222', 'ana@frvm.utn.edu.ar'),
+        hashVotante('30222333', 'bruno@frvm.utn.edu.ar'),
+        hashVotante('30333444', 'carla@frvm.utn.edu.ar'),
+      ];
+      const { merkleRoot, treeDump, sortedLeaves } =
+        merkleBuilder.buildFromLeaves(leaves);
+      const targetLeaf = sortedLeaves[1];
+
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue({
+        hashHoja: targetLeaf.hashHoja,
+        indiceHoja: targetLeaf.indiceHoja,
+      });
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue({
+        merkleRoot,
+        treeDump,
+      });
+
+      const actual = await service.obtenerProofVotante(
+        ID_ELECCION,
+        targetLeaf.hashHoja,
+      );
+
+      expect(actual.hashHoja).toBe(targetLeaf.hashHoja);
+      expect(actual.indiceHoja).toBe(targetLeaf.indiceHoja);
+      expect(actual.merkleRoot).toBe(merkleRoot);
+      expect(actual.merkleProof.length).toBeGreaterThan(0);
+      expect(
+        merkleBuilder.verifyProof(
+          treeDump,
+          targetLeaf.hashHoja,
+          actual.merkleProof,
+        ),
+      ).toBe(true);
+    });
+
+    it('debe rechazar (404) si la hoja no existe en el padrón', async () => {
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerProofVotante(ID_ELECCION, 'b'.repeat(64)),
+      ).rejects.toThrow(NotFoundException);
+      expect(
+        mockPadronRepository.obtenerMerklePorEleccion,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar (404) si no hay árbol Merkle consolidado', async () => {
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue({
+        hashHoja: 'c'.repeat(64),
+        indiceHoja: 0,
+      });
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerProofVotante(ID_ELECCION, 'c'.repeat(64)),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });
