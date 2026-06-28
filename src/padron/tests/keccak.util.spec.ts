@@ -1,4 +1,4 @@
-import { hashPadron, hashVotante } from '../utils/keccak.util';
+import { hashVotante } from '../utils/keccak.util';
 
 describe('keccak.util', () => {
   const REGEX_KECCAK = /^[0-9a-f]{64}$/;
@@ -32,15 +32,6 @@ describe('keccak.util', () => {
 
       expect(actual).not.toContain(inputDni);
       expect(actual).not.toContain('ana');
-    });
-  });
-
-  describe('hashPadron', () => {
-    it('debe ser independiente del orden de las hojas', () => {
-      const hojaA = hashVotante('30111222', 'a@frvm.utn.edu.ar');
-      const hojaB = hashVotante('30111333', 'b@frvm.utn.edu.ar');
-
-      expect(hashPadron([hojaA, hojaB])).toBe(hashPadron([hojaB, hojaA]));
     });
   });
 });

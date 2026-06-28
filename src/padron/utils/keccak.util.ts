@@ -12,8 +12,8 @@ export function hashVotante(dni: string, email: string): string {
 }
 
 /**
- * Hash determinístico del padrón completo a partir de las hojas hasheadas.
- * Ordena las hojas para que el resultado sea independiente del orden del CSV.
+ * @deprecated Usar MerkleBuilderService.buildFromLeaves() para el sello del padrón.
+ * Hash plano legacy; reemplazado por raíz Merkle Keccak-256 (VOTAR-334).
  */
 export function hashPadron(hashesHoja: string[]): string {
   return keccak256([...hashesHoja].sort().join(''));

@@ -13,6 +13,9 @@ import {
 import { PadronEstado } from '../enums/padron-estado.enum';
 import { TipoNovedad } from '../enums/tipo-novedad.enum';
 import { EleccionEstado } from '../../eleccion/enums/eleccion-estado.enum';
+import { MerkleBuilderService } from '../services/merkle-builder.service';
+import { MerkleTreeEstado } from '../enums/merkle-tree-estado.enum';
+import { hashVotante } from '../utils/keccak.util';
 
 const REGEX_KECCAK = /^[0-9a-f]{64}$/;
 const ID_ELECCION = 42;
@@ -22,6 +25,8 @@ const mockPadronRepository = {
   existePadronParaEleccion: jest.fn(),
   crearPadronConVotantes: jest.fn(),
   obtenerPadronPorEleccion: jest.fn(),
+  obtenerMerklePorEleccion: jest.fn(),
+  buscarVotantePorHash: jest.fn(),
   listarVotantesPaginado: jest.fn(),
   eliminarPadronPorEleccion: jest.fn(),
 };
@@ -77,6 +82,7 @@ describe('PadronService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PadronService,
+        MerkleBuilderService,
         { provide: PADRON_REPOSITORY, useValue: mockPadronRepository },
       ],
     }).compile();
@@ -94,7 +100,7 @@ describe('PadronService', () => {
           idPadron: 1,
           estado: PadronEstado.BORRADOR,
           fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
-          totalVotantesHabilitados: input.hashesHoja.length,
+          totalVotantesHabilitados: input.sortedLeaves.length,
         }),
     );
   });
@@ -117,7 +123,10 @@ describe('PadronService', () => {
       mockPadronRepository.crearPadronConVotantes.mock
         .calls as CrearPadronInput[][]
     )[0][0];
-    expect(inputPersistido.hashesHoja).toHaveLength(1000);
+    expect(inputPersistido.sortedLeaves).toHaveLength(1000);
+    expect(inputPersistido.merkleRoot).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(inputPersistido.hashPadron).toMatch(REGEX_KECCAK);
+    expect(inputPersistido.merkleTreeDump).toBeDefined();
   });
 
   it('UAT-02: debe persistir únicamente hashes Keccak-256, sin texto plano de identidad', async () => {
@@ -133,14 +142,82 @@ describe('PadronService', () => {
     )[0][0];
 
     // Toda hoja persistida es un hash Keccak-256 de 64 hex (256 bits)
-    inputPersistido.hashesHoja.forEach((hash: string) => {
-      expect(hash).toMatch(REGEX_KECCAK);
-    });
+    inputPersistido.sortedLeaves.forEach(
+      ({ hashHoja }: { hashHoja: string }) => {
+        expect(hashHoja).toMatch(REGEX_KECCAK);
+      },
+    );
 
     // Ningún dato sensible en texto plano llega a la capa de persistencia
     const cargaSerializada = JSON.stringify(inputPersistido);
     expect(cargaSerializada).not.toContain(inputDni);
     expect(cargaSerializada).not.toContain(inputEmail);
+  });
+
+  it('UAT-01 Merkle: debe generar la misma raíz al importar el mismo CSV dos veces', async () => {
+    const inputArchivo = buildCsvValido(10);
+    const merkleBuilder = new MerkleBuilderService();
+
+    await service.importarPadron(ID_ELECCION, inputArchivo);
+    const firstInput = (
+      mockPadronRepository.crearPadronConVotantes.mock
+        .calls as CrearPadronInput[][]
+    )[0][0];
+
+    jest.clearAllMocks();
+    mockPadronRepository.buscarEleccionPorId.mockResolvedValue({
+      idEleccion: ID_ELECCION,
+      estado: EleccionEstado.BORRADOR,
+    });
+    mockPadronRepository.existePadronParaEleccion.mockResolvedValue(false);
+    mockPadronRepository.crearPadronConVotantes.mockImplementation(
+      (input: CrearPadronInput) =>
+        Promise.resolve({
+          idPadron: 2,
+          estado: PadronEstado.BORRADOR,
+          fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+          totalVotantesHabilitados: input.sortedLeaves.length,
+        }),
+    );
+
+    await service.importarPadron(ID_ELECCION, inputArchivo);
+    const secondInput = (
+      mockPadronRepository.crearPadronConVotantes.mock
+        .calls as CrearPadronInput[][]
+    )[0][0];
+
+    expect(firstInput.merkleRoot).toBe(secondInput.merkleRoot);
+    expect(firstInput.hashPadron).toBe(secondInput.hashPadron);
+
+    const recomputed = merkleBuilder.buildFromLeaves(
+      firstInput.sortedLeaves.map((leaf) => leaf.hashHoja),
+    );
+    expect(recomputed.merkleRoot).toBe(firstInput.merkleRoot);
+  });
+
+  it('UAT-02 Merkle: debe persistir tree_dump verificable para cada hoja importada', async () => {
+    const inputArchivo = buildCsvValido(5);
+    const merkleBuilder = new MerkleBuilderService();
+
+    await service.importarPadron(ID_ELECCION, inputArchivo);
+
+    const inputPersistido = (
+      mockPadronRepository.crearPadronConVotantes.mock
+        .calls as CrearPadronInput[][]
+    )[0][0];
+    const randomLeaf = inputPersistido.sortedLeaves[2];
+    const proof = merkleBuilder.getProof(
+      inputPersistido.merkleTreeDump,
+      randomLeaf.indiceHoja,
+    );
+
+    expect(
+      merkleBuilder.verifyProof(
+        inputPersistido.merkleTreeDump,
+        randomLeaf.hashHoja,
+        proof,
+      ),
+    ).toBe(true);
   });
 
   it('debe deduplicar identidades repetidas y reportar el duplicado', async () => {
@@ -478,6 +555,100 @@ describe('PadronService', () => {
       expect(
         mockPadronRepository.eliminarPadronPorEleccion,
       ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('obtenerMerkle', () => {
+    it('debe devolver el resumen del árbol Merkle consolidado', async () => {
+      const fechaGeneracion = new Date('2026-06-20T00:00:00Z');
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue({
+        merkleRoot: `0x${'a'.repeat(64)}`,
+        totalHojas: 4,
+        version: 1,
+        estado: MerkleTreeEstado.GENERADO,
+        fechaGeneracion,
+      });
+
+      const actual = await service.obtenerMerkle(ID_ELECCION);
+
+      expect(actual).toEqual({
+        merkleRoot: `0x${'a'.repeat(64)}`,
+        totalHojas: 4,
+        version: 1,
+        estado: MerkleTreeEstado.GENERADO,
+        fechaGeneracion,
+      });
+    });
+
+    it('debe rechazar (404) si la elección no tiene árbol Merkle', async () => {
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue(null);
+
+      await expect(service.obtenerMerkle(ID_ELECCION)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
+
+  describe('obtenerProofVotante', () => {
+    it('debe calcular una proof válida on-demand para una hoja del padrón', async () => {
+      const merkleBuilder = new MerkleBuilderService();
+      const leaves = [
+        hashVotante('30111222', 'ana@frvm.utn.edu.ar'),
+        hashVotante('30222333', 'bruno@frvm.utn.edu.ar'),
+        hashVotante('30333444', 'carla@frvm.utn.edu.ar'),
+      ];
+      const { merkleRoot, treeDump, sortedLeaves } =
+        merkleBuilder.buildFromLeaves(leaves);
+      const targetLeaf = sortedLeaves[1];
+
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue({
+        hashHoja: targetLeaf.hashHoja,
+        indiceHoja: targetLeaf.indiceHoja,
+      });
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue({
+        merkleRoot,
+        treeDump,
+      });
+
+      const actual = await service.obtenerProofVotante(
+        ID_ELECCION,
+        targetLeaf.hashHoja,
+      );
+
+      expect(actual.hashHoja).toBe(targetLeaf.hashHoja);
+      expect(actual.indiceHoja).toBe(targetLeaf.indiceHoja);
+      expect(actual.merkleRoot).toBe(merkleRoot);
+      expect(actual.merkleProof.length).toBeGreaterThan(0);
+      expect(
+        merkleBuilder.verifyProof(
+          treeDump,
+          targetLeaf.hashHoja,
+          actual.merkleProof,
+        ),
+      ).toBe(true);
+    });
+
+    it('debe rechazar (404) si la hoja no existe en el padrón', async () => {
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerProofVotante(ID_ELECCION, 'b'.repeat(64)),
+      ).rejects.toThrow(NotFoundException);
+      expect(
+        mockPadronRepository.obtenerMerklePorEleccion,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar (404) si no hay árbol Merkle consolidado', async () => {
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue({
+        hashHoja: 'c'.repeat(64),
+        indiceHoja: 0,
+      });
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerProofVotante(ID_ELECCION, 'c'.repeat(64)),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });
