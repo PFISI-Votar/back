@@ -180,4 +180,153 @@ describe('CandidatoDatosValidatorService', () => {
       service.validateDatosAdicionales(invalidCampos, { x: 'valor' }),
     ).toThrow(DatosAdicionalesValidationException);
   });
+
+  it('debe validar longitudes, máximos y tipos incorrectos', () => {
+    const camposAvanzados: CampoCandidatoDefinicion[] = [
+      {
+        clave: 'bio',
+        etiqueta: 'Bio',
+        tipo: 'texto',
+        obligatorio: true,
+        orden: 1,
+        validacion: { minLength: 3, maxLength: 5 },
+      },
+      {
+        clave: 'puntos',
+        etiqueta: 'Puntos',
+        tipo: 'numero',
+        obligatorio: true,
+        orden: 2,
+        validacion: { max: 10 },
+      },
+      {
+        clave: 'sitio',
+        etiqueta: 'Sitio',
+        tipo: 'url',
+        obligatorio: true,
+        orden: 3,
+      },
+      {
+        clave: 'nacimiento',
+        etiqueta: 'Nacimiento',
+        tipo: 'fecha',
+        obligatorio: true,
+        orden: 4,
+      },
+      {
+        clave: 'patron_invalido',
+        etiqueta: 'Patrón',
+        tipo: 'texto',
+        obligatorio: true,
+        orden: 5,
+        validacion: { pattern: '[', patternMessage: 'Patrón roto' },
+      },
+      {
+        clave: 'correo',
+        etiqueta: 'Correo',
+        tipo: 'email',
+        obligatorio: true,
+        orden: 6,
+      },
+    ];
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 123,
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ab',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'demasiado-largo',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 'no-numero',
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 11,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 'no-es-url',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: 1990,
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 123,
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 123,
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+  });
 });
