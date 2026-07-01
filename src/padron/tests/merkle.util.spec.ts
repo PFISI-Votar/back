@@ -1,11 +1,7 @@
-import {
-  stripBytes32Prefix,
-  toBytes32Hex,
-} from '@/padron/utils/merkle.util';
+import { stripBytes32Prefix, toBytes32Hex } from '@/padron/utils/merkle.util';
 
 describe('merkle.util', () => {
-  const validHash =
-    'a'.repeat(64);
+  const validHash = 'a'.repeat(64);
 
   describe('toBytes32Hex', () => {
     it('normaliza un hash de 64 hex con prefijo 0x', () => {
