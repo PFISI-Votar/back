@@ -48,4 +48,30 @@ export class MerkleTree {
 
   @CreateDateColumn({ name: 'fecha_generacion', type: 'timestamptz' })
   fechaGeneracion: Date;
+
+  @Column({
+    name: 'tx_hash_publicacion',
+    type: 'varchar',
+    length: 66,
+    nullable: true,
+  })
+  txHashPublicacion: string | null;
+
+  @Column({ name: 'numero_bloque', type: 'int', nullable: true })
+  numeroBloque: number | null;
+
+  @Column({
+    name: 'fecha_publicacion_on_chain',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  fechaPublicacionOnChain: Date | null;
+
+  @Column({
+    name: 'direccion_contrato',
+    type: 'varchar',
+    length: 42,
+    nullable: true,
+  })
+  direccionContrato: string | null;
 }

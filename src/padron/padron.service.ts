@@ -14,11 +14,14 @@ import { PadronResumenResponseDto } from './dto/padron-resumen-response.dto';
 import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dto';
 import { MerkleProofResponseDto } from './dto/merkle-proof-response.dto';
 import { MerkleResumenResponseDto } from './dto/merkle-resumen-response.dto';
+import { PublicarMerkleResponseDto } from './dto/publicar-merkle-response.dto';
 import { TipoNovedad } from './enums/tipo-novedad.enum';
+import { MerkleTreeEstado } from './enums/merkle-tree-estado.enum';
 import { IPadronService } from './interfaces/padron.service.interface';
 import { PADRON_REPOSITORY } from './interfaces/padron.repository.interface';
 import type { IPadronRepository } from './interfaces/padron.repository.interface';
 import { MerkleBuilderService } from './services/merkle-builder.service';
+import { BlockchainService } from '../blockchain/blockchain.service';
 import { hashVotante } from './utils/keccak.util';
 
 const REGEX_DNI = /^\d{7,9}$/;
@@ -36,6 +39,7 @@ export class PadronService implements IPadronService {
     @Inject(PADRON_REPOSITORY)
     private readonly padronRepository: IPadronRepository,
     private readonly merkleBuilderService: MerkleBuilderService,
+    private readonly blockchainService: BlockchainService,
   ) {}
 
   async importarPadron(
@@ -202,13 +206,71 @@ export class PadronService implements IPadronService {
         `La elección ${idEleccion} no tiene un árbol Merkle consolidado.`,
       );
     }
-    return {
-      merkleRoot: merkle.merkleRoot,
-      totalHojas: merkle.totalHojas,
-      version: merkle.version,
-      estado: merkle.estado,
-      fechaGeneracion: merkle.fechaGeneracion,
-    };
+    return this.mapMerkleResumen(merkle);
+  }
+
+  async publicarMerkleOnChain(
+    idEleccion: number,
+  ): Promise<PublicarMerkleResponseDto> {
+    const eleccion =
+      await this.padronRepository.buscarEleccionPorId(idEleccion);
+    if (!eleccion) {
+      throw new NotFoundException(`No existe la elección ${idEleccion}.`);
+    }
+
+    const estadosBloqueados = [
+      EleccionEstado.ABIERTA,
+      EleccionEstado.CERRADA,
+      EleccionEstado.ESCRUTADA,
+    ];
+    if (estadosBloqueados.includes(eleccion.estado)) {
+      throw new UnprocessableEntityException(
+        'No se puede publicar el sello Merkle cuando el comicio ya está abierto, cerrado o escrutado.',
+      );
+    }
+
+    const merkle =
+      await this.padronRepository.obtenerMerklePorEleccion(idEleccion);
+    if (!merkle) {
+      throw new NotFoundException(
+        `La elección ${idEleccion} no tiene un árbol Merkle consolidado.`,
+      );
+    }
+
+    if (merkle.estado === MerkleTreeEstado.PUBLICADO_ON_CHAIN) {
+      throw new ConflictException(
+        this.buildPublicarMerkleResponse(idEleccion, merkle),
+      );
+    }
+
+    if (merkle.estado !== MerkleTreeEstado.GENERADO) {
+      throw new UnprocessableEntityException(
+        `El árbol Merkle está en estado ${merkle.estado} y no puede publicarse.`,
+      );
+    }
+
+    const resultado = await this.blockchainService.publishMerkleRoot(
+      idEleccion,
+      merkle.merkleRoot,
+    );
+
+    await this.padronRepository.actualizarPublicacionMerkle(idEleccion, {
+      txHashPublicacion: resultado.txHash,
+      numeroBloque: resultado.blockNumber,
+      fechaPublicacionOnChain: resultado.publishedAt,
+      direccionContrato: resultado.contractAddress,
+    });
+
+    const merkleActualizado =
+      await this.padronRepository.obtenerMerklePorEleccion(idEleccion);
+    return this.buildPublicarMerkleResponse(
+      idEleccion,
+      merkleActualizado ?? merkle,
+      resultado.txHash,
+      resultado.blockNumber,
+      resultado.contractAddress,
+      resultado.publishedAt,
+    );
   }
 
   async obtenerProofVotante(
@@ -240,6 +302,63 @@ export class PadronService implements IPadronService {
       indiceHoja: votante.indiceHoja,
       merkleProof,
       merkleRoot: merkle.merkleRoot,
+    };
+  }
+
+  private mapMerkleResumen(merkle: {
+    merkleRoot: string;
+    totalHojas: number;
+    version: number;
+    estado: MerkleTreeEstado;
+    fechaGeneracion: Date;
+    txHashPublicacion?: string | null;
+    fechaPublicacionOnChain?: Date | null;
+    direccionContrato?: string | null;
+  }): MerkleResumenResponseDto {
+    const resumen: MerkleResumenResponseDto = {
+      merkleRoot: merkle.merkleRoot,
+      totalHojas: merkle.totalHojas,
+      version: merkle.version,
+      estado: merkle.estado,
+      fechaGeneracion: merkle.fechaGeneracion,
+    };
+    if (merkle.txHashPublicacion) {
+      resumen.txHash = merkle.txHashPublicacion;
+      resumen.explorerUrl = this.blockchainService.buildExplorerUrl(
+        merkle.txHashPublicacion,
+      );
+      resumen.fechaPublicacionOnChain =
+        merkle.fechaPublicacionOnChain ?? undefined;
+      resumen.contractAddress = merkle.direccionContrato ?? undefined;
+    }
+    return resumen;
+  }
+
+  private buildPublicarMerkleResponse(
+    idEleccion: number,
+    merkle: {
+      merkleRoot: string;
+      estado: MerkleTreeEstado;
+      txHashPublicacion?: string | null;
+      numeroBloque?: number | null;
+      direccionContrato?: string | null;
+      fechaPublicacionOnChain?: Date | null;
+    },
+    txHash?: string,
+    blockNumber?: number,
+    contractAddress?: string,
+    publishedAt?: Date,
+  ): PublicarMerkleResponseDto {
+    const hash = txHash ?? merkle.txHashPublicacion ?? '';
+    return {
+      electionId: idEleccion,
+      merkleRoot: merkle.merkleRoot,
+      estado: MerkleTreeEstado.PUBLICADO_ON_CHAIN,
+      txHash: hash,
+      blockNumber: blockNumber ?? merkle.numeroBloque ?? 0,
+      contractAddress: contractAddress ?? merkle.direccionContrato ?? '',
+      explorerUrl: hash ? this.blockchainService.buildExplorerUrl(hash) : '',
+      publishedAt: publishedAt ?? merkle.fechaPublicacionOnChain ?? new Date(),
     };
   }
 
