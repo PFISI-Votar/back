@@ -1,4 +1,4 @@
-import { hashVotante } from '../utils/keccak.util';
+import { hashPadron, hashVotante } from '../utils/keccak.util';
 
 describe('keccak.util', () => {
   const REGEX_KECCAK = /^[0-9a-f]{64}$/;
@@ -32,6 +32,15 @@ describe('keccak.util', () => {
 
       expect(actual).not.toContain(inputDni);
       expect(actual).not.toContain('ana');
+    });
+  });
+
+  describe('hashPadron', () => {
+    it('debe consolidar hashes hoja ordenados de forma determinística', () => {
+      const leaves = ['bbbb', 'aaaa', 'cccc'];
+
+      expect(hashPadron(leaves)).toMatch(REGEX_KECCAK);
+      expect(hashPadron([...leaves].reverse())).toBe(hashPadron(leaves));
     });
   });
 });
