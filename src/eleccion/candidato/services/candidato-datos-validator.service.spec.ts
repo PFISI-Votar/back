@@ -106,4 +106,227 @@ describe('CandidatoDatosValidatorService', () => {
       }),
     ).toThrow(DatosAdicionalesValidationException);
   });
+
+  it('debe validar url, fecha y booleano', () => {
+    const extraCampos: CampoCandidatoDefinicion[] = [
+      {
+        clave: 'web',
+        etiqueta: 'Sitio web',
+        tipo: 'url',
+        obligatorio: true,
+        orden: 4,
+      },
+      {
+        clave: 'nacimiento',
+        etiqueta: 'Nacimiento',
+        tipo: 'fecha',
+        obligatorio: true,
+        orden: 5,
+      },
+      {
+        clave: 'acepta',
+        etiqueta: 'Acepta términos',
+        tipo: 'booleano',
+        obligatorio: true,
+        orden: 6,
+      },
+    ];
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        acepta: true,
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'ftp://votar.net.ar',
+        nacimiento: '1990-01-15',
+        acepta: true,
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'https://votar.net.ar',
+        nacimiento: 'fecha-invalida',
+        acepta: true,
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        acepta: 'si',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+  });
+
+  it('debe rechazar tipo de campo desconocido', () => {
+    const invalidCampos = [
+      {
+        clave: 'x',
+        etiqueta: 'X',
+        tipo: 'desconocido',
+        obligatorio: true,
+        orden: 1,
+      },
+    ] as CampoCandidatoDefinicion[];
+
+    expect(() =>
+      service.validateDatosAdicionales(invalidCampos, { x: 'valor' }),
+    ).toThrow(DatosAdicionalesValidationException);
+  });
+
+  it('debe validar longitudes, máximos y tipos incorrectos', () => {
+    const camposAvanzados: CampoCandidatoDefinicion[] = [
+      {
+        clave: 'bio',
+        etiqueta: 'Bio',
+        tipo: 'texto',
+        obligatorio: true,
+        orden: 1,
+        validacion: { minLength: 3, maxLength: 5 },
+      },
+      {
+        clave: 'puntos',
+        etiqueta: 'Puntos',
+        tipo: 'numero',
+        obligatorio: true,
+        orden: 2,
+        validacion: { max: 10 },
+      },
+      {
+        clave: 'sitio',
+        etiqueta: 'Sitio',
+        tipo: 'url',
+        obligatorio: true,
+        orden: 3,
+      },
+      {
+        clave: 'nacimiento',
+        etiqueta: 'Nacimiento',
+        tipo: 'fecha',
+        obligatorio: true,
+        orden: 4,
+      },
+      {
+        clave: 'patron_invalido',
+        etiqueta: 'Patrón',
+        tipo: 'texto',
+        obligatorio: true,
+        orden: 5,
+        validacion: { pattern: '[', patternMessage: 'Patrón roto' },
+      },
+      {
+        clave: 'correo',
+        etiqueta: 'Correo',
+        tipo: 'email',
+        obligatorio: true,
+        orden: 6,
+      },
+    ];
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 123,
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ab',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'demasiado-largo',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 'no-numero',
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 11,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 'no-es-url',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: 1990,
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 123,
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 'ana@votar.net.ar',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(camposAvanzados, {
+        bio: 'ok',
+        puntos: 5,
+        sitio: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        patron_invalido: 'abc',
+        correo: 123,
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+  });
 });
