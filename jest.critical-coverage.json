@@ -1,0 +1,29 @@
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": "src",
+  "moduleNameMapper": {
+    "^@/(.*)$": "<rootDir>/$1"
+  },
+  "testRegex": ".*\\.spec\\.ts$",
+  "transform": {
+    "^.+\\.(t|j)s$": "ts-jest"
+  },
+  "collectCoverageFrom": [
+    "padron/utils/**/*.ts",
+    "padron/services/merkle-builder.service.ts",
+    "common/validators/**/*.ts",
+    "eleccion/rules-engine/rules-engine.service.ts",
+    "eleccion/rules-engine/exceptions/**/*.ts",
+    "eleccion/candidato/services/candidato-datos-validator.service.ts"
+  ],
+  "coverageDirectory": "../coverage/critical",
+  "coverageThreshold": {
+    "global": {
+      "lines": 80,
+      "branches": 80,
+      "functions": 80,
+      "statements": 80
+    }
+  },
+  "testEnvironment": "node"
+}

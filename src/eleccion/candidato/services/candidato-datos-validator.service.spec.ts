@@ -106,4 +106,78 @@ describe('CandidatoDatosValidatorService', () => {
       }),
     ).toThrow(DatosAdicionalesValidationException);
   });
+
+  it('debe validar url, fecha y booleano', () => {
+    const extraCampos: CampoCandidatoDefinicion[] = [
+      {
+        clave: 'web',
+        etiqueta: 'Sitio web',
+        tipo: 'url',
+        obligatorio: true,
+        orden: 4,
+      },
+      {
+        clave: 'nacimiento',
+        etiqueta: 'Nacimiento',
+        tipo: 'fecha',
+        obligatorio: true,
+        orden: 5,
+      },
+      {
+        clave: 'acepta',
+        etiqueta: 'Acepta términos',
+        tipo: 'booleano',
+        obligatorio: true,
+        orden: 6,
+      },
+    ];
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        acepta: true,
+      }),
+    ).not.toThrow();
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'ftp://votar.net.ar',
+        nacimiento: '1990-01-15',
+        acepta: true,
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'https://votar.net.ar',
+        nacimiento: 'fecha-invalida',
+        acepta: true,
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+
+    expect(() =>
+      service.validateDatosAdicionales(extraCampos, {
+        web: 'https://votar.net.ar',
+        nacimiento: '1990-01-15',
+        acepta: 'si',
+      }),
+    ).toThrow(DatosAdicionalesValidationException);
+  });
+
+  it('debe rechazar tipo de campo desconocido', () => {
+    const invalidCampos = [
+      {
+        clave: 'x',
+        etiqueta: 'X',
+        tipo: 'desconocido',
+        obligatorio: true,
+        orden: 1,
+      },
+    ] as CampoCandidatoDefinicion[];
+
+    expect(() =>
+      service.validateDatosAdicionales(invalidCampos, { x: 'valor' }),
+    ).toThrow(DatosAdicionalesValidationException);
+  });
 });
