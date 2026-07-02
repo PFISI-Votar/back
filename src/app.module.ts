@@ -15,6 +15,7 @@ import { VotoModule } from '@/voto/voto.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: ['.env.blockchain.local', '.env'],
       validationSchema: envValidationSchema,
       validationOptions: { allowUnknown: true, abortEarly: true },
     }),

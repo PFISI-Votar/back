@@ -33,6 +33,6 @@ import { PadronPublicController } from './controllers/padron-public.controller';
       useClass: PadronRepository,
     },
   ],
-  exports: [PadronEligibilityService],
+  exports: [PadronEligibilityService, PadronService],
 })
 export class PadronModule {}

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -15,6 +16,7 @@ import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dt
 import { MerkleProofResponseDto } from './dto/merkle-proof-response.dto';
 import { MerkleResumenResponseDto } from './dto/merkle-resumen-response.dto';
 import { PublicarMerkleResponseDto } from './dto/publicar-merkle-response.dto';
+import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
 import { TipoNovedad } from './enums/tipo-novedad.enum';
 import { MerkleTreeEstado } from './enums/merkle-tree-estado.enum';
 import { IPadronService } from './interfaces/padron.service.interface';
@@ -320,6 +322,31 @@ export class PadronService implements IPadronService {
       merkleProof,
       merkleRoot: merkle.merkleRoot,
     };
+  }
+
+  async solicitarMerkleProofAutenticada(
+    idEleccion: number,
+    votanteHash: string,
+  ): Promise<VoterMerkleProofResponseDto> {
+    const votante = await this.padronRepository.buscarVotantePorHash(
+      idEleccion,
+      votanteHash,
+    );
+    if (!votante) {
+      throw new ForbiddenException('No te encuentras habilitado en el padrón');
+    }
+    const merkle =
+      await this.padronRepository.obtenerMerklePorEleccion(idEleccion);
+    if (!merkle) {
+      throw new NotFoundException(
+        `La elección ${idEleccion} no tiene un árbol Merkle consolidado.`,
+      );
+    }
+    const merkleProof = this.merkleBuilderService.getProof(
+      merkle.treeDump,
+      votante.indiceHoja,
+    );
+    return { merkleProof, root: merkle.merkleRoot };
   }
 
   private mapMerkleResumen(merkle: {

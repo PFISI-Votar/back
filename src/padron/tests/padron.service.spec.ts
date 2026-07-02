@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -720,6 +721,67 @@ describe('PadronService', () => {
 
       await expect(
         service.obtenerProofVotante(ID_ELECCION, 'c'.repeat(64)),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('solicitarMerkleProofAutenticada — VOTAR-354', () => {
+    it('debe retornar merkleProof y root verificables para votante empadronado', async () => {
+      const merkleBuilder = new MerkleBuilderService();
+      const leaves = [
+        hashVotante('30111222', 'ana@frvm.utn.edu.ar'),
+        hashVotante('30222333', 'bruno@frvm.utn.edu.ar'),
+        hashVotante('30333444', 'carla@frvm.utn.edu.ar'),
+      ];
+      const { merkleRoot, treeDump, sortedLeaves } =
+        merkleBuilder.buildFromLeaves(leaves);
+      const targetLeaf = sortedLeaves[1];
+
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue({
+        hashHoja: targetLeaf.hashHoja,
+        indiceHoja: targetLeaf.indiceHoja,
+      });
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue({
+        merkleRoot,
+        treeDump,
+      });
+
+      const actual = await service.solicitarMerkleProofAutenticada(
+        ID_ELECCION,
+        targetLeaf.hashHoja,
+      );
+
+      expect(actual.root).toBe(merkleRoot);
+      expect(actual.merkleProof.length).toBeGreaterThan(0);
+      expect(
+        merkleBuilder.verifyProof(
+          treeDump,
+          targetLeaf.hashHoja,
+          actual.merkleProof,
+        ),
+      ).toBe(true);
+    });
+
+    it('debe rechazar (403) si el votante no está en el padrón', async () => {
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue(null);
+
+      await expect(
+        service.solicitarMerkleProofAutenticada(ID_ELECCION, 'b'.repeat(64)),
+      ).rejects.toThrow(ForbiddenException);
+      expect(
+        mockPadronRepository.obtenerMerklePorEleccion,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar (404) si no hay árbol Merkle consolidado', async () => {
+      mockPadronRepository.buscarVotantePorHash.mockResolvedValue({
+        hashHoja: 'c'.repeat(64),
+        indiceHoja: 0,
+      });
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue(null);
+
+      await expect(
+        service.solicitarMerkleProofAutenticada(ID_ELECCION, 'c'.repeat(64)),
       ).rejects.toThrow(NotFoundException);
     });
   });
