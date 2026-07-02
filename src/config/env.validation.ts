@@ -2,6 +2,7 @@ import * as Joi from 'joi';
 
 export const envValidationSchema = Joi.object({
   DEVELOPMENT: Joi.boolean().truthy('true').falsy('false').default(false),
+  REQUIRE_HTTPS: Joi.boolean().truthy('true').falsy('false').default(false),
   PORT: Joi.number().port().default(3000),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
   DB_HOST: Joi.string().hostname().required(),

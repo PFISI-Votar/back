@@ -32,6 +32,6 @@ import { MerkleBuilderService } from './services/merkle-builder.service';
       useClass: PadronRepository,
     },
   ],
-  exports: [PadronEligibilityService],
+  exports: [PadronEligibilityService, PadronService],
 })
 export class PadronModule {}

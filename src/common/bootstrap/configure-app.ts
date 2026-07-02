@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
 import {
   applySecurityHeaders,
   resolveIsProduction,
@@ -12,6 +13,7 @@ import {
 export const configureApp = (app: NestExpressApplication): void => {
   const configService = app.get(ConfigService);
   const isProduction = resolveIsProduction(configService);
+  const requireHttps = configService.get<boolean>('REQUIRE_HTTPS') === true;
 
   if (isProduction) {
     app.set('trust proxy', 1);
@@ -19,6 +21,10 @@ export const configureApp = (app: NestExpressApplication): void => {
 
   applySecurityHeaders(app, isProduction);
   app.use(cookieParser());
+
+  if (isProduction && requireHttps) {
+    app.use(requireHttpsMiddleware);
+  }
 
   const frontendUrl =
     configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
