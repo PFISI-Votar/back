@@ -20,16 +20,16 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
-import { ImportarPadronResponseDto } from './dto/importar-padron-response.dto';
-import { ListarVotantesResponseDto } from './dto/listar-votantes-response.dto';
-import { PaginacionPadronQueryDto } from './dto/paginacion-padron-query.dto';
-import { PadronResumenResponseDto } from './dto/padron-resumen-response.dto';
-import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dto';
-import { MerkleProofResponseDto } from './dto/merkle-proof-response.dto';
-import { MerkleResumenResponseDto } from './dto/merkle-resumen-response.dto';
-import { PublicarMerkleResponseDto } from './dto/publicar-merkle-response.dto';
-import { IPadronController } from './interfaces/padron.controller.interface';
-import { PadronService } from './padron.service';
+import { ImportarPadronResponseDto } from '../dto/importar-padron-response.dto';
+import { ListarVotantesResponseDto } from '../dto/listar-votantes-response.dto';
+import { PaginacionPadronQueryDto } from '../dto/paginacion-padron-query.dto';
+import { PadronResumenResponseDto } from '../dto/padron-resumen-response.dto';
+import { ReporteNovedadesResponseDto } from '../dto/reporte-novedades-response.dto';
+import { MerkleProofResponseDto } from '../dto/merkle-proof-response.dto';
+import { MerkleResumenResponseDto } from '../dto/merkle-resumen-response.dto';
+import { PublicarMerkleResponseDto } from '../dto/publicar-merkle-response.dto';
+import { IPadronController } from '../interfaces/padron.controller.interface';
+import { PadronService } from '../padron.service';
 
 @ApiTags('padron')
 @AdminAuth()
