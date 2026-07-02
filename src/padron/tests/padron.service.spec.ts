@@ -435,6 +435,68 @@ describe('PadronService', () => {
     });
   });
 
+  //US 333
+  describe('obtenerTotalVotantesPublico — VOTAR-333', () => {
+    it('debe devolver el total de votantes cuando el padrón está PUBLICADO', async () => {
+      mockPadronRepository.obtenerPadronPorEleccion.mockResolvedValue({
+        idPadron: 7,
+        totalVotantesHabilitados: 1500,
+        hashPadron: 'a'.repeat(64),
+        estado: PadronEstado.PUBLICADO,
+        fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+        totalProcesados: 1505,
+        totalOmitidos: 5,
+        novedades: [],
+      });
+
+      const actual = await service.obtenerTotalVotantesPublico(ID_ELECCION);
+
+      expect(actual).toEqual({ totalVotantesHabilitados: 1500 });
+    });
+
+    it('debe devolver el total de votantes cuando el padrón está CERRADO', async () => {
+      mockPadronRepository.obtenerPadronPorEleccion.mockResolvedValue({
+        idPadron: 7,
+        totalVotantesHabilitados: 1500,
+        hashPadron: 'a'.repeat(64),
+        estado: PadronEstado.CERRADO,
+        fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+        totalProcesados: 1505,
+        totalOmitidos: 5,
+        novedades: [],
+      });
+
+      const actual = await service.obtenerTotalVotantesPublico(ID_ELECCION);
+
+      expect(actual).toEqual({ totalVotantesHabilitados: 1500 });
+    });
+
+    it('debe rechazar (404) si el padrón está en BORRADOR (aún no consolidado)', async () => {
+      mockPadronRepository.obtenerPadronPorEleccion.mockResolvedValue({
+        idPadron: 7,
+        totalVotantesHabilitados: 1500,
+        hashPadron: 'a'.repeat(64),
+        estado: PadronEstado.BORRADOR,
+        fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+        totalProcesados: 1505,
+        totalOmitidos: 5,
+        novedades: [],
+      });
+
+      await expect(
+        service.obtenerTotalVotantesPublico(ID_ELECCION),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('debe rechazar (404) si la elección no tiene padrón', async () => {
+      mockPadronRepository.obtenerPadronPorEleccion.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerTotalVotantesPublico(ID_ELECCION),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   describe('obtenerReporteNovedades', () => {
     it('debe devolver el reporte persistido (totales + novedades)', async () => {
       const novedadesPersistidas = [

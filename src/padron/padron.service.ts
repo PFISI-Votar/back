@@ -23,6 +23,8 @@ import type { IPadronRepository } from './interfaces/padron.repository.interface
 import { MerkleBuilderService } from './services/merkle-builder.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { hashVotante } from './utils/keccak.util';
+import { TotalVotantesResponseDto } from './dto/total-votantes-response.dto';
+import { PadronEstado } from './enums/padron-estado.enum';
 
 const REGEX_DNI = /^\d{7,9}$/;
 const REGEX_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -147,6 +149,21 @@ export class PadronService implements IPadronService {
       totalOmitidos: padron.totalOmitidos,
       novedades: padron.novedades ?? [],
     };
+  }
+
+  async obtenerTotalVotantesPublico(
+    idEleccion: number,
+  ): Promise<TotalVotantesResponseDto> {
+    const padron =
+      await this.padronRepository.obtenerPadronPorEleccion(idEleccion);
+
+    if (!padron || padron.estado === PadronEstado.BORRADOR) {
+      throw new NotFoundException(
+        `La elección ${idEleccion} no tiene un padrón consolidado.`,
+      );
+    }
+
+    return { totalVotantesHabilitados: padron.totalVotantesHabilitados };
   }
 
   async listarVotantes(
