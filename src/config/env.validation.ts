@@ -24,5 +24,6 @@ export const envValidationSchema = Joi.object({
   CHAIN_ID: Joi.number().default(11155111),
   ETHERSCAN_BASE_URL: Joi.string()
     .uri()
+    .allow('')
     .default('https://sepolia.etherscan.io'),
 });

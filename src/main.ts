@@ -1,4 +1,5 @@
 import '@/common/bootstrap/setup-timezone';
+import '@/common/bootstrap/load-env';
 import { join } from 'node:path';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
