@@ -7,12 +7,20 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { AppModule } from '@/app.module';
+import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const configService = app.get(ConfigService);
 
+  app.set('trust proxy', 1);
   app.use(cookieParser());
+
+  const isDevelopment = configService.get<boolean>('DEVELOPMENT') === true;
+  const requireHttps = configService.get<boolean>('REQUIRE_HTTPS') === true;
+  if (!isDevelopment && requireHttps) {
+    app.use(requireHttpsMiddleware);
+  }
 
   const frontendUrl =
     configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
