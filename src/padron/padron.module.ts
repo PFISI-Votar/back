@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BlockchainModule } from '../blockchain/blockchain.module';
 import { Eleccion } from '../eleccion/entities/eleccion.entity';
 import { MerkleTree } from './entities/merkle-tree.entity';
 import { PadronElectoral } from './entities/padron-electoral.entity';
@@ -13,6 +14,7 @@ import { MerkleBuilderService } from './services/merkle-builder.service';
 
 @Module({
   imports: [
+    BlockchainModule,
     TypeOrmModule.forFeature([
       PadronElectoral,
       PadronVotante,

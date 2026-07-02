@@ -39,4 +39,13 @@ export interface IPadronRepository {
     limit: number,
   ): Promise<[PadronVotante[], number]>;
   eliminarPadronPorEleccion(idEleccion: number): Promise<void>;
+  actualizarPublicacionMerkle(
+    idEleccion: number,
+    data: {
+      txHashPublicacion: string;
+      numeroBloque: number;
+      fechaPublicacionOnChain: Date;
+      direccionContrato: string;
+    },
+  ): Promise<void>;
 }
