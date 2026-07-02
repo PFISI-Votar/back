@@ -14,6 +14,7 @@ import { PadronEstado } from '../enums/padron-estado.enum';
 import { TipoNovedad } from '../enums/tipo-novedad.enum';
 import { EleccionEstado } from '../../eleccion/enums/eleccion-estado.enum';
 import { MerkleBuilderService } from '../services/merkle-builder.service';
+import { BlockchainService } from '../../blockchain/blockchain.service';
 import { MerkleTreeEstado } from '../enums/merkle-tree-estado.enum';
 import { hashVotante } from '../utils/keccak.util';
 
@@ -29,6 +30,14 @@ const mockPadronRepository = {
   buscarVotantePorHash: jest.fn(),
   listarVotantesPaginado: jest.fn(),
   eliminarPadronPorEleccion: jest.fn(),
+  actualizarPublicacionMerkle: jest.fn(),
+};
+
+const mockBlockchainService = {
+  publishMerkleRoot: jest.fn(),
+  buildExplorerUrl: jest.fn(
+    (hash: string) => `https://sepolia.etherscan.io/tx/${hash}`,
+  ),
 };
 
 /** Construye un archivo CSV simulado en memoria (como lo entrega multer). */
@@ -84,6 +93,7 @@ describe('PadronService', () => {
         PadronService,
         MerkleBuilderService,
         { provide: PADRON_REPOSITORY, useValue: mockPadronRepository },
+        { provide: BlockchainService, useValue: mockBlockchainService },
       ],
     }).compile();
 
@@ -649,6 +659,87 @@ describe('PadronService', () => {
       await expect(
         service.obtenerProofVotante(ID_ELECCION, 'c'.repeat(64)),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('publicarMerkleOnChain — VOTAR-335', () => {
+    const merkleRoot = `0x${'a'.repeat(64)}`;
+    const merkleGenerado = {
+      merkleRoot,
+      totalHojas: 10,
+      version: 1,
+      estado: MerkleTreeEstado.GENERADO,
+      fechaGeneracion: new Date('2026-06-20T00:00:00Z'),
+    };
+    const merklePublicado = {
+      ...merkleGenerado,
+      estado: MerkleTreeEstado.PUBLICADO_ON_CHAIN,
+      txHashPublicacion: '0xtxhash',
+      numeroBloque: 12345,
+      direccionContrato: '0x55d1d115309872C16B9646362C82fFa246F3F652',
+      fechaPublicacionOnChain: new Date('2026-06-21T00:00:00Z'),
+    };
+
+    beforeEach(() => {
+      mockPadronRepository.buscarEleccionPorId.mockResolvedValue({
+        idEleccion: ID_ELECCION,
+        estado: EleccionEstado.CONFIGURADA,
+      });
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue(
+        merkleGenerado,
+      );
+      mockBlockchainService.publishMerkleRoot.mockResolvedValue({
+        txHash: '0xtxhash',
+        blockNumber: 12345,
+        contractAddress: '0x55d1d115309872C16B9646362C82fFa246F3F652',
+        publishedAt: new Date('2026-06-21T00:00:00Z'),
+        electionId: ID_ELECCION,
+        merkleRoot,
+      });
+      mockPadronRepository.actualizarPublicacionMerkle.mockResolvedValue(
+        undefined,
+      );
+    });
+
+    it('debe publicar la raíz on-chain y actualizar estados (UAT-01)', async () => {
+      mockPadronRepository.obtenerMerklePorEleccion
+        .mockResolvedValueOnce(merkleGenerado)
+        .mockResolvedValueOnce(merklePublicado);
+
+      const actual = await service.publicarMerkleOnChain(ID_ELECCION);
+
+      expect(mockBlockchainService.publishMerkleRoot).toHaveBeenCalledWith(
+        ID_ELECCION,
+        merkleRoot,
+      );
+      expect(
+        mockPadronRepository.actualizarPublicacionMerkle,
+      ).toHaveBeenCalled();
+      expect(actual.estado).toBe(MerkleTreeEstado.PUBLICADO_ON_CHAIN);
+      expect(actual.txHash).toBe('0xtxhash');
+      expect(actual.explorerUrl).toContain('0xtxhash');
+    });
+
+    it('debe rechazar (409) si ya está PUBLICADO_ON_CHAIN', async () => {
+      mockPadronRepository.obtenerMerklePorEleccion.mockResolvedValue(
+        merklePublicado,
+      );
+
+      await expect(service.publicarMerkleOnChain(ID_ELECCION)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(mockBlockchainService.publishMerkleRoot).not.toHaveBeenCalled();
+    });
+
+    it('debe rechazar (422) si el comicio está ABIERTA', async () => {
+      mockPadronRepository.buscarEleccionPorId.mockResolvedValue({
+        idEleccion: ID_ELECCION,
+        estado: EleccionEstado.ABIERTA,
+      });
+
+      await expect(service.publicarMerkleOnChain(ID_ELECCION)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
   });
 });

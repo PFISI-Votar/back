@@ -18,4 +18,11 @@ export const envValidationSchema = Joi.object({
   AUTOGESTION_BASE_URL: Joi.string()
     .uri()
     .default('https://webservice.frvm.utn.edu.ar/autogestion'),
+  SEPOLIA_RPC_URL: Joi.string().uri().optional(),
+  MERKLE_ROOT_STORE_ADDRESS: Joi.string().optional(),
+  MERKLE_UPDATER_PRIVATE_KEY: Joi.string().optional(),
+  CHAIN_ID: Joi.number().default(11155111),
+  ETHERSCAN_BASE_URL: Joi.string()
+    .uri()
+    .default('https://sepolia.etherscan.io'),
 });

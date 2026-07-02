@@ -129,4 +129,36 @@ export class PadronRepository implements IPadronRepository {
       return padronGuardado;
     });
   }
+
+  async actualizarPublicacionMerkle(
+    idEleccion: number,
+    data: {
+      txHashPublicacion: string;
+      numeroBloque: number;
+      fechaPublicacionOnChain: Date;
+      direccionContrato: string;
+    },
+  ): Promise<void> {
+    await this.dataSource.transaction(async (manager) => {
+      const merkle = await manager.findOne(MerkleTree, {
+        where: { padron: { eleccion: { idEleccion } } },
+        relations: ['padron'],
+      });
+      if (!merkle) {
+        return;
+      }
+      merkle.estado = MerkleTreeEstado.PUBLICADO_ON_CHAIN;
+      merkle.txHashPublicacion = data.txHashPublicacion;
+      merkle.numeroBloque = data.numeroBloque;
+      merkle.fechaPublicacionOnChain = data.fechaPublicacionOnChain;
+      merkle.direccionContrato = data.direccionContrato;
+      await manager.save(merkle);
+
+      await manager.update(
+        PadronElectoral,
+        { idPadron: merkle.padron.idPadron },
+        { estado: PadronEstado.PUBLICADO },
+      );
+    });
+  }
 }

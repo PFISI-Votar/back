@@ -27,6 +27,7 @@ import { PadronResumenResponseDto } from './dto/padron-resumen-response.dto';
 import { ReporteNovedadesResponseDto } from './dto/reporte-novedades-response.dto';
 import { MerkleProofResponseDto } from './dto/merkle-proof-response.dto';
 import { MerkleResumenResponseDto } from './dto/merkle-resumen-response.dto';
+import { PublicarMerkleResponseDto } from './dto/publicar-merkle-response.dto';
 import { IPadronController } from './interfaces/padron.controller.interface';
 import { PadronService } from './padron.service';
 
@@ -134,6 +135,40 @@ export class PadronController implements IPadronController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<MerkleResumenResponseDto> {
     return this.padronService.obtenerMerkle(idEleccion);
+  }
+
+  @Post('merkle/publicar')
+  @ApiOperation({
+    summary:
+      'Publicar el sello Merkle del padrón on-chain en Sepolia (VOTAR-335)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 201,
+    description: 'Raíz Merkle publicada on-chain con evento RootPublished',
+    type: PublicarMerkleResponseDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Elección o padrón Merkle no encontrado',
+  })
+  @ApiResponse({
+    status: 409,
+    description: 'La raíz ya fue publicada on-chain',
+    type: PublicarMerkleResponseDto,
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'Comicio en estado no permitido o Merkle no publicable',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Error de configuración blockchain o transacción revertida',
+  })
+  async publicarMerkleOnChain(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<PublicarMerkleResponseDto> {
+    return this.padronService.publicarMerkleOnChain(idEleccion);
   }
 
   @Get('votantes/:hashHoja/proof')
