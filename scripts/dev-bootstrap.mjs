@@ -115,6 +115,11 @@ const ensureDevAdmin = async () => {
   const password = process.env.DEV_ADMIN_PASSWORD?.trim();
 
   if (nick && password) {
+    const adminCount = await countElectionAdmins();
+    if (adminCount > 0) {
+      console.log('[dev] ✓ Admin ya registrado, omitiendo registro');
+      return;
+    }
     logStep(`Registrando administrador electoral (${nick}) vía Autogestión...`);
     if (nick !== 'votar.admin') {
       await removePlaceholderAdmin();

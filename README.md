@@ -57,7 +57,7 @@ Esto ejecuta:
 
 1. Espera a PostgreSQL local
 2. Migraciones TypeORM
-3. Registro de tu usuario como `ELECTION_ADMIN` vía Autogestión (si configuraste `DEV_ADMIN_*`)
+3. Registro de tu usuario como `ELECTION_ADMIN` vía Autogestión (solo si no hay admins en la DB y configuraste `DEV_ADMIN_*`)
 4. API NestJS en modo watch (`http://localhost:3000`)
 
 ### 3. Frontend (terminal 3)
@@ -86,6 +86,16 @@ npm run dev:bootstrap   # Solo migrate + admin (sin API)
 npm run dev:api         # Solo NestJS watch (asume infra ya lista)
 npm run admin:register  # Registrar admin manualmente (interactivo)
 ```
+
+### Verificación E2E blockchain (local)
+
+Con Hardhat (`npm run dev` en `blockchain/`) y la API en marcha (`npm run dev` en `back/`), podés validar el flujo completo de publicación Merkle on-chain:
+
+```bash
+node scripts/test-blockchain-flow.mjs
+```
+
+El script es autocontenido: crea un comicio, importa un padrón CSV de prueba embebido, publica el Merkle root y verifica `isPublished` / `getMerkleRoot` en el contrato local. Requiere `DEV_ADMIN_NICK` y `DEV_ADMIN_PASSWORD` en `.env` (y `.env.blockchain.local` generado por el repo blockchain). Debe terminar con código de salida 0.
 
 ## Tests
 

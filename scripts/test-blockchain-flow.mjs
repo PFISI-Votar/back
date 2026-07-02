@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { config } from 'dotenv';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ethers } from 'ethers';
@@ -93,7 +93,8 @@ const main = async () => {
   console.log(`[flow] ✓ idEleccion=${idEleccion}`);
 
   log('3/6 Importar padrón CSV');
-  const csv = readFileSync('/tmp/padron-test.csv');
+  const csv =
+    'dni,email\n30111222,votante1@frvm.utn.edu.ar\n30222333,votante2@frvm.utn.edu.ar\n';
   const form = new FormData();
   form.append('file', new Blob([csv], { type: 'text/csv' }), 'padron.csv');
   const imported = await api(`/elecciones/${idEleccion}/padron/import`, {
