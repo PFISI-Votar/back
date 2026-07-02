@@ -2,15 +2,9 @@
 import { config } from 'dotenv';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import pg from 'pg';
+import { registerElectionAdmin } from './lib/election-admin.mjs';
 
 config();
-
-const { Client } = pg;
-
-const baseUrl =
-  process.env.AUTOGESTION_BASE_URL ??
-  'https://webservice.frvm.utn.edu.ar/autogestion';
 
 const promptHidden = (query) =>
   new Promise((resolve) => {
@@ -69,57 +63,6 @@ const promptCredentials = async () => {
   return { nick: nick.trim(), password: password.trim() };
 };
 
-const login = async (nick, password) => {
-  const response = await fetch(`${baseUrl}/login`, {
-    method: 'POST',
-    headers: {
-      Accept: '*/*',
-      nick,
-      password,
-    },
-  });
-  if (!response.ok) {
-    throw new Error(`Login falló (${response.status}): ${await response.text()}`);
-  }
-  const data = await response.json();
-  if (!data.hashActual) {
-    throw new Error('Login exitoso pero no se recibió hashActual');
-  }
-  return data.hashActual;
-};
-
-const fetchUsuario = async (nick, hash) => {
-  const auth = Buffer.from(`${nick}:${hash}`).toString('base64');
-  const response = await fetch(`${baseUrl}/usuarios`, {
-    headers: {
-      Accept: '*/*',
-      nick,
-      Authorization: `Basic ${auth}`,
-    },
-  });
-  if (!response.ok) {
-    throw new Error(
-      `Consulta de usuario falló (${response.status}): ${await response.text()}`,
-    );
-  }
-  return response.json();
-};
-
-const resolvePersonaFields = (nick, persona) => {
-  const nombre = [persona.nombre, persona.apellido].filter(Boolean).join(' ');
-  const email = persona.email ?? persona.mail;
-  if (!email) {
-    throw new Error(
-      'Autogestión no devolvió email para este usuario; no se puede registrar la autoridad.',
-    );
-  }
-  return {
-    identificadorSso: nick,
-    emailInstitucional: email,
-    nombre: nombre || nick,
-  };
-};
-
 const supportsColor = stdout.isTTY;
 
 const style = {
@@ -127,7 +70,6 @@ const style = {
   dim: (text) => (supportsColor ? `\x1b[2m${text}\x1b[0m` : text),
   green: (text) => (supportsColor ? `\x1b[32m${text}\x1b[0m` : text),
   cyan: (text) => (supportsColor ? `\x1b[36m${text}\x1b[0m` : text),
-  yellow: (text) => (supportsColor ? `\x1b[33m${text}\x1b[0m` : text),
 };
 
 const formatRol = (rol) => {
@@ -135,6 +77,14 @@ const formatRol = (rol) => {
     return 'Administrador electoral';
   }
   return rol;
+};
+
+const stripAnsi = (text) => text.replace(/\x1b\[[0-9;]*m/g, '');
+
+const padLine = (text, width) => {
+  const visible = stripAnsi(text);
+  const padding = Math.max(0, width - visible.length);
+  return text + ' '.repeat(padding);
 };
 
 const printRegisteredAdmin = (autoridad) => {
@@ -146,7 +96,8 @@ const printRegisteredAdmin = (autoridad) => {
   ];
   const labelWidth = Math.max(...fields.map(([label]) => label.length));
   const cardLines = fields.map(
-    ([label, value]) => `  ${style.dim(`${label.padEnd(labelWidth)}`)}  ${style.bold(value)}`,
+    ([label, value]) =>
+      `  ${style.dim(`${label.padEnd(labelWidth)}`)}  ${style.bold(value)}`,
   );
   const innerWidth = Math.max(
     ...cardLines.map((line) => stripAnsi(line).length),
@@ -183,74 +134,16 @@ const printRegisteredAdmin = (autoridad) => {
   console.log(style.dim(border('└', '─', '┘')));
   console.log('');
   console.log(
-    style.dim(`  ID interno: ${autoridad.id_autoridad}  ·  VOTAR Panel de Gestión`),
+    style.dim(
+      `  ID interno: ${autoridad.id_autoridad}  ·  VOTAR Panel de Gestión`,
+    ),
   );
   console.log('');
 };
 
-const stripAnsi = (text) => text.replace(/\x1b\[[0-9;]*m/g, '');
-
-const padLine = (text, width) => {
-  const visible = stripAnsi(text);
-  const padding = Math.max(0, width - visible.length);
-  return text + ' '.repeat(padding);
-};
-
-const upsertElectionAdmin = async (autoridad) => {
-  const client = new Client({
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    user: process.env.DB_USERNAME ?? 'postgres',
-    password: process.env.DB_PASSWORD ?? 'postgres',
-    database: process.env.DB_NAME ?? 'votar',
-  });
-  await client.connect();
-  try {
-    const result = await client.query(
-      `
-        INSERT INTO autoridad_electoral (
-          identificador_sso,
-          email_institucional,
-          nombre,
-          rol
-        ) VALUES ($1, $2, $3, 'ELECTION_ADMIN')
-        ON CONFLICT (identificador_sso) DO UPDATE SET
-          email_institucional = EXCLUDED.email_institucional,
-          nombre = EXCLUDED.nombre,
-          rol = 'ELECTION_ADMIN'
-        RETURNING
-          id_autoridad,
-          identificador_sso,
-          email_institucional,
-          nombre,
-          rol
-      `,
-      [
-        autoridad.identificadorSso,
-        autoridad.emailInstitucional,
-        autoridad.nombre,
-      ],
-    );
-    return result.rows[0];
-  } finally {
-    await client.end();
-  }
-};
-
 const main = async () => {
   const { nick, password } = await promptCredentials();
-  if (!nick || !password) {
-    console.error('Usuario y contraseña son obligatorios.');
-    process.exit(1);
-  }
-  const hash = await login(nick, password);
-  const usuario = await fetchUsuario(nick, hash);
-  if (!usuario.persona) {
-    console.error('No se encontraron datos de persona para este usuario.');
-    process.exit(1);
-  }
-  const autoridad = resolvePersonaFields(nick, usuario.persona);
-  const saved = await upsertElectionAdmin(autoridad);
+  const saved = await registerElectionAdmin(nick, password);
   printRegisteredAdmin(saved);
 };
 
