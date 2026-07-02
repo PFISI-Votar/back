@@ -1,8 +1,6 @@
 import '@/common/bootstrap/setup-timezone';
-import { config } from 'dotenv';
+import '@/common/bootstrap/load-env';
 import { DataSource, DataSourceOptions } from 'typeorm';
-
-config();
 
 export const dataSourceOptions: DataSourceOptions = {
   type: 'postgres',
