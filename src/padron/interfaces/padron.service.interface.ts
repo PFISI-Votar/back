@@ -5,6 +5,7 @@ import { MerkleResumenResponseDto } from '../dto/merkle-resumen-response.dto';
 import { PublicarMerkleResponseDto } from '../dto/publicar-merkle-response.dto';
 import { PadronResumenResponseDto } from '../dto/padron-resumen-response.dto';
 import { ReporteNovedadesResponseDto } from '../dto/reporte-novedades-response.dto';
+import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
 
 export interface IPadronService {
   importarPadron(
@@ -26,5 +27,9 @@ export interface IPadronService {
     idEleccion: number,
     hashHoja: string,
   ): Promise<MerkleProofResponseDto>;
+  solicitarMerkleProofAutenticada(
+    idEleccion: number,
+    votanteHash: string,
+  ): Promise<VoterMerkleProofResponseDto>;
   eliminarPadron(idEleccion: number): Promise<void>;
 }

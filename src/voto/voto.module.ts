@@ -6,15 +6,18 @@ import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
+import { PadronModule } from '@/padron/padron.module';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { BudPublicController } from '@/voto/controllers/bud-public.controller';
 import { VotoController } from '@/voto/controllers/voto.controller';
 import { VotoConfirmacion } from '@/voto/entities/voto-confirmacion.entity';
+import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
 import { VotoRateLimitGuard } from '@/voto/guards/voto-rate-limit.guard';
 import { VotoService } from '@/voto/services/voto.service';
 
 @Module({
   imports: [
+    PadronModule,
     TypeOrmModule.forFeature([
       Eleccion,
       ConfiguracionComicio,
@@ -27,6 +30,6 @@ import { VotoService } from '@/voto/services/voto.service';
     ]),
   ],
   controllers: [BudPublicController, VotoController],
-  providers: [VotoService, VotoRateLimitGuard],
+  providers: [VotoService, VotoRateLimitGuard, MerkleProofRateLimitGuard],
 })
 export class VotoModule {}

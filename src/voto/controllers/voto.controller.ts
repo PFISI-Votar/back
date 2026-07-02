@@ -21,9 +21,12 @@ import { RolesGuard } from '@/auth/guards/roles.guard';
 import { VoterElectionGuard } from '@/auth/guards/voter-election.guard';
 import { VoterJwtAuthGuard } from '@/auth/guards/voter-jwt-auth.guard';
 import type { VoterAuthenticatedRequest } from '@/auth/interfaces/voter-authenticated-request.interface';
+import { PadronService } from '@/padron/padron.service';
 import { BoletaDigitalResponseDto } from '@/voto/dto/boleta-digital-response.dto';
 import { ConfirmarVotoDto } from '@/voto/dto/confirmar-voto.dto';
 import { ConfirmarVotoResponseDto } from '@/voto/dto/confirmar-voto-response.dto';
+import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
+import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
 import { VotoRateLimitGuard } from '@/voto/guards/voto-rate-limit.guard';
 import { VotoService } from '@/voto/services/voto.service';
 
@@ -33,7 +36,10 @@ import { VotoService } from '@/voto/services/voto.service';
 @UseGuards(VoterJwtAuthGuard, RolesGuard, VoterElectionGuard)
 @Roles(JwtRole.VOTER)
 export class VotoController {
-  constructor(private readonly votoService: VotoService) {}
+  constructor(
+    private readonly votoService: VotoService,
+    private readonly padronService: PadronService,
+  ) {}
 
   @Get('boleta-digital')
   @ApiOperation({ summary: 'Obtener Boleta Única Digital del comicio' })
@@ -47,6 +53,27 @@ export class VotoController {
     @Req() request: VoterAuthenticatedRequest,
   ): Promise<BoletaDigitalResponseDto> {
     return this.votoService.obtenerBoletaDigital(
+      idEleccion,
+      request.user.votanteHash,
+    );
+  }
+
+  @Get('merkle-proof')
+  @UseGuards(MerkleProofRateLimitGuard)
+  @ApiOperation({
+    summary: 'Solicitar Merkle Proof autenticada del padrón (VOTAR-354)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: VoterMerkleProofResponseDto })
+  @ApiResponse({ status: 401, description: 'JWT inválido o expirado' })
+  @ApiResponse({ status: 403, description: 'No habilitado en el padrón' })
+  @ApiResponse({ status: 404, description: 'Árbol Merkle no consolidado' })
+  @ApiResponse({ status: 429, description: 'Rate limit excedido' })
+  solicitarMerkleProof(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Req() request: VoterAuthenticatedRequest,
+  ): Promise<VoterMerkleProofResponseDto> {
+    return this.padronService.solicitarMerkleProofAutenticada(
       idEleccion,
       request.user.votanteHash,
     );
