@@ -29,6 +29,7 @@
     "seed:nacionales-2023": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-nacionales-2023.ts",
     "seed:paso": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-paso.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-demo.ts",
+    "db:reset": "bash scripts/reset-db.sh",
     "admin:register": "node scripts/register-election-admin.mjs",
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs"
   },
@@ -39,6 +40,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/schedule": "^6.1.3",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/typeorm": "^11.0.1",
     "@openzeppelin/merkle-tree": "^1.0.8",
