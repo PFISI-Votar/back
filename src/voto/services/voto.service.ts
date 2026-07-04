@@ -155,6 +155,10 @@ export class VotoService {
     });
 
     try {
+      // VOTAR-360: Simular txHash blockchain (provisional hasta integración real)
+      const txHash = this.simularTxHash(comprobanteHash);
+      const txTimestamp = new Date();
+
       const confirmacion = await this.votoConfirmacionRepository.save(
         this.votoConfirmacionRepository.create({
           idEleccion,
@@ -163,6 +167,11 @@ export class VotoService {
           payloadHash,
           comprobanteHash,
           estado: VotoConfirmacionEstado.RECIBIDO,
+          txHash,
+          txTimestamp,
+          txStatus: 'CONFIRMADA' as any, // Simulado como confirmado inmediatamente
+          contractAddress: '0x0000000000000000000000000000000000000000', // Placeholder
+          // codigoVerificacionE2E se genera automáticamente por TypeORM
         }),
       );
 
@@ -389,6 +398,19 @@ export class VotoService {
     return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
   }
 
+  /**
+   * VOTAR-360: Simula un hash de transacción blockchain.
+   * En producción, esto será reemplazado por la transacción real en Sepolia.
+   *
+   * Formato: 0x + 64 caracteres hexadecimales (hash SHA-256 con prefijo Ethereum)
+   */
+  private simularTxHash(comprobanteHash: string): string {
+    const timestamp = Date.now().toString();
+    const seed = `${comprobanteHash}-${timestamp}`;
+    const hash = createHash('sha256').update(seed).digest('hex');
+    return `0x${hash}`;
+  }
+
   private toConfirmacionResponse(
     confirmacion: VotoConfirmacion,
     idempotente: boolean,
@@ -400,6 +422,12 @@ export class VotoService {
       payloadHash: confirmacion.payloadHash,
       recibidoEn: confirmacion.recibidoEn,
       idempotente,
+      // VOTAR-360: Campos de recibo blockchain
+      txHash: confirmacion.txHash,
+      blockNumber: confirmacion.blockNumber,
+      contractAddress: confirmacion.contractAddress,
+      codigoVerificacionE2E: confirmacion.codigoVerificacionE2E,
+      txStatus: confirmacion.txStatus,
     };
   }
 }

@@ -11,6 +11,12 @@ export enum VotoConfirmacionEstado {
   RECIBIDO = 'RECIBIDO',
 }
 
+export enum VotoConfirmacionTxStatus {
+  PENDIENTE = 'PENDIENTE',
+  CONFIRMADA = 'CONFIRMADA',
+  FALLIDA = 'FALLIDA',
+}
+
 @Entity('voto_confirmacion')
 @Unique(['idEleccion', 'votanteHash'])
 @Unique(['idEleccion', 'idempotencyKey'])
@@ -44,4 +50,33 @@ export class VotoConfirmacion {
 
   @CreateDateColumn({ name: 'recibido_en', type: 'timestamptz' })
   recibidoEn: Date;
+
+  // Campos de recibo blockchain (VOTAR-360)
+  @Column({ name: 'tx_hash', type: 'varchar', length: 66, nullable: true })
+  txHash?: string;
+
+  @Column({ name: 'block_number', type: 'int', nullable: true })
+  blockNumber?: number;
+
+  @Column({ name: 'tx_timestamp', type: 'timestamptz', nullable: true })
+  txTimestamp?: Date;
+
+  @Column({
+    name: 'tx_status',
+    type: 'enum',
+    enum: VotoConfirmacionTxStatus,
+    default: VotoConfirmacionTxStatus.PENDIENTE,
+    nullable: true,
+  })
+  txStatus?: VotoConfirmacionTxStatus;
+
+  @Column({
+    name: 'codigo_verificacion_e2e',
+    type: 'uuid',
+    generated: 'uuid',
+  })
+  codigoVerificacionE2E: string;
+
+  @Column({ name: 'contract_address', type: 'varchar', length: 42, nullable: true })
+  contractAddress?: string;
 }
