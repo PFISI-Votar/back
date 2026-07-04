@@ -17,6 +17,10 @@ interface MerkleRootStoreContract {
     electionId: number,
     root: string,
   ): Promise<ContractTransactionResponse>;
+  getMerkleRoot(
+    electionId: number,
+  ): Promise<[string, bigint] & { root: string; timestamp: bigint }>;
+  isPublished(electionId: number): Promise<boolean>;
 }
 
 @Injectable()
@@ -126,6 +130,51 @@ export class BlockchainService {
       electionId,
       merkleRoot,
     };
+  }
+
+  /**
+   * Verifies that the Merkle root for an election is published on-chain.
+   * Returns true if the root matches and is non-zero, false otherwise.
+   */
+  async verifyMerkleRootOnChain(
+    electionId: number,
+    expectedRoot: string,
+  ): Promise<boolean> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const contractAddress = this.configService.get<string>(
+      'MERKLE_ROOT_STORE_ADDRESS',
+    );
+
+    if (!rpcUrl || !contractAddress) {
+      throw new ServiceUnavailableException(
+        'La verificación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS).',
+      );
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const contract = new Contract(
+      contractAddress,
+      MERKLE_ROOT_STORE_ABI,
+      provider,
+    ) as unknown as MerkleRootStoreContract;
+
+    try {
+      const [root] = await contract.getMerkleRoot(electionId);
+
+      // Verificar que no sea el hash vacío (0x0000...)
+      const zeroHash =
+        '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+      return root === expectedRoot && root !== zeroHash;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo verificar la raíz Merkle on-chain: ${message}`,
+      );
+    }
   }
 
   buildExplorerUrl(txHash: string): string {
