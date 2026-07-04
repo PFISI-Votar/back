@@ -137,7 +137,9 @@ describe('BlockchainService', () => {
       ).rejects.toThrow(ServiceUnavailableException);
       await expect(
         service.syncElectionState(42, EleccionEstado.ABIERTA),
-      ).rejects.toThrow(/sincronización de estado on-chain no está configurada/);
+      ).rejects.toThrow(
+        /sincronización de estado on-chain no está configurada/,
+      );
     });
 
     it('maps AccessControl revert to helpful error', async () => {
