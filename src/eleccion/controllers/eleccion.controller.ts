@@ -9,20 +9,28 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
+import { AbrirEleccionResponseDto } from '@/eleccion/dto/abrir-eleccion-response.dto';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
+import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
+import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
+import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 
 @ApiTags('elecciones')
 @AdminAuth()
 @Controller('elecciones')
 export class EleccionesController implements IEleccionController {
-  constructor(private readonly eleccionesService: EleccionesService) {}
+  constructor(
+    private readonly eleccionesService: EleccionesService,
+    private readonly aperturaComicioService: AperturaComicioService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar todos los comicios' })
@@ -89,5 +97,37 @@ export class EleccionesController implements IEleccionController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<void> {
     return this.eleccionesService.eliminarEleccion(idEleccion);
+  }
+
+  @Post(':idEleccion/abrir')
+  @ApiOperation({ summary: 'Abrir comicio de forma manual' })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Comicio abierto exitosamente',
+    type: AbrirEleccionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Elección no encontrada' })
+  @ApiResponse({
+    status: 412,
+    description:
+      'Fallo de precondición: Raíz de Merkle no publicada o no verificada on-chain',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'El comicio no está en estado CONFIGURADA',
+  })
+  async abrirComicio(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<AbrirEleccionResponseDto> {
+    const user = assertAuthenticatedUser(request.user);
+    const ipOrigen = request.ip ?? request.socket.remoteAddress;
+
+    return this.aperturaComicioService.abrirManual(
+      idEleccion,
+      user.sub,
+      ipOrigen,
+    );
   }
 }
