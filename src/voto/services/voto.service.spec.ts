@@ -121,8 +121,12 @@ const createRepositories = () => {
   };
 };
 
-const createService = (repositories = createRepositories()) =>
-  new VotoService(
+const createService = (repositories = createRepositories()) => {
+  const configService = {
+    get: jest.fn().mockReturnValue('false'), // BYPASS_AUTH = false por defecto en tests
+  };
+  return new VotoService(
+    configService as never,
     repositories.eleccionRepository as never,
     repositories.configuracionRepository as never,
     repositories.boletaRepository as never,
@@ -130,6 +134,7 @@ const createService = (repositories = createRepositories()) =>
     repositories.padronVotanteRepository as never,
     repositories.votoConfirmacionRepository as never,
   );
+};
 
 describe('VotoService', () => {
   it('devuelve la configuración pública de la BUD sin autenticación', async () => {
