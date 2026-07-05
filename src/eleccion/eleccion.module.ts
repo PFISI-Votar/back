@@ -5,6 +5,7 @@ import { ConfiguracionComicioModule } from '@/eleccion/configuracion-comicio/con
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { EleccionesController } from '@/eleccion/controllers/eleccion.controller';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
+import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
 import { ELECCION_REPOSITORY } from '@/eleccion/interfaces/eleccion.repository.interface';
 import { ListaModule } from '@/eleccion/lista/lista.module';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
@@ -37,6 +38,7 @@ import { AuditModule } from '@/audit/audit.module';
   controllers: [EleccionesController],
   providers: [
     EleccionesService,
+    EleccionGateway,
     AperturaComicioService,
     EleccionSchedulerService,
     {
@@ -44,6 +46,6 @@ import { AuditModule } from '@/audit/audit.module';
       useClass: EleccionRepository,
     },
   ],
-  exports: [ELECCION_REPOSITORY, AperturaComicioService],
+  exports: [ELECCION_REPOSITORY, AperturaComicioService, EleccionGateway],
 })
 export class EleccionesModule {}

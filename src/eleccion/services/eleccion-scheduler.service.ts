@@ -5,6 +5,7 @@ import { LessThanOrEqual, Repository } from 'typeorm';
 import { Eleccion } from '../entities/eleccion.entity';
 import { EleccionEstado } from '../enums/eleccion-estado.enum';
 import { AperturaComicioService } from './apertura-comicio.service';
+import { EleccionGateway } from '../gateways/eleccion.gateway';
 
 /**
  * Servicio de tareas programadas para elecciones.
@@ -18,6 +19,7 @@ export class EleccionSchedulerService {
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
     private readonly aperturaComicioService: AperturaComicioService,
+    private readonly eleccionGateway: EleccionGateway,
   ) {}
 
   /**
@@ -49,6 +51,9 @@ export class EleccionSchedulerService {
           const resultado = await this.aperturaComicioService.abrirAutomatico(
             eleccion.idEleccion,
           );
+
+          // Emitir evento WebSocket para notificar a clientes conectados
+          this.eleccionGateway.emitEleccionAbierta(eleccion.idEleccion);
 
           this.logger.log(
             `Elección ${eleccion.idEleccion} ("${eleccion.nombre}") abierta automáticamente. ` +
