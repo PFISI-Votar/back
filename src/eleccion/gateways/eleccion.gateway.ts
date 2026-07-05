@@ -31,9 +31,7 @@ export class EleccionGateway
   }
 
   emitEleccionAbierta(idEleccion: number): void {
-    this.logger.log(
-      `Emitiendo evento de apertura para elección ${idEleccion}`,
-    );
+    this.logger.log(`Emitiendo evento de apertura para elección ${idEleccion}`);
     this.server.emit('eleccion:abierta', { idEleccion });
   }
 }
