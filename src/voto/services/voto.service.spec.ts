@@ -122,17 +122,13 @@ const createRepositories = () => {
 };
 
 const createService = (repositories = createRepositories()) => {
-  const configService = {
-    get: jest.fn().mockReturnValue('false'), // BYPASS_AUTH = false por defecto en tests
-  };
   return new VotoService(
-    configService as never,
     repositories.eleccionRepository as never,
     repositories.configuracionRepository as never,
     repositories.boletaRepository as never,
     repositories.listaRepository as never,
     repositories.padronVotanteRepository as never,
-    repositories.votoConfirmacionRepository as never,
+    repositories.votoConfirmacionRepository,
   );
 };
 
