@@ -308,10 +308,13 @@ export class CandidatoService {
   }
 
   private normalizeDatoAdicionalUnico(valor: unknown): string {
-    if (valor === undefined || valor === null) {
-      return '';
+    if (typeof valor === 'string') {
+      return valor.trim().toLocaleLowerCase();
     }
-    return String(valor).trim().toLocaleLowerCase();
+    if (typeof valor === 'number' || typeof valor === 'boolean') {
+      return String(valor).toLocaleLowerCase();
+    }
+    return '';
   }
 
   private toResponse(candidato: Candidato): CandidatoResponseDto {
