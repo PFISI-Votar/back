@@ -8,24 +8,22 @@ import { bootstrapDevEnvironment } from './dev-bootstrap.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const backRoot = resolve(__dirname, '..');
 
+// Fix cross-platform: en Windows los binarios son .cmd y requieren shell: true
+// Funciona para Windows, Linux y Mac.
+const isWindows = process.platform === 'win32';
+const cmd = (bin) => (isWindows ? `${bin}.cmd` : bin);
+
 const logReady = () => {
   const port = process.env.PORT ?? 3000;
-  const hasBlockchainEnv = existsSync(
-    resolve(backRoot, '.env.blockchain.local'),
-  );
-
+  const hasBlockchainEnv = existsSync(resolve(backRoot, '.env.blockchain.local'));
   console.log('\n[dev] API lista');
   console.log(`[dev]   API:     http://localhost:${port}`);
   console.log(`[dev]   Swagger: http://localhost:${port}/api/docs`);
-
   if (hasBlockchainEnv) {
     console.log('[dev]   Blockchain: configuración local cargada desde .env.blockchain.local');
   } else {
-    console.warn(
-      '[dev]   Blockchain: sin .env.blockchain.local — levantá primero npm run dev en blockchain/',
-    );
+    console.warn('[dev]   Blockchain: sin .env.blockchain.local — levantá primero npm run dev en blockchain/');
   }
-
   console.log('[dev] Presioná Ctrl+C para detener la API\n');
 };
 
@@ -34,9 +32,7 @@ const main = async () => {
   let isShuttingDown = false;
 
   const shutdown = (signal) => {
-    if (isShuttingDown) {
-      return;
-    }
+    if (isShuttingDown) return;
     isShuttingDown = true;
     console.log(`\n[dev] Deteniendo (${signal})...`);
     if (nestProcess && !nestProcess.killed) {
@@ -54,7 +50,7 @@ const main = async () => {
     nestProcess = spawn('npm', ['run', 'dev:api'], {
       cwd: backRoot,
       stdio: 'inherit',
-      shell: false,
+      shell: isWindows,
     });
 
     nestProcess.on('exit', (code) => {
