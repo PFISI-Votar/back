@@ -30,6 +30,13 @@ import {
   createAuthedRequest,
   type AuthedRequest,
 } from './helpers/auth-test.helper';
+import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
+import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
+import { PadronVotante } from '@/padron/entities/padron-votante.entity';
+
+const CSV_PADRON = `dni,email
+30111222,ana@frvm.utn.edu.ar
+30222333,bruno@frvm.utn.edu.ar`;
 
 const entities = [
   Eleccion,
@@ -43,6 +50,9 @@ const entities = [
   AutoridadElectoral,
   RefreshSession,
   AuditLog,
+  PadronElectoral,
+  PadronVotante,
+  MerkleTree,
 ];
 
 const camposConfigE2E: CampoCandidatoDefinicion[] = [
@@ -95,6 +105,7 @@ describe('ListaCandidato (e2e)', () => {
 
   beforeAll(async () => {
     const db = newDb({ autoCreateForeignKeyIndices: true });
+    let uuidCounter = 0;
     db.public.registerFunction({
       name: 'current_database',
       implementation: () => 'test',
@@ -102,6 +113,13 @@ describe('ListaCandidato (e2e)', () => {
     db.public.registerFunction({
       name: 'version',
       implementation: () => 'PostgreSQL 16.0',
+    });
+    db.public.registerFunction({
+      name: 'uuid_generate_v4',
+      implementation: () => {
+        uuidCounter += 1;
+        return `00000000-0000-4000-8000-${String(uuidCounter).padStart(12, '0')}`;
+      },
     });
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -188,6 +206,13 @@ describe('ListaCandidato (e2e)', () => {
   ) =>
     req.post(`/elecciones/${eleccionId}/categorias`).send(payload).expect(201);
 
+  const importarPadron = async (eleccionId: number): Promise<void> => {
+    await req
+      .post(`/elecciones/${eleccionId}/padron/import`)
+      .attach('file', Buffer.from(CSV_PADRON, 'utf-8'), 'padron.csv')
+      .expect(201);
+  };
+
   it('UAT-01: ciclo completo CRUD en comicio BORRADOR', async () => {
     const eleccionRepo = dataSource.getRepository(Eleccion);
     const eleccion = await eleccionRepo.save(
@@ -251,6 +276,7 @@ describe('ListaCandidato (e2e)', () => {
       })
       .expect(201);
 
+    await importarPadron(idEleccion);
     await req.post(`/elecciones/${idEleccion}/oficializar`).expect(201);
 
     await req
@@ -485,6 +511,7 @@ describe('ListaCandidato (e2e)', () => {
       const idCategoria = categoriaRes.body.idCategoria;
       await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '1');
       await crearCandidatoEnLista(listaRes.body.idLista, idCategoria, '2');
+      await importarPadron(eleccionId);
 
       await req
         .post(`/elecciones/${eleccionId}/oficializar`)
@@ -533,6 +560,7 @@ describe('ListaCandidato (e2e)', () => {
           String(index + 10),
         );
       }
+      await importarPadron(eleccionId);
 
       await req
         .post(`/elecciones/${eleccionId}/oficializar`)
@@ -546,6 +574,61 @@ describe('ListaCandidato (e2e)', () => {
         where: { idEleccion: eleccionId },
       });
       expect(eleccion?.estado).toBe(EleccionEstado.CONFIGURADA);
+    });
+  });
+
+  describe('VOTAR-409: validar padrón antes de oficializar', () => {
+    const buildComicioPayload = () => ({
+      nombre: 'Comicio Sin Padrón UAT',
+      fechaInicio: new Date(Date.now() + 86400000).toISOString(),
+      fechaFin: new Date(Date.now() + 172800000).toISOString(),
+      tipoVotacion: TipoVotacion.POR_LISTA,
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+    });
+
+    const seedCamposCandidato = async (eleccionId: number) => {
+      await req
+        .put(`/elecciones/${eleccionId}/configuracion-datos-candidato`)
+        .send({ campos: camposConfigE2E })
+        .expect(200);
+    };
+
+    it('debe rechazar oficialización sin padrón electoral cargado', async () => {
+      const eleccionRes = await req
+        .post('/elecciones')
+        .send(buildComicioPayload())
+        .expect(201);
+
+      const eleccionId = eleccionRes.body.idEleccion;
+      await seedCamposCandidato(eleccionId);
+
+      const listaRes = await req
+        .post(`/elecciones/${eleccionId}/listas`)
+        .send({ nombre: 'Lista Test', sigla: 'LT', color: '#2563eb' })
+        .expect(201);
+
+      const categoriaRes = await crearCategoriaE2E(eleccionId);
+      await req
+        .post(`/listas/${listaRes.body.idLista}/candidatos`)
+        .send({
+          nombre: 'Juan',
+          apellido: 'Pérez',
+          idCategoria: categoriaRes.body.idCategoria,
+          datosAdicionales: datosAdicionalesValidos,
+        })
+        .expect(201);
+
+      await req
+        .post(`/elecciones/${eleccionId}/oficializar`)
+        .expect(422)
+        .expect((res) => {
+          expect(res.body.message).toContain('padrón electoral cargado');
+        });
+
+      const eleccion = await dataSource.getRepository(Eleccion).findOne({
+        where: { idEleccion: eleccionId },
+      });
+      expect(eleccion?.estado).toBe(EleccionEstado.BORRADOR);
     });
   });
 });

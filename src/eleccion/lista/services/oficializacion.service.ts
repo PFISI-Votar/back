@@ -20,6 +20,7 @@ import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
 import { MinimoCandidatosViolationException } from '@/eleccion/rules-engine/exceptions/minimo-candidatos-violation.exception';
 import { RulesEngineService } from '@/eleccion/rules-engine/rules-engine.service';
+import { PadronService } from '@/padron/padron.service';
 
 @Injectable()
 export class OficializacionService {
@@ -34,6 +35,7 @@ export class OficializacionService {
     private readonly dataSource: DataSource,
     private readonly rulesEngineService: RulesEngineService,
     private readonly categoriasService: CategoriasService,
+    private readonly padronService: PadronService,
   ) {}
 
   async oficializar(idEleccion: number): Promise<OficializarResponseDto> {
@@ -44,6 +46,7 @@ export class OficializacionService {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
     assertEleccionEditable(eleccion);
+    await this.padronService.validarPadronParaOficializar(idEleccion);
     await this.categoriasService.validarCategoriasParaOficializar(idEleccion);
     const boleta = await this.boletaService.findBoletaByEleccion(idEleccion);
     if (!boleta) {

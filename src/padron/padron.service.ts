@@ -198,6 +198,16 @@ export class PadronService implements IPadronService {
     };
   }
 
+  async validarPadronParaOficializar(idEleccion: number): Promise<void> {
+    const tienePadron =
+      await this.padronRepository.existePadronParaEleccion(idEleccion);
+    if (!tienePadron) {
+      throw new UnprocessableEntityException(
+        'El comicio no puede pasar a configurado sin un padrón electoral cargado.',
+      );
+    }
+  }
+
   async eliminarPadron(idEleccion: number): Promise<void> {
     const eleccion =
       await this.padronRepository.buscarEleccionPorId(idEleccion);
