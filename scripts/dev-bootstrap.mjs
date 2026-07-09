@@ -22,25 +22,20 @@ const logStep = (message) => {
   console.log(`\n[dev] ${message}`);
 };
 
+const isWindows = process.platform === 'win32';
+
 const runCommand = (command, args, options = {}) =>
   new Promise((resolvePromise, reject) => {
     const child = spawn(command, args, {
       cwd: options.cwd ?? backRoot,
       stdio: options.stdio ?? 'inherit',
       env: { ...process.env, ...options.env },
-      shell: false,
+      shell: isWindows,
     });
     child.on('error', reject);
     child.on('exit', (code) => {
-      if (code === 0) {
-        resolvePromise();
-        return;
-      }
-      reject(
-        new Error(
-          `${command} ${args.join(' ')} falló con código de salida ${code}`,
-        ),
-      );
+      if (code === 0) { resolvePromise(); return; }
+      reject(new Error(`${command} ${args.join(' ')} falló con código de salida ${code}`));
     });
   });
 
@@ -51,25 +46,14 @@ const runCommandCapture = (command, args, options = {}) =>
       cwd: options.cwd ?? backRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
       env: { ...process.env, ...options.env },
-      shell: false,
+      shell: isWindows,
     });
-    child.stdout.on('data', (chunk) => {
-      stdout += chunk.toString();
-    });
-    child.stderr.on('data', (chunk) => {
-      process.stderr.write(chunk);
-    });
+    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on('data', (chunk) => { process.stderr.write(chunk); });
     child.on('error', reject);
     child.on('exit', (code) => {
-      if (code === 0) {
-        resolvePromise(stdout.trim());
-        return;
-      }
-      reject(
-        new Error(
-          `${command} ${args.join(' ')} falló con código de salida ${code}`,
-        ),
-      );
+      if (code === 0) { resolvePromise(stdout.trim()); return; }
+      reject(new Error(`${command} ${args.join(' ')} falló con código de salida ${code}`));
     });
   });
 
