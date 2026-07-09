@@ -91,7 +91,7 @@ const printRegisteredAdmin = (autoridad) => {
   const fields = [
     ['Usuario', autoridad.identificador_sso],
     ['Nombre', autoridad.nombre],
-    ['Email', autoridad.email_institucional],
+    ['Email', autoridad.email],
     ['Rol', formatRol(autoridad.rol)],
   ];
   const labelWidth = Math.max(...fields.map(([label]) => label.length));
