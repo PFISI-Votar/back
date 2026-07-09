@@ -124,7 +124,7 @@ describe('AuthAdmin (e2e) — US-313', () => {
     const autoridadRepository = dataSource.getRepository(AutoridadElectoral);
     await autoridadRepository.save({
       identificadorSso: 'votar.admin',
-      emailInstitucional: 'admin@test.local',
+      email: 'admin@test.local',
       nombre: 'Admin Test',
       rol: RolAutoridad.ELECTION_ADMIN,
     });

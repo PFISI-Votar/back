@@ -71,7 +71,7 @@ describe('AuthService', () => {
     autoridadRepository.findOne.mockResolvedValue({
       idAutoridad: 1,
       identificadorSso: '14988',
-      emailInstitucional: 'admin@test.local',
+      email: 'admin@test.local',
       nombre: 'Bruno Lucarelli',
       rol: RolAutoridad.ELECTION_ADMIN,
       fechaRegistro: new Date(),
@@ -109,7 +109,7 @@ describe('AuthService', () => {
     autoridadRepository.findOne.mockResolvedValue({
       idAutoridad: 1,
       identificadorSso: '14988',
-      emailInstitucional: 'admin@test.local',
+      email: 'admin@test.local',
       nombre: 'Bruno Lucarelli',
       rol: RolAutoridad.ELECTION_ADMIN,
       fechaRegistro: new Date(),
@@ -160,7 +160,7 @@ describe('AuthService', () => {
     autoridadRepository.findOne.mockResolvedValue({
       idAutoridad: 1,
       identificadorSso: '14988',
-      emailInstitucional: 'admin@test.local',
+      email: 'admin@test.local',
       nombre: 'Admin',
       rol: RolAutoridad.ELECTION_ADMIN,
       fechaRegistro: new Date(),
