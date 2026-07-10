@@ -29,7 +29,7 @@
     "seed:nacionales-2023": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-nacionales-2023.ts",
     "seed:paso": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-paso.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-demo.ts",
-    "db:reset": "bash scripts/reset-db.sh",
+    "db:reset": "ts-node -r tsconfig-paths/register scripts/reset-db.ts && npm run seed",
     "admin:register": "node scripts/register-election-admin.mjs",
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs"
   },
