@@ -11,6 +11,8 @@ import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { EleccionRepository } from '@/eleccion/repositories/eleccion.repository';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
+import { ElectionStateService } from '@/eleccion/services/election-state.service';
+import { BlockchainModule } from '@/blockchain/blockchain.module';
 
 @Module({
   imports: [
@@ -23,15 +25,17 @@ import { EleccionesService } from '@/eleccion/services/eleccion.service';
     ListaModule,
     CandidatoModule,
     ConfiguracionComicioModule,
+    BlockchainModule,
   ],
   controllers: [EleccionesController],
   providers: [
     EleccionesService,
+    ElectionStateService,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,
     },
   ],
-  exports: [ELECCION_REPOSITORY],
+  exports: [ELECCION_REPOSITORY, ElectionStateService],
 })
 export class EleccionesModule {}

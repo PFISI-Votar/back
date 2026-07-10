@@ -2,8 +2,10 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ServiceUnavailableException } from '@nestjs/common';
 import { BlockchainService } from './blockchain.service';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 const mockPublishRoot = jest.fn();
+const mockSetElectionState = jest.fn();
 const mockWait = jest.fn();
 const mockGetBlock = jest.fn();
 const mockParseLog = jest.fn();
@@ -14,6 +16,7 @@ jest.mock('ethers', () => {
     ...actual,
     Contract: jest.fn().mockImplementation(() => ({
       publishRoot: mockPublishRoot,
+      setElectionState: mockSetElectionState,
     })),
     Wallet: jest.fn().mockImplementation(() => ({})),
     JsonRpcProvider: jest.fn().mockImplementation(() => ({
@@ -39,11 +42,13 @@ describe('BlockchainService', () => {
         SEPOLIA_RPC_URL: 'https://sepolia.example.com',
         MERKLE_ROOT_STORE_ADDRESS: '0x55d1d115309872C16B9646362C82fFa246F3F652',
         MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
+        ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
         ETHERSCAN_BASE_URL: 'https://sepolia.etherscan.io',
       };
       return values[key];
     });
     mockPublishRoot.mockResolvedValue({ wait: mockWait });
+    mockSetElectionState.mockResolvedValue({ wait: mockWait });
     mockWait.mockResolvedValue({
       hash: '0xabc',
       blockNumber: 100,
@@ -96,5 +101,71 @@ describe('BlockchainService', () => {
     expect(service.buildExplorerUrl('0xabc')).toBe(
       'https://sepolia.etherscan.io/tx/0xabc',
     );
+  });
+
+  describe('syncElectionState — VOTAR-336', () => {
+    it('syncs election state to blockchain successfully', async () => {
+      const actual = await service.syncElectionState(
+        42,
+        EleccionEstado.ABIERTA,
+      );
+
+      expect(actual.txHash).toBe('0xabc');
+      expect(actual.blockNumber).toBe(100);
+      expect(mockSetElectionState).toHaveBeenCalledWith(42, 2); // ABIERTA = 2 (OPEN)
+    });
+
+    it('maps all election states correctly', async () => {
+      await service.syncElectionState(42, EleccionEstado.BORRADOR);
+      expect(mockSetElectionState).toHaveBeenCalledWith(42, 0); // DRAFT
+
+      await service.syncElectionState(42, EleccionEstado.CONFIGURADA);
+      expect(mockSetElectionState).toHaveBeenCalledWith(42, 1); // CONFIGURED
+
+      await service.syncElectionState(42, EleccionEstado.CERRADA);
+      expect(mockSetElectionState).toHaveBeenCalledWith(42, 3); // CLOSED
+
+      await service.syncElectionState(42, EleccionEstado.ESCRUTADA);
+      expect(mockSetElectionState).toHaveBeenCalledWith(42, 4); // TALLIED
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(ServiceUnavailableException);
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(
+        /sincronización de estado on-chain no está configurada/,
+      );
+    });
+
+    it('maps AccessControl revert to helpful error', async () => {
+      mockSetElectionState.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(/ELECTION_ADMIN_ROLE/);
+    });
+
+    it('throws when receipt is null', async () => {
+      mockWait.mockResolvedValue(null);
+
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(/no devolvió recibo de confirmación/);
+    });
+
+    it('handles generic blockchain errors', async () => {
+      mockSetElectionState.mockRejectedValue(new Error('Network timeout'));
+
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(/No se pudo sincronizar el estado on-chain/);
+    });
   });
 });
