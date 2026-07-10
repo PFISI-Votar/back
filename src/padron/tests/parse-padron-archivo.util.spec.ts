@@ -19,9 +19,9 @@ describe('parse-padron-archivo.util', () => {
   describe('esArchivoPadronSoportado', () => {
     it('acepta CSV por extensión o mime', () => {
       expect(esArchivoPadronSoportado('padron.csv', 'text/csv')).toBe(true);
-      expect(esArchivoPadronSoportado('padron.CSV', 'application/octet-stream')).toBe(
-        true,
-      );
+      expect(
+        esArchivoPadronSoportado('padron.CSV', 'application/octet-stream'),
+      ).toBe(true);
     });
 
     it('acepta Excel por extensión o mime', () => {
@@ -31,9 +31,9 @@ describe('parse-padron-archivo.util', () => {
           'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         ),
       ).toBe(true);
-      expect(esArchivoPadronSoportado('padron.xls', 'application/vnd.ms-excel')).toBe(
-        true,
-      );
+      expect(
+        esArchivoPadronSoportado('padron.xls', 'application/vnd.ms-excel'),
+      ).toBe(true);
     });
 
     it('rechaza formatos no soportados', () => {

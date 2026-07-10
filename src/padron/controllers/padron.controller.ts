@@ -51,7 +51,8 @@ export class PadronController implements IPadronController {
         file: {
           type: 'string',
           format: 'binary',
-          description: 'Archivo CSV o Excel con columnas dni y email (otras se ignoran)',
+          description:
+            'Archivo CSV o Excel con columnas dni y email (otras se ignoran)',
         },
       },
     },

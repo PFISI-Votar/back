@@ -70,9 +70,8 @@ export class PadronService implements IPadronService {
       throw new ConflictException('La elección ya tiene un padrón cargado.');
     }
 
-    const { hashesHoja, novedades, totalProcesados } = this.procesarArchivo(
-      archivo,
-    );
+    const { hashesHoja, novedades, totalProcesados } =
+      this.procesarArchivo(archivo);
     if (totalProcesados === 0) {
       throw new BadRequestException(
         'El archivo no contiene registros de padrón.',
