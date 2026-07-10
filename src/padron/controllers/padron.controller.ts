@@ -41,14 +41,18 @@ export class PadronController implements IPadronController {
   @UseInterceptors(FileInterceptor('file'))
   @ApiOperation({
     summary:
-      'Importar el padrón electoral desde un archivo CSV, hasheando cada identidad con Keccak-256. Tolera filas defectuosas e ignora duplicados (preserva la primera aparición), consolidando las omisiones en un registro de novedades (US-331)',
+      'Importar el padrón electoral desde CSV o Excel (.xlsx/.xls), hasheando cada identidad (dni+email) con Keccak-256. Acepta columnas adicionales que se ignoran (VOTAR-417). Tolera filas defectuosas e ignora duplicados (preserva la primera aparición), consolidando las omisiones en un registro de novedades (US-331)',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
     schema: {
       type: 'object',
       properties: {
-        file: { type: 'string', format: 'binary' },
+        file: {
+          type: 'string',
+          format: 'binary',
+          description: 'Archivo CSV o Excel con columnas dni y email (otras se ignoran)',
+        },
       },
     },
   })
@@ -62,7 +66,7 @@ export class PadronController implements IPadronController {
   @ApiResponse({
     status: 400,
     description:
-      'Archivo vacío, sin registros, o sin las columnas requeridas (dni, email)',
+      'Archivo vacío, formato no soportado, sin registros, o sin las columnas requeridas (dni, email)',
   })
   @ApiResponse({ status: 404, description: 'Elección inexistente' })
   @ApiResponse({
