@@ -9,19 +9,15 @@ import {
   ParseIntPipe,
   Patch,
   Post,
-  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
-import { AbrirEleccionResponseDto } from '@/eleccion/dto/abrir-eleccion-response.dto';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
-import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
-import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 
 @ApiTags('elecciones')
 @AdminAuth()
@@ -100,34 +96,36 @@ export class EleccionesController implements IEleccionController {
   }
 
   @Post(':idEleccion/abrir')
-  @ApiOperation({ summary: 'Abrir comicio de forma manual' })
+  @ApiOperation({
+    summary: 'Abrir comicio manualmente (VOTAR-320)',
+    description:
+      'Valida precondiciones (estado CONFIGURADA, padrón cargado, Merkle PUBLICADO_ON_CHAIN y verificación on-chain) y transiciona el comicio al estado ABIERTA. Sincroniza el estado con el Smart Contract.',
+  })
   @ApiParam({ name: 'idEleccion', type: Number })
   @ApiResponse({
     status: 200,
     description: 'Comicio abierto exitosamente',
-    type: AbrirEleccionResponseDto,
+    type: EleccionResponseDto,
   })
-  @ApiResponse({ status: 404, description: 'Elección no encontrada' })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
   @ApiResponse({
     status: 412,
     description:
-      'Fallo de precondición: Raíz de Merkle no publicada o no verificada on-chain',
+      'Fallo de Precondición: padrón no cargado, Merkle no publicado on-chain, o raíz de Merkle no detectada en la red descentralizada',
   })
   @ApiResponse({
     status: 422,
-    description: 'El comicio no está en estado CONFIGURADA',
+    description: 'Comicio no está en estado CONFIGURADA',
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      'La sincronización on-chain falló (Smart Contract no accesible o cuenta sin permisos)',
   })
   async abrirComicio(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
-    @Req() request: AuthenticatedRequest,
-  ): Promise<AbrirEleccionResponseDto> {
-    const user = assertAuthenticatedUser(request.user);
-    const ipOrigen = request.ip ?? request.socket.remoteAddress;
-
-    return this.aperturaComicioService.abrirManual(
-      idEleccion,
-      user.sub,
-      ipOrigen,
-    );
+  ): Promise<EleccionResponseDto> {
+    await this.aperturaComicioService.abrirManual(idEleccion);
+    return this.eleccionesService.obtenerPorId(idEleccion);
   }
 }

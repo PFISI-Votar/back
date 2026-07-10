@@ -14,6 +14,7 @@ import { EleccionRepository } from '@/eleccion/repositories/eleccion.repository'
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
 import { EleccionSchedulerService } from '@/eleccion/services/eleccion-scheduler.service';
+import { AperturaAutomaticaScheduler } from '@/eleccion/services/apertura-automatica.scheduler';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
@@ -41,6 +42,7 @@ import { AuditModule } from '@/audit/audit.module';
     EleccionGateway,
     AperturaComicioService,
     EleccionSchedulerService,
+    AperturaAutomaticaScheduler,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,
