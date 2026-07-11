@@ -13,7 +13,6 @@ import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { EleccionRepository } from '@/eleccion/repositories/eleccion.repository';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
-import { EleccionSchedulerService } from '@/eleccion/services/eleccion-scheduler.service';
 import { AperturaAutomaticaScheduler } from '@/eleccion/services/apertura-automatica.scheduler';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
@@ -43,7 +42,6 @@ import { AuditModule } from '@/audit/audit.module';
     EleccionGateway,
     ElectionStateService,
     AperturaComicioService,
-    EleccionSchedulerService,
     AperturaAutomaticaScheduler,
     {
       provide: ELECCION_REPOSITORY,
