@@ -143,7 +143,7 @@ export class ListaController {
   @ApiResponse({
     status: 422,
     description:
-      'Unprocessable Entity — sin listas válidas o candidatos insuficientes',
+      'Unprocessable Entity — padrón electoral no cargado, sin listas válidas, categorías incompletas o candidatos insuficientes',
     type: MinimoCandidatosViolationResponseDto,
   })
   async oficializar(
