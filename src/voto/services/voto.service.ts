@@ -1,13 +1,9 @@
 import {
-  BadRequestException,
-  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
-  UnprocessableEntityException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createHash } from 'crypto';
 import { Repository } from 'typeorm';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -17,7 +13,6 @@ import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
-import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { BudConfigResponseDto } from '@/voto/dto/bud-config-response.dto';
 import {
@@ -26,15 +21,6 @@ import {
   CategoriaBoletaDigitalDto,
   CategoriaBoletaEstado,
 } from '@/voto/dto/boleta-digital-response.dto';
-import {
-  ConfirmarVotoDto,
-  SeleccionVotoDto,
-} from '@/voto/dto/confirmar-voto.dto';
-import { ConfirmarVotoResponseDto } from '@/voto/dto/confirmar-voto-response.dto';
-import {
-  VotoConfirmacion,
-  VotoConfirmacionEstado,
-} from '@/voto/entities/voto-confirmacion.entity';
 
 type OfertaVoto = {
   eleccion: Eleccion;
@@ -62,8 +48,6 @@ export class VotoService {
     private readonly listaRepository: Repository<Lista>,
     @InjectRepository(PadronVotante)
     private readonly padronVotanteRepository: Repository<PadronVotante>,
-    @InjectRepository(VotoConfirmacion)
-    private readonly votoConfirmacionRepository: Repository<VotoConfirmacion>,
   ) {}
 
   async obtenerConfiguracionBud(
@@ -106,70 +90,6 @@ export class VotoService {
       permitirVotoEnBlanco: oferta.configuracion.permitirVotoEnBlanco,
       categorias: this.mapCategorias(oferta),
     };
-  }
-
-  async confirmarVoto(
-    idEleccion: number,
-    dto: ConfirmarVotoDto,
-    votanteHash: string,
-  ): Promise<ConfirmarVotoResponseDto> {
-    await this.assertVotanteHabilitado(idEleccion, votanteHash);
-    const oferta = await this.obtenerOfertaVoto(idEleccion);
-    this.validarSelecciones(oferta, dto);
-
-    const payloadHash = this.hashPayload({
-      idEleccion,
-      votoEnBlanco: dto.votoEnBlanco === true,
-      selecciones: this.normalizarSelecciones(dto.selecciones),
-    });
-
-    const existentePorClave = await this.votoConfirmacionRepository.findOne({
-      where: { idEleccion, idempotencyKey: dto.idempotencyKey },
-    });
-
-    if (existentePorClave) {
-      if (
-        existentePorClave.votanteHash !== votanteHash ||
-        existentePorClave.payloadHash !== payloadHash
-      ) {
-        throw new ConflictException(
-          'La clave idempotente ya fue utilizada con otro voto',
-        );
-      }
-      return this.toConfirmacionResponse(existentePorClave, true);
-    }
-
-    const existentePorVotante = await this.votoConfirmacionRepository.findOne({
-      where: { idEleccion, votanteHash },
-    });
-
-    if (existentePorVotante) {
-      throw new ConflictException('El votante ya confirmó su voto');
-    }
-
-    const comprobanteHash = this.hashPayload({
-      idEleccion,
-      votanteHash,
-      idempotencyKey: dto.idempotencyKey,
-      payloadHash,
-    });
-
-    try {
-      const confirmacion = await this.votoConfirmacionRepository.save(
-        this.votoConfirmacionRepository.create({
-          idEleccion,
-          votanteHash,
-          idempotencyKey: dto.idempotencyKey,
-          payloadHash,
-          comprobanteHash,
-          estado: VotoConfirmacionEstado.RECIBIDO,
-        }),
-      );
-
-      return this.toConfirmacionResponse(confirmacion, false);
-    } catch {
-      throw new ConflictException('El voto ya fue confirmado');
-    }
   }
 
   private async obtenerOfertaVoto(idEleccion: number): Promise<OfertaVoto> {
@@ -281,91 +201,6 @@ export class VotoService {
     );
   }
 
-  private validarSelecciones(oferta: OfertaVoto, dto: ConfirmarVotoDto): void {
-    const selecciones = dto.selecciones ?? [];
-
-    if (dto.votoEnBlanco === true) {
-      if (!oferta.configuracion.permitirVotoEnBlanco) {
-        throw new UnprocessableEntityException(
-          'El comicio no permite voto en blanco',
-        );
-      }
-      if (selecciones.length > 0) {
-        throw new BadRequestException(
-          'El voto en blanco no puede combinarse con candidatos',
-        );
-      }
-      return;
-    }
-
-    if (selecciones.length === 0) {
-      throw new UnprocessableEntityException(
-        'Debe seleccionar al menos un candidato',
-      );
-    }
-
-    const categoriasIds = new Set(
-      oferta.categorias.map((categoria) => categoria.idCategoria),
-    );
-    const categoriasSeleccionadas = new Set<number>();
-
-    for (const seleccion of selecciones) {
-      if (categoriasSeleccionadas.has(seleccion.idCategoria)) {
-        throw new BadRequestException(
-          'Solo se permite una selección por categoría',
-        );
-      }
-      categoriasSeleccionadas.add(seleccion.idCategoria);
-      if (!categoriasIds.has(seleccion.idCategoria)) {
-        throw new BadRequestException('La categoría seleccionada no existe');
-      }
-      if (!this.existeCandidatoEnOferta(oferta.listas, seleccion)) {
-        throw new BadRequestException(
-          'El candidato seleccionado no pertenece a la boleta',
-        );
-      }
-    }
-
-    const categoriasSinCandidatos = this.mapCategorias(oferta).filter(
-      (categoria) => categoria.estado === CategoriaBoletaEstado.SIN_CANDIDATOS,
-    );
-    if (categoriasSinCandidatos.length > 0) {
-      throw new UnprocessableEntityException(
-        'La boleta contiene categorías sin candidatos disponibles',
-      );
-    }
-
-    if (categoriasSeleccionadas.size !== oferta.categorias.length) {
-      throw new UnprocessableEntityException(
-        'Debe seleccionar un candidato por cada categoría',
-      );
-    }
-  }
-
-  private existeCandidatoEnOferta(
-    listas: Lista[],
-    seleccion: SeleccionVotoDto,
-  ): boolean {
-    return listas.some((lista) =>
-      (lista.candidatos ?? []).some(
-        (candidato: Candidato) =>
-          candidato.idCandidato === seleccion.idCandidato &&
-          candidato.idCategoria === seleccion.idCategoria,
-      ),
-    );
-  }
-
-  private normalizarSelecciones(
-    selecciones: SeleccionVotoDto[],
-  ): SeleccionVotoDto[] {
-    return selecciones
-      .slice()
-      .sort(
-        (a, b) =>
-          a.idCategoria - b.idCategoria || a.idCandidato - b.idCandidato,
-      );
-  }
-
   private async assertVotanteHabilitado(
     idEleccion: number,
     votanteHash: string,
@@ -383,23 +218,5 @@ export class VotoService {
         'El votante no está habilitado para el comicio',
       );
     }
-  }
-
-  private hashPayload(payload: unknown): string {
-    return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
-  }
-
-  private toConfirmacionResponse(
-    confirmacion: VotoConfirmacion,
-    idempotente: boolean,
-  ): ConfirmarVotoResponseDto {
-    return {
-      idEleccion: confirmacion.idEleccion,
-      estado: confirmacion.estado,
-      comprobanteHash: confirmacion.comprobanteHash,
-      payloadHash: confirmacion.payloadHash,
-      recibidoEn: confirmacion.recibidoEn,
-      idempotente,
-    };
   }
 }

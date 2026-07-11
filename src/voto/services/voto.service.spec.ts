@@ -1,19 +1,12 @@
-import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  NotFoundException,
-} from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
-import { VotoConfirmacionEstado } from '@/voto/entities/voto-confirmacion.entity';
 import { VotoService } from '@/voto/services/voto.service';
 
 const VOTANTE_HASH = 'a'.repeat(64);
-const IDEMPOTENCY_KEY = '11111111-1111-4111-8111-111111111111';
 
 const createQueryBuilderMock = (count = 1) => ({
   innerJoin: jest.fn().mockReturnThis(),
@@ -105,18 +98,6 @@ const createRepositories = () => {
     padronVotanteRepository: {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     },
-    votoConfirmacionRepository: {
-      findOne: jest.fn().mockResolvedValue(null),
-      create: jest.fn(
-        (input: Record<string, unknown>): Record<string, unknown> => input,
-      ),
-      save: jest.fn((input: Record<string, unknown>) =>
-        Promise.resolve({
-          ...input,
-          recibidoEn: new Date('2026-06-22T00:00:00.000Z'),
-        }),
-      ),
-    },
     queryBuilder,
   };
 };
@@ -128,7 +109,6 @@ const createService = (repositories = createRepositories()) =>
     repositories.boletaRepository as never,
     repositories.listaRepository as never,
     repositories.padronVotanteRepository as never,
-    repositories.votoConfirmacionRepository as never,
   );
 
 describe('VotoService', () => {
@@ -188,113 +168,5 @@ describe('VotoService', () => {
     await expect(service.obtenerBoletaDigital(1, VOTANTE_HASH)).rejects.toThrow(
       ForbiddenException,
     );
-  });
-
-  it('rechaza más de una selección en la misma categoría', async () => {
-    const service = createService();
-
-    await expect(
-      service.confirmarVoto(
-        1,
-        {
-          idempotencyKey: IDEMPOTENCY_KEY,
-          selecciones: [
-            { idCategoria: 1, idCandidato: 100 },
-            { idCategoria: 1, idCandidato: 200 },
-          ],
-        },
-        VOTANTE_HASH,
-      ),
-    ).rejects.toThrow(BadRequestException);
-  });
-
-  it('acepta una confirmación válida sin persistir la selección en claro', async () => {
-    const repositories = createRepositories();
-    const service = createService(repositories);
-
-    const actual = await service.confirmarVoto(
-      1,
-      {
-        idempotencyKey: IDEMPOTENCY_KEY,
-        selecciones: [
-          { idCategoria: 1, idCandidato: 100 },
-          { idCategoria: 2, idCandidato: 101 },
-        ],
-      },
-      VOTANTE_HASH,
-    );
-
-    expect(actual.estado).toBe(VotoConfirmacionEstado.RECIBIDO);
-    expect(actual.comprobanteHash).toMatch(/^[0-9a-f]{64}$/);
-    const [confirmacionPersistida] =
-      repositories.votoConfirmacionRepository.save.mock.calls[0];
-    expect(confirmacionPersistida).not.toHaveProperty('selecciones');
-  });
-
-  it('devuelve el comprobante existente ante el mismo idempotencyKey y payload', async () => {
-    const repositories = createRepositories();
-    const service = createService(repositories);
-    const first = await service.confirmarVoto(
-      1,
-      {
-        idempotencyKey: IDEMPOTENCY_KEY,
-        selecciones: [
-          { idCategoria: 1, idCandidato: 100 },
-          { idCategoria: 2, idCandidato: 101 },
-        ],
-      },
-      VOTANTE_HASH,
-    );
-    repositories.votoConfirmacionRepository.findOne
-      .mockResolvedValueOnce({
-        idEleccion: 1,
-        votanteHash: VOTANTE_HASH,
-        idempotencyKey: IDEMPOTENCY_KEY,
-        payloadHash: first.payloadHash,
-        comprobanteHash: first.comprobanteHash,
-        estado: VotoConfirmacionEstado.RECIBIDO,
-        recibidoEn: new Date('2026-06-22T00:00:00.000Z'),
-      })
-      .mockResolvedValue(null);
-
-    const actual = await service.confirmarVoto(
-      1,
-      {
-        idempotencyKey: IDEMPOTENCY_KEY,
-        selecciones: [
-          { idCategoria: 2, idCandidato: 101 },
-          { idCategoria: 1, idCandidato: 100 },
-        ],
-      },
-      VOTANTE_HASH,
-    );
-
-    expect(actual.idempotente).toBe(true);
-    expect(actual.comprobanteHash).toBe(first.comprobanteHash);
-  });
-
-  it('rechaza reutilizar idempotencyKey con otro payload', async () => {
-    const repositories = createRepositories();
-    repositories.votoConfirmacionRepository.findOne.mockResolvedValueOnce({
-      idEleccion: 1,
-      votanteHash: VOTANTE_HASH,
-      idempotencyKey: IDEMPOTENCY_KEY,
-      payloadHash: 'b'.repeat(64),
-    });
-    const service = createService(repositories);
-
-    await expect(
-      service.confirmarVoto(
-        1,
-        {
-          idempotencyKey: IDEMPOTENCY_KEY,
-          selecciones: [
-            { idCategoria: 1, idCandidato: 100 },
-            { idCategoria: 2, idCandidato: 101 },
-          ],
-        },
-        VOTANTE_HASH,
-      ),
-    ).rejects.toThrow(ConflictException);
   });
 });

@@ -10,9 +10,7 @@ import { PadronModule } from '@/padron/padron.module';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { BudPublicController } from '@/voto/controllers/bud-public.controller';
 import { VotoController } from '@/voto/controllers/voto.controller';
-import { VotoConfirmacion } from '@/voto/entities/voto-confirmacion.entity';
 import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
-import { VotoRateLimitGuard } from '@/voto/guards/voto-rate-limit.guard';
 import { VotoService } from '@/voto/services/voto.service';
 
 @Module({
@@ -26,10 +24,9 @@ import { VotoService } from '@/voto/services/voto.service';
       Lista,
       Candidato,
       PadronVotante,
-      VotoConfirmacion,
     ]),
   ],
   controllers: [BudPublicController, VotoController],
-  providers: [VotoService, VotoRateLimitGuard, MerkleProofRateLimitGuard],
+  providers: [VotoService, MerkleProofRateLimitGuard],
 })
 export class VotoModule {}

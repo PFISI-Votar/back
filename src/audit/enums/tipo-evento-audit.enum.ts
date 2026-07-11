@@ -5,4 +5,6 @@ export enum TipoEventoAudit {
   PADRON_CARGADO = 'PADRON_CARGADO',
   COMICIO_ABIERTO = 'COMICIO_ABIERTO',
   COMICIO_CERRADO = 'COMICIO_CERRADO',
+  /** Sufragio anónimo: sin IP/UA/session/votanteHash (VOTAR-379). */
+  VOTO_EMITIDO = 'VOTO_EMITIDO',
 }

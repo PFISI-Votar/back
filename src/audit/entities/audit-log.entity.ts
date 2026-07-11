@@ -36,8 +36,9 @@ export class AuditLog {
   @Column({ name: 'hash_registro', type: 'varchar', nullable: true })
   hashRegistro: string | null;
 
-  @Column({ name: 'ip_origen', type: 'varchar' })
-  ipOrigen: string;
+  /** Nullable: eventos de sufragio (VOTO_EMITIDO) no deben almacenar IP (VOTAR-379). */
+  @Column({ name: 'ip_origen', type: 'varchar', nullable: true })
+  ipOrigen: string | null;
 
   @Column({ name: 'endpoint', type: 'varchar' })
   endpoint: string;
