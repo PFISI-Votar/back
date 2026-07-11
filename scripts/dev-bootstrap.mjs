@@ -110,7 +110,7 @@ const ensureDevAdmin = async () => {
     }
     const autoridad = await registerElectionAdmin(nick, password);
     console.log(
-      `[dev] ✓ Admin habilitado: ${autoridad.nombre} <${autoridad.email_institucional}>`,
+      `[dev] ✓ Admin habilitado: ${autoridad.nombre} <${autoridad.email}>`,
     );
     return;
   }

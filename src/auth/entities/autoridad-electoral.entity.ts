@@ -14,8 +14,8 @@ export class AutoridadElectoral {
   @Column({ name: 'identificador_sso', type: 'varchar', unique: true })
   identificadorSso: string;
 
-  @Column({ name: 'email_institucional', type: 'varchar', unique: true })
-  emailInstitucional: string;
+  @Column({ name: 'email', type: 'varchar', unique: true })
+  email: string;
 
   @Column({ name: 'nombre', type: 'varchar' })
   nombre: string;

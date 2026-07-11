@@ -11,6 +11,19 @@ import {
 } from 'ethers';
 import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+
+/**
+ * Maps backend EleccionEstado to smart contract ElectionState enum.
+ * @dev VOTAR-336: Hermetic seal — sync election state to blockchain.
+ */
+const ESTADO_TO_BLOCKCHAIN_STATE: Record<EleccionEstado, number> = {
+  [EleccionEstado.BORRADOR]: 0, // DRAFT
+  [EleccionEstado.CONFIGURADA]: 1, // CONFIGURED
+  [EleccionEstado.ABIERTA]: 2, // OPEN
+  [EleccionEstado.CERRADA]: 3, // CLOSED
+  [EleccionEstado.ESCRUTADA]: 4, // TALLIED
+};
 
 interface MerkleRootStoreContract {
   publishRoot(
