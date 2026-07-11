@@ -18,6 +18,7 @@ import { MerkleBuilderService } from '../services/merkle-builder.service';
 import { BlockchainService } from '../../blockchain/blockchain.service';
 import { MerkleTreeEstado } from '../enums/merkle-tree-estado.enum';
 import { hashVotante } from '../utils/keccak.util';
+import * as XLSX from 'xlsx';
 
 const REGEX_KECCAK = /^[0-9a-f]{64}$/;
 const ID_ELECCION = 42;
@@ -305,6 +306,76 @@ describe('PadronService', () => {
     expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
   });
 
+  it('VOTAR-417: importa CSV con columnas adicionales ignorando extras', async () => {
+    const inputArchivo = buildCsvFile(
+      'dni,nombre,apellido,email,direccion\n30111222,Ana,Pérez,ana@frvm.utn.edu.ar,Calle 1\n30222333,Bruno,Gómez,bruno@frvm.utn.edu.ar,Calle 2',
+    );
+
+    const actual = await service.importarPadron(ID_ELECCION, inputArchivo);
+
+    expect(actual.totalImportados).toBe(2);
+    expect(actual.totalOmitidos).toBe(0);
+    expect(mockPadronRepository.crearPadronConVotantes).toHaveBeenCalledTimes(
+      1,
+    );
+    const inputPersistido = (
+      mockPadronRepository.crearPadronConVotantes.mock
+        .calls as CrearPadronInput[][]
+    )[0][0];
+    const expectedLeaves = [
+      hashVotante('30111222', 'ana@frvm.utn.edu.ar'),
+      hashVotante('30222333', 'bruno@frvm.utn.edu.ar'),
+    ].sort();
+    expect(
+      inputPersistido.sortedLeaves.map((leaf) => leaf.hashHoja).sort(),
+    ).toEqual(expectedLeaves);
+    expect(JSON.stringify(inputPersistido)).not.toMatch(/Ana|Pérez|Calle/);
+  });
+
+  it('VOTAR-417: importa Excel (.xlsx) con columnas dni y email', async () => {
+    const hoja = XLSX.utils.aoa_to_sheet([
+      ['nombre', 'dni', 'email'],
+      ['Ana', '30111222', 'ana@frvm.utn.edu.ar'],
+      ['Bruno', '30222333', 'bruno@frvm.utn.edu.ar'],
+    ]);
+    const libro = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(libro, hoja, 'Padron');
+    const buffer = Buffer.from(
+      XLSX.write(libro, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+    );
+    const inputArchivo = {
+      fieldname: 'file',
+      originalname: 'padron.xlsx',
+      encoding: '7bit',
+      mimetype:
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      size: buffer.length,
+      buffer,
+    } as Express.Multer.File;
+
+    const actual = await service.importarPadron(ID_ELECCION, inputArchivo);
+
+    expect(actual.totalImportados).toBe(2);
+    expect(actual.totalOmitidos).toBe(0);
+  });
+
+  it('debe cancelar (400) si el formato no es CSV ni Excel', async () => {
+    const buffer = Buffer.from('%PDF-1.4', 'utf-8');
+    const inputArchivo = {
+      fieldname: 'file',
+      originalname: 'padron.pdf',
+      encoding: '7bit',
+      mimetype: 'application/pdf',
+      size: buffer.length,
+      buffer,
+    } as Express.Multer.File;
+
+    await expect(
+      service.importarPadron(ID_ELECCION, inputArchivo),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
+  });
+
   it('UAT-01: importa 100 únicas y omite 5 (3 campos nulos + 2 duplicados) sobre 105 filas', async () => {
     const inputArchivo = buildCsvUat01();
 
@@ -580,6 +651,24 @@ describe('PadronService', () => {
       expect(
         mockPadronRepository.listarVotantesPaginado,
       ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('validarPadronParaOficializar', () => {
+    it('debe permitir oficializar cuando existe padrón cargado', async () => {
+      mockPadronRepository.existePadronParaEleccion.mockResolvedValue(true);
+
+      await expect(
+        service.validarPadronParaOficializar(ID_ELECCION),
+      ).resolves.toBeUndefined();
+    });
+
+    it('debe rechazar (422) si no hay padrón electoral cargado', async () => {
+      mockPadronRepository.existePadronParaEleccion.mockResolvedValue(false);
+
+      await expect(
+        service.validarPadronParaOficializar(ID_ELECCION),
+      ).rejects.toThrow(UnprocessableEntityException);
     });
   });
 

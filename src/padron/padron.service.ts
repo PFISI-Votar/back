@@ -25,6 +25,10 @@ import type { IPadronRepository } from './interfaces/padron.repository.interface
 import { MerkleBuilderService } from './services/merkle-builder.service';
 import { BlockchainService } from '../blockchain/blockchain.service';
 import { hashVotante } from './utils/keccak.util';
+import {
+  esArchivoPadronSoportado,
+  extraerFilasIdentidad,
+} from './utils/parse-padron-archivo.util';
 import { TotalVotantesResponseDto } from './dto/total-votantes-response.dto';
 import { PadronEstado } from './enums/padron-estado.enum';
 
@@ -66,11 +70,12 @@ export class PadronService implements IPadronService {
       throw new ConflictException('La elección ya tiene un padrón cargado.');
     }
 
-    const { hashesHoja, novedades, totalProcesados } = this.procesarCsv(
-      archivo.buffer,
-    );
+    const { hashesHoja, novedades, totalProcesados } =
+      this.procesarArchivo(archivo);
     if (totalProcesados === 0) {
-      throw new BadRequestException('El archivo CSV no contiene registros.');
+      throw new BadRequestException(
+        'El archivo no contiene registros de padrón.',
+      );
     }
 
     const base = {
@@ -196,6 +201,16 @@ export class PadronService implements IPadronService {
       page,
       limit,
     };
+  }
+
+  async validarPadronParaOficializar(idEleccion: number): Promise<void> {
+    const tienePadron =
+      await this.padronRepository.existePadronParaEleccion(idEleccion);
+    if (!tienePadron) {
+      throw new UnprocessableEntityException(
+        'El comicio no puede pasar a configurado sin un padrón electoral cargado.',
+      );
+    }
   }
 
   async eliminarPadron(idEleccion: number): Promise<void> {
@@ -412,60 +427,40 @@ export class PadronService implements IPadronService {
 
   private validarArchivo(archivo: Express.Multer.File): void {
     if (!archivo || !archivo.buffer || archivo.size === 0) {
-      throw new BadRequestException('Debe adjuntar un archivo CSV no vacío.');
+      throw new BadRequestException(
+        'Debe adjuntar un archivo CSV o Excel no vacío.',
+      );
     }
-    const esCsv =
-      archivo.mimetype.includes('csv') ||
-      archivo.originalname.toLowerCase().endsWith('.csv');
-    if (!esCsv) {
-      throw new BadRequestException('El archivo debe tener formato CSV.');
+    if (!esArchivoPadronSoportado(archivo.originalname, archivo.mimetype)) {
+      throw new BadRequestException(
+        'El archivo debe tener formato CSV (.csv) o Excel (.xlsx, .xls).',
+      );
     }
   }
 
   /**
-   * Procesa el CSV línea por línea (la línea 1 es la cabecera). Tolera filas
-   * defectuosas: valida cada registro, hashea la identidad (DNI + email) con
-   * Keccak-256, deduplica por hash preservando la primera aparición válida, y
-   * consolida cada fila omitida en un registro de novedades con su número de
-   * línea físico y motivo. No interrumpe la carga ante anomalías (US-331).
-   *
-   * El reporte de novedades nunca contiene datos personales en texto plano
-   * (Ley 25.326): sólo número de línea y motivo.
+   * Procesa CSV o Excel (fila 1 = cabecera). Tolera columnas adicionales
+   * (VOTAR-417): sólo exige `dni` y `email` para hashear la identidad.
+   * Tolera filas defectuosas: valida, hashea con Keccak-256, deduplica
+   * preservando la primera aparición, y consolida omisiones en novedades
+   * (US-331). El reporte nunca contiene PII en texto plano (Ley 25.326).
    */
-  private procesarCsv(buffer: Buffer): ResultadoProcesamiento {
-    const lineas = buffer
-      .toString('utf-8')
-      .split('\n')
-      .map((linea) => linea.replace(/\r$/, ''));
-
-    const cabecera = (lineas[0] ?? '')
-      .split(',')
-      .map((c) => c.trim().toLowerCase());
-    const indiceDni = cabecera.indexOf('dni');
-    const indiceEmail = cabecera.indexOf('email');
-    if (indiceDni === -1 || indiceEmail === -1) {
-      throw new BadRequestException(
-        'El archivo no tiene las columnas requeridas: dni, email.',
-      );
-    }
+  private procesarArchivo(
+    archivo: Express.Multer.File,
+  ): ResultadoProcesamiento {
+    const filas = extraerFilasIdentidad(
+      archivo.buffer,
+      archivo.originalname,
+      archivo.mimetype,
+    );
 
     const hashesUnicos = new Set<string>();
     const novedades: NovedadPadronDto[] = [];
     let totalProcesados = 0;
 
-    for (let i = 1; i < lineas.length; i++) {
-      const numeroLinea = i + 1;
-      const linea = lineas[i];
-
-      // Las líneas en blanco no son filas de datos: no se cuentan ni reportan.
-      if (linea.trim() === '') {
-        continue;
-      }
+    for (const fila of filas) {
       totalProcesados++;
-
-      const celdas = linea.split(',');
-      const dni = (celdas[indiceDni] ?? '').trim();
-      const email = (celdas[indiceEmail] ?? '').trim();
+      const { linea: numeroLinea, dni, email } = fila;
 
       if (dni === '') {
         novedades.push(this.crearNovedad(numeroLinea, TipoNovedad.DNI_AUSENTE));

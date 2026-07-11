@@ -36,4 +36,5 @@ export interface IPadronService {
     votanteHash: string,
   ): Promise<VoterMerkleProofResponseDto>;
   eliminarPadron(idEleccion: number): Promise<void>;
+  validarPadronParaOficializar(idEleccion: number): Promise<void>;
 }
