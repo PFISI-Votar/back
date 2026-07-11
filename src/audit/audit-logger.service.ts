@@ -16,6 +16,8 @@ export interface LogAccesoDenegadoInput {
 export interface LogVotoEmitidoInput {
   idEleccion: number;
   timestamp?: Date;
+  /** Ruta HTTP o etiqueta de origen; nunca debe incluir identidad. */
+  endpoint?: string;
 }
 
 /** Campos que permitirían cruzar un evento de voto con logs de SSO (VOTAR-379 UAT-05). */
@@ -84,7 +86,7 @@ export class AuditLoggerService {
       descripcion: 'Voto emitido (registro anónimo off-chain)',
       hashRegistro,
       ipOrigen: null,
-      endpoint: 'on-chain/castSignedVote',
+      endpoint: input.endpoint ?? 'voto/emitido-anonimo',
       datosAdicionales: null,
     });
     this.assertVotoAuditIsAnonymous(entry);

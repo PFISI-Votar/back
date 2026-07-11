@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -21,6 +22,7 @@ import {
   CategoriaBoletaDigitalDto,
   CategoriaBoletaEstado,
 } from '@/voto/dto/boleta-digital-response.dto';
+import { VotoEmitidoAnonimoResponseDto } from '@/voto/dto/voto-emitido-anonimo-response.dto';
 
 type OfertaVoto = {
   eleccion: Eleccion;
@@ -48,6 +50,7 @@ export class VotoService {
     private readonly listaRepository: Repository<Lista>,
     @InjectRepository(PadronVotante)
     private readonly padronVotanteRepository: Repository<PadronVotante>,
+    private readonly auditLogger: AuditLoggerService,
   ) {}
 
   async obtenerConfiguracionBud(
@@ -72,6 +75,31 @@ export class VotoService {
       tipoVotacion: eleccion.tipoVotacion,
       metodosAutenticacion: configuracion.metodosAutenticacion,
     };
+  }
+
+  /**
+   * UAT-05 / VOTAR-379: registra un evento VOTO_EMITIDO anónimo tras el cast
+   * on-chain. Sin JWT, sin nullifier, sin txHash, sin identidad ni IP persistida.
+   */
+  async registrarVotoEmitidoAnonimo(
+    idEleccion: number,
+  ): Promise<VotoEmitidoAnonimoResponseDto> {
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      throw new NotFoundException('Comicio no encontrado');
+    }
+    if (!ESTADOS_ELECCION_APTOS.includes(eleccion.estado)) {
+      throw new ForbiddenException(
+        'El comicio no admite registro anónimo de voto en este estado',
+      );
+    }
+    await this.auditLogger.logVotoEmitido({
+      idEleccion,
+      endpoint: `POST /elecciones/${idEleccion}/votos/emitido-anonimo`,
+    });
+    return { registrado: true, idEleccion };
   }
 
   async obtenerBoletaDigital(

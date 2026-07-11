@@ -102,13 +102,17 @@ const createRepositories = () => {
   };
 };
 
-const createService = (repositories = createRepositories()) =>
+const createService = (
+  repositories = createRepositories(),
+  auditLogger = { logVotoEmitido: jest.fn().mockResolvedValue({}) },
+) =>
   new VotoService(
     repositories.eleccionRepository as never,
     repositories.configuracionRepository as never,
     repositories.boletaRepository as never,
     repositories.listaRepository as never,
     repositories.padronVotanteRepository as never,
+    auditLogger as never,
   );
 
 describe('VotoService', () => {
@@ -166,6 +170,42 @@ describe('VotoService', () => {
     const service = createService(repositories);
 
     await expect(service.obtenerBoletaDigital(1, VOTANTE_HASH)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('UAT-05: registra VOTO_EMITIDO anónimo sin identidad ni payload de voto', async () => {
+    const auditLogger = { logVotoEmitido: jest.fn().mockResolvedValue({}) };
+    const service = createService(createRepositories(), auditLogger);
+
+    const actual = await service.registrarVotoEmitidoAnonimo(1);
+
+    expect(actual).toEqual({ registrado: true, idEleccion: 1 });
+    expect(auditLogger.logVotoEmitido).toHaveBeenCalledWith({
+      idEleccion: 1,
+      endpoint: 'POST /elecciones/1/votos/emitido-anonimo',
+    });
+  });
+
+  it('UAT-05: rechaza registro anónimo si el comicio no existe', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue(null);
+    const service = createService(repositories);
+
+    await expect(service.registrarVotoEmitidoAnonimo(99)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('UAT-05: rechaza registro anónimo en BORRADOR', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.BORRADOR,
+    });
+    const service = createService(repositories);
+
+    await expect(service.registrarVotoEmitidoAnonimo(1)).rejects.toThrow(
       ForbiddenException,
     );
   });
