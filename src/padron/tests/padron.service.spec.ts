@@ -16,6 +16,7 @@ import { TipoNovedad } from '../enums/tipo-novedad.enum';
 import { EleccionEstado } from '../../eleccion/enums/eleccion-estado.enum';
 import { MerkleBuilderService } from '../services/merkle-builder.service';
 import { BlockchainService } from '../../blockchain/blockchain.service';
+import { EleccionGateway } from '../../eleccion/gateways/eleccion.gateway';
 import { MerkleTreeEstado } from '../enums/merkle-tree-estado.enum';
 import { hashVotante } from '../utils/keccak.util';
 
@@ -39,6 +40,10 @@ const mockBlockchainService = {
   buildExplorerUrl: jest.fn(
     (hash: string) => `https://sepolia.etherscan.io/tx/${hash}`,
   ),
+};
+
+const mockEleccionGateway = {
+  emitMerklePublicado: jest.fn(),
 };
 
 /** Construye un archivo CSV simulado en memoria (como lo entrega multer). */
@@ -95,6 +100,7 @@ describe('PadronService', () => {
         MerkleBuilderService,
         { provide: PADRON_REPOSITORY, useValue: mockPadronRepository },
         { provide: BlockchainService, useValue: mockBlockchainService },
+        { provide: EleccionGateway, useValue: mockEleccionGateway },
       ],
     }).compile();
 
