@@ -9,7 +9,8 @@ import { TipoNovedad } from '../enums/tipo-novedad.enum';
 export class NovedadPadronDto {
   @ApiProperty({
     example: 14,
-    description: 'Número de línea físico del archivo CSV (la cabecera es 1)',
+    description:
+      'Número de línea/fila físico del archivo CSV o Excel (la cabecera es 1)',
   })
   linea: number;
 
