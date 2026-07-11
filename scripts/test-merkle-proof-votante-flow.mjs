@@ -224,8 +224,13 @@ const main = async () => {
   if (!proofRes.response.ok) {
     fail(`merkle-proof ${proofRes.status} — ${JSON.stringify(proofRes.body)}`);
   }
-  const { merkleProof, root } = proofRes.body;
-  if (!Array.isArray(merkleProof) || merkleProof.length === 0 || !root) {
+  const { hashHoja, merkleProof, root } = proofRes.body;
+  if (
+    !hashHoja ||
+    !Array.isArray(merkleProof) ||
+    merkleProof.length === 0 ||
+    !root
+  ) {
     fail(`respuesta inválida: ${JSON.stringify(proofRes.body)}`);
   }
   if (root.toLowerCase() !== adminRoot.toLowerCase()) {

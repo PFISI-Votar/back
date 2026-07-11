@@ -346,7 +346,11 @@ export class PadronService implements IPadronService {
       merkle.treeDump,
       votante.indiceHoja,
     );
-    return { merkleProof, root: merkle.merkleRoot };
+    return {
+      hashHoja: votante.hashHoja,
+      merkleProof,
+      root: merkle.merkleRoot,
+    };
   }
 
   private mapMerkleResumen(merkle: {
