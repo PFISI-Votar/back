@@ -99,6 +99,7 @@ export class EleccionesController implements IEleccionController {
   }
 
   @Post(':idEleccion/abrir')
+  @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary: 'Abrir comicio manualmente (VOTAR-320)',
     description:
