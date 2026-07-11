@@ -11,11 +11,28 @@ import {
 } from 'ethers';
 import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+
+/**
+ * Maps backend EleccionEstado to smart contract ElectionState enum.
+ * @dev VOTAR-336: Hermetic seal — sync election state to blockchain.
+ */
+const ESTADO_TO_BLOCKCHAIN_STATE: Record<EleccionEstado, number> = {
+  [EleccionEstado.BORRADOR]: 0, // DRAFT
+  [EleccionEstado.CONFIGURADA]: 1, // CONFIGURED
+  [EleccionEstado.ABIERTA]: 2, // OPEN
+  [EleccionEstado.CERRADA]: 3, // CLOSED
+  [EleccionEstado.ESCRUTADA]: 4, // TALLIED
+};
 
 interface MerkleRootStoreContract {
   publishRoot(
     electionId: number,
     root: string,
+  ): Promise<ContractTransactionResponse>;
+  setElectionState(
+    electionId: number,
+    state: number,
   ): Promise<ContractTransactionResponse>;
 }
 
@@ -125,6 +142,78 @@ export class BlockchainService {
       publishedAt,
       electionId,
       merkleRoot,
+    };
+  }
+
+  /**
+   * Synchronizes the election state to the blockchain.
+   * @dev VOTAR-336: Hermetic seal — enables on-chain state validation.
+   * This should be called when transitioning to ABIERTA to activate the RootLocked protection.
+   */
+  async syncElectionState(
+    electionId: number,
+    estado: EleccionEstado,
+  ): Promise<{ txHash: string; blockNumber: number }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const contractAddress = this.configService.get<string>(
+      'MERKLE_ROOT_STORE_ADDRESS',
+    );
+    const privateKey = this.configService.get<string>(
+      'ELECTION_ADMIN_PRIVATE_KEY',
+    );
+
+    if (!rpcUrl || !contractAddress || !privateKey) {
+      throw new ServiceUnavailableException(
+        'La sincronización de estado on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+      );
+    }
+
+    const blockchainState = ESTADO_TO_BLOCKCHAIN_STATE[estado];
+    if (blockchainState === undefined) {
+      throw new ServiceUnavailableException(
+        `Estado de elección inválido: ${estado}`,
+      );
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    const contract = new Contract(
+      contractAddress,
+      MERKLE_ROOT_STORE_ABI,
+      wallet,
+    ) as unknown as MerkleRootStoreContract;
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.setElectionState(electionId, blockchainState);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      if (
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee ELECTION_ADMIN_ROLE en el contrato.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo sincronizar el estado on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'La transacción de sincronización no devolvió recibo de confirmación.',
+      );
+    }
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
     };
   }
 

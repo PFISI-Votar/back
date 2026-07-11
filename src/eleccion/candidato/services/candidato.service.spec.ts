@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { DatosAdicionalesValidationException } from '@/eleccion/candidato/exceptions/datos-adicionales-validation.exception';
 import { CandidatoDatosValidatorService } from '@/eleccion/candidato/services/candidato-datos-validator.service';
 import { CandidatoService } from '@/eleccion/candidato/services/candidato.service';
 import { ConfiguracionDatosCandidatoService } from '@/eleccion/candidato/services/configuracion-datos-candidato.service';
@@ -19,13 +20,25 @@ const validDatos = {
   cantidad_avales: 2,
 };
 
+const camposConfig = [
+  {
+    clave: 'legajo_utn',
+    etiqueta: 'Legajo UTN',
+    tipo: 'texto' as const,
+    obligatorio: true,
+    orden: 1,
+  },
+];
+
 describe('CandidatoService', () => {
   let service: CandidatoService;
 
   const mockQueryBuilder = {
     where: jest.fn().mockReturnThis(),
     andWhere: jest.fn().mockReturnThis(),
+    innerJoin: jest.fn().mockReturnThis(),
     getCount: jest.fn().mockResolvedValue(0),
+    getMany: jest.fn().mockResolvedValue([]),
   };
 
   const mockCandidatoRepository = {
@@ -106,7 +119,7 @@ describe('CandidatoService', () => {
       cantidadCargos: 3,
       nombre: 'Presidente',
     });
-    mockConfigService.obtenerCamposPorEleccion.mockResolvedValue([]);
+    mockConfigService.obtenerCamposPorEleccion.mockResolvedValue(camposConfig);
     const savedCandidato = {
       idCandidato: 1,
       idLista: 1,
@@ -135,9 +148,37 @@ describe('CandidatoService', () => {
     expect(result.datosAdicionales.legajo_utn).toBe('14988');
     expect(result.categoriaNombre).toBe('Presidente');
     expect(mockValidatorService.validateDatosAdicionales).toHaveBeenCalledWith(
-      [],
+      camposConfig,
       validDatos,
     );
+  });
+
+  it('debe rechazar legajo duplicado en el mismo comicio', async () => {
+    mockListaService.findListaWithEleccionOrFail.mockResolvedValue(
+      mockListaContext,
+    );
+    mockCategoriaRepository.findOne.mockResolvedValue({
+      idCategoria: 1,
+      idBoleta: 10,
+      cantidadCargos: 3,
+      nombre: 'Presidente',
+    });
+    mockConfigService.obtenerCamposPorEleccion.mockResolvedValue(camposConfig);
+    mockQueryBuilder.getMany.mockResolvedValue([
+      {
+        idCandidato: 99,
+        datosAdicionales: { legajo_utn: '14988' },
+      },
+    ]);
+
+    await expect(
+      service.create(1, {
+        nombre: 'Pedro',
+        apellido: 'Gómez',
+        idCategoria: 1,
+        datosAdicionales: validDatos,
+      }),
+    ).rejects.toThrow(DatosAdicionalesValidationException);
   });
 
   it('debe propagar error de validación de datos adicionales', async () => {
@@ -150,7 +191,7 @@ describe('CandidatoService', () => {
       cantidadCargos: 3,
       nombre: 'Presidente',
     });
-    mockConfigService.obtenerCamposPorEleccion.mockResolvedValue([]);
+    mockConfigService.obtenerCamposPorEleccion.mockResolvedValue(camposConfig);
     mockValidatorService.validateDatosAdicionales.mockImplementation(() => {
       throw new UnprocessableEntityException('Validación fallida');
     });

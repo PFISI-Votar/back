@@ -453,6 +453,93 @@ describe('ListaCandidato (e2e)', () => {
       });
   });
 
+  describe('VOTAR-413: legajo único por comicio', () => {
+    it('debe rechazar candidatos con el mismo legajo en el comicio', async () => {
+      const eleccion = await dataSource.getRepository(Eleccion).save(
+        dataSource.getRepository(Eleccion).create({
+          nombre: 'Comicio Legajo Único',
+          fechaInicio: new Date('2026-12-20T10:00:00Z'),
+          fechaFin: new Date('2026-12-21T10:00:00Z'),
+          estado: EleccionEstado.BORRADOR,
+          tipoVotacion: TipoVotacion.POR_LISTA,
+        }),
+      );
+      await seedConfig(eleccion.idEleccion);
+
+      const listaA = await req
+        .post(`/elecciones/${eleccion.idEleccion}/listas`)
+        .send({ nombre: 'Lista A', sigla: 'LA', color: '#2563eb' })
+        .expect(201);
+      const listaB = await req
+        .post(`/elecciones/${eleccion.idEleccion}/listas`)
+        .send({ nombre: 'Lista B', sigla: 'LB', color: '#16a34a' })
+        .expect(201);
+
+      const categoriaRes = await crearCategoriaE2E(eleccion.idEleccion, {
+        nombre: 'Presidente',
+        maximoPostulantes: 2,
+        minimoPostulantes: 0,
+      });
+
+      await req
+        .post(`/listas/${listaA.body.idLista}/candidatos`)
+        .send({
+          nombre: 'Ana',
+          apellido: 'López',
+          idCategoria: categoriaRes.body.idCategoria,
+          datosAdicionales: {
+            legajo_utn: '14988',
+            dni: '40123456',
+            cantidad_avales: 2,
+          },
+        })
+        .expect(201);
+
+      await req
+        .post(`/listas/${listaA.body.idLista}/candidatos`)
+        .send({
+          nombre: 'Bruno',
+          apellido: 'Pérez',
+          idCategoria: categoriaRes.body.idCategoria,
+          datosAdicionales: {
+            legajo_utn: '14988',
+            dni: '39123456',
+            cantidad_avales: 2,
+          },
+        })
+        .expect(422)
+        .expect((res) => {
+          expect(res.body.errors).toBeDefined();
+          expect(
+            res.body.errors.some(
+              (e: { clave: string }) => e.clave === 'legajo_utn',
+            ),
+          ).toBe(true);
+        });
+
+      await req
+        .post(`/listas/${listaB.body.idLista}/candidatos`)
+        .send({
+          nombre: 'Carlos',
+          apellido: 'Ruiz',
+          idCategoria: categoriaRes.body.idCategoria,
+          datosAdicionales: {
+            legajo_utn: '14988',
+            dni: '38123456',
+            cantidad_avales: 2,
+          },
+        })
+        .expect(422)
+        .expect((res) => {
+          expect(
+            res.body.errors.some(
+              (e: { clave: string }) => e.clave === 'legajo_utn',
+            ),
+          ).toBe(true);
+        });
+    });
+  });
+
   describe('US-319: validar mínimo de candidatos al oficializar', () => {
     const buildComicioMinimoPayload = () => ({
       nombre: 'Comicio Mínimo UAT',
