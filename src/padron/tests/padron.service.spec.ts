@@ -318,6 +318,18 @@ describe('PadronService', () => {
     expect(mockPadronRepository.crearPadronConVotantes).toHaveBeenCalledTimes(
       1,
     );
+    const inputPersistido = (
+      mockPadronRepository.crearPadronConVotantes.mock
+        .calls as CrearPadronInput[][]
+    )[0][0];
+    const expectedLeaves = [
+      hashVotante('30111222', 'ana@frvm.utn.edu.ar'),
+      hashVotante('30222333', 'bruno@frvm.utn.edu.ar'),
+    ].sort();
+    expect(
+      inputPersistido.sortedLeaves.map((leaf) => leaf.hashHoja).sort(),
+    ).toEqual(expectedLeaves);
+    expect(JSON.stringify(inputPersistido)).not.toMatch(/Ana|Pérez|Calle/);
   });
 
   it('VOTAR-417: importa Excel (.xlsx) con columnas dni y email', async () => {

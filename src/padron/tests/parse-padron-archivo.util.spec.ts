@@ -41,6 +41,14 @@ describe('parse-padron-archivo.util', () => {
         false,
       );
     });
+
+    it('rechaza text/plain sin extensión .csv', () => {
+      expect(esArchivoPadronSoportado('padron.txt', 'text/plain')).toBe(false);
+    });
+
+    it('acepta text/plain con extensión .csv', () => {
+      expect(esArchivoPadronSoportado('padron.csv', 'text/plain')).toBe(true);
+    });
   });
 
   describe('esExcel', () => {
@@ -101,6 +109,41 @@ describe('parse-padron-archivo.util', () => {
       expect(() =>
         extraerFilasIdentidad(buffer, 'padron.csv', 'text/csv'),
       ).toThrow(BadRequestException);
+    });
+
+    it('parsea CSV con comas entrecomilladas sin romper columnas', () => {
+      const buffer = Buffer.from(
+        'dni,nombre,email,direccion\n30111222,"Pérez, Ana",ana@frvm.utn.edu.ar,"San Martín 123, 4B"\n',
+        'utf-8',
+      );
+      const filas = extraerFilasIdentidad(buffer, 'padron.csv', 'text/csv');
+      expect(filas).toEqual([
+        { linea: 2, dni: '30111222', email: 'ana@frvm.utn.edu.ar' },
+      ]);
+    });
+
+    it('en Excel usa sólo la primera hoja', () => {
+      const hoja1 = XLSX.utils.aoa_to_sheet([
+        ['dni', 'email'],
+        ['30111222', 'ana@frvm.utn.edu.ar'],
+      ]);
+      const hoja2 = XLSX.utils.aoa_to_sheet([
+        ['dni', 'email'],
+        ['30999888', 'luis@frvm.utn.edu.ar'],
+      ]);
+      const libro = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(libro, hoja1, 'Padron');
+      XLSX.utils.book_append_sheet(libro, hoja2, 'Otra');
+      const buffer = Buffer.from(
+        XLSX.write(libro, { type: 'buffer', bookType: 'xlsx' }) as Buffer,
+      );
+      const filas = extraerFilasIdentidad(
+        buffer,
+        'padron.xlsx',
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      );
+      expect(filas).toHaveLength(1);
+      expect(filas[0].dni).toBe('30111222');
     });
   });
 });

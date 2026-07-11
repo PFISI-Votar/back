@@ -1,4 +1,5 @@
 import { BadRequestException } from '@nestjs/common';
+import { parse as parseCsv } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 
 export interface FilaPadronIdentidad {
@@ -8,7 +9,8 @@ export interface FilaPadronIdentidad {
   email: string;
 }
 
-const EXTENSIONES_EXCEL = ['.xlsx', '.xls'];
+const EXTENSIONES_EXCEL = ['.xlsx', '.xls'] as const;
+const EXTENSIONES_CSV = ['.csv'] as const;
 
 export function esArchivoPadronSoportado(
   originalname: string,
@@ -16,11 +18,9 @@ export function esArchivoPadronSoportado(
 ): boolean {
   const nombre = originalname.toLowerCase();
   const mime = (mimetype ?? '').toLowerCase();
-  if (
-    nombre.endsWith('.csv') ||
-    mime.includes('csv') ||
-    mime === 'text/plain'
-  ) {
+  const esCsvPorExtension = EXTENSIONES_CSV.some((ext) => nombre.endsWith(ext));
+  // text/plain solo se acepta si la extensión es .csv (no cualquier plain text).
+  if (esCsvPorExtension || mime.includes('csv')) {
     return true;
   }
   if (
@@ -47,6 +47,7 @@ export function esExcel(originalname: string, mimetype: string): boolean {
  * Extrae filas de identidad (dni + email) desde CSV o Excel.
  * Columnas adicionales se ignoran (generalización VOTAR-417).
  * Sólo se usan `dni` y `email` para el hash Keccak-256 (Ley 25.326).
+ * En Excel sólo se procesa la primera hoja del libro.
  */
 export function extraerFilasIdentidad(
   buffer: Buffer,
@@ -92,6 +93,7 @@ export function extraerFilasIdentidad(
 function leerFilasCsv(buffer: Buffer): Array<string[] | null> {
   const lineas = buffer
     .toString('utf-8')
+    .replace(/^\uFEFF/, '')
     .split('\n')
     .map((linea) => linea.replace(/\r$/, ''));
 
@@ -99,7 +101,12 @@ function leerFilasCsv(buffer: Buffer): Array<string[] | null> {
     if (linea.trim() === '') {
       return null;
     }
-    return linea.split(',');
+    const [celdas] = parseCsv(linea, {
+      relax_column_count: true,
+      relax_quotes: true,
+      skip_empty_lines: false,
+    }) as string[][];
+    return (celdas ?? []).map((celda) => String(celda ?? ''));
   });
 }
 
@@ -113,6 +120,7 @@ function leerFilasExcel(buffer: Buffer): Array<string[] | null> {
     );
   }
 
+  // Sólo la primera hoja: el padrón debe estar en Sheet1 / primera pestaña.
   const nombreHoja = workbook.SheetNames[0];
   if (!nombreHoja) {
     throw new BadRequestException('El archivo Excel no contiene hojas.');

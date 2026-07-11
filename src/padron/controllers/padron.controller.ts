@@ -38,10 +38,14 @@ export class PadronController implements IPadronController {
   constructor(private readonly padronService: PadronService) {}
 
   @Post('import')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: 5 * 1024 * 1024 },
+    }),
+  )
   @ApiOperation({
     summary:
-      'Importar el padrón electoral desde CSV o Excel (.xlsx/.xls), hasheando cada identidad (dni+email) con Keccak-256. Acepta columnas adicionales que se ignoran (VOTAR-417). Tolera filas defectuosas e ignora duplicados (preserva la primera aparición), consolidando las omisiones en un registro de novedades (US-331)',
+      'Importar el padrón electoral desde CSV o Excel (.xlsx/.xls), hasheando cada identidad (dni+email) con Keccak-256. Acepta columnas adicionales que se ignoran (VOTAR-417). En Excel sólo se procesa la primera hoja. Tolera filas defectuosas e ignora duplicados (preserva la primera aparición), consolidando las omisiones en un registro de novedades (US-331)',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -52,7 +56,7 @@ export class PadronController implements IPadronController {
           type: 'string',
           format: 'binary',
           description:
-            'Archivo CSV o Excel con columnas dni y email (otras se ignoran)',
+            'CSV o Excel (máx. 5 MB) con columnas dni y email; otras se ignoran. Excel: solo la primera hoja.',
         },
       },
     },
