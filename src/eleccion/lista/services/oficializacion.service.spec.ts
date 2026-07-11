@@ -13,6 +13,7 @@ import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { MinimoCandidatosViolationException } from '@/eleccion/rules-engine/exceptions/minimo-candidatos-violation.exception';
 import { RulesEngineService } from '@/eleccion/rules-engine/rules-engine.service';
+import { PadronService } from '@/padron/padron.service';
 
 describe('OficializacionService', () => {
   let service: OficializacionService;
@@ -25,6 +26,9 @@ describe('OficializacionService', () => {
   };
   const mockCategoriasService = {
     validarCategoriasParaOficializar: jest.fn(),
+  };
+  const mockPadronService = {
+    validarPadronParaOficializar: jest.fn(),
   };
 
   const mockTransactionManager = {
@@ -63,6 +67,7 @@ describe('OficializacionService', () => {
         { provide: BoletaService, useValue: mockBoletaService },
         { provide: DataSource, useValue: mockDataSource },
         { provide: CategoriasService, useValue: mockCategoriasService },
+        { provide: PadronService, useValue: mockPadronService },
       ],
     }).compile();
 
@@ -71,11 +76,35 @@ describe('OficializacionService', () => {
 
   afterEach(() => jest.clearAllMocks());
 
+  const mockPadronValido = () => {
+    mockPadronService.validarPadronParaOficializar.mockResolvedValue(undefined);
+  };
+
+  it('debe lanzar 422 si no hay padrón electoral cargado', async () => {
+    mockEleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.BORRADOR,
+    });
+    mockPadronService.validarPadronParaOficializar.mockRejectedValue(
+      new UnprocessableEntityException(
+        'El comicio no puede pasar a configurado sin un padrón electoral cargado.',
+      ),
+    );
+
+    await expect(service.oficializar(1)).rejects.toThrow(
+      UnprocessableEntityException,
+    );
+    expect(
+      mockCategoriasService.validarCategoriasParaOficializar,
+    ).not.toHaveBeenCalled();
+  });
+
   it('debe lanzar 422 si hay categorías sin listas con candidatos', async () => {
     mockEleccionRepository.findOne.mockResolvedValue({
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
     });
+    mockPadronValido();
     mockCategoriasService.validarCategoriasParaOficializar.mockRejectedValue(
       new UnprocessableEntityException(
         'El comicio no puede oficializarse: existe al menos una categoría sin listas oficializadas.',
@@ -118,6 +147,7 @@ describe('OficializacionService', () => {
     ];
 
     mockEleccionRepository.findOne.mockResolvedValue(eleccion);
+    mockPadronValido();
     mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
       undefined,
     );
@@ -141,6 +171,7 @@ describe('OficializacionService', () => {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
     });
+    mockPadronValido();
     mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
       undefined,
     );
@@ -175,6 +206,7 @@ describe('OficializacionService', () => {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
     });
+    mockPadronValido();
     mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
       undefined,
     );
