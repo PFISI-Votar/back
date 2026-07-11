@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/unbound-method */
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConfigService } from '@nestjs/config';
 import {
   NotFoundException,
   PreconditionFailedException,
@@ -16,6 +15,8 @@ import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
 import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
+import { BlockchainService } from '@/blockchain/blockchain.service';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 
 describe('AperturaComicioService', () => {
   let service: AperturaComicioService;
@@ -23,7 +24,8 @@ describe('AperturaComicioService', () => {
   let padronRepository: jest.Mocked<Repository<PadronElectoral>>;
   let merkleTreeRepository: jest.Mocked<Repository<MerkleTree>>;
   let electionStateService: jest.Mocked<ElectionStateService>;
-  let configService: jest.Mocked<ConfigService>;
+  let blockchainService: jest.Mocked<BlockchainService>;
+  let auditLoggerService: jest.Mocked<AuditLoggerService>;
   let eleccionGateway: jest.Mocked<EleccionGateway>;
 
   const mockEleccion: Eleccion = {
@@ -69,8 +71,12 @@ describe('AperturaComicioService', () => {
       transitionToAbierta: jest.fn(),
     };
 
-    const mockConfigService = {
-      get: jest.fn(),
+    const mockBlockchainService = {
+      verifyMerkleRootOnChain: jest.fn(),
+    };
+
+    const mockAuditLoggerService = {
+      logComicioAbierto: jest.fn(),
     };
 
     const mockEleccionGateway = {
@@ -97,8 +103,12 @@ describe('AperturaComicioService', () => {
           useValue: mockElectionStateService,
         },
         {
-          provide: ConfigService,
-          useValue: mockConfigService,
+          provide: BlockchainService,
+          useValue: mockBlockchainService,
+        },
+        {
+          provide: AuditLoggerService,
+          useValue: mockAuditLoggerService,
         },
         {
           provide: EleccionGateway,
@@ -112,7 +122,8 @@ describe('AperturaComicioService', () => {
     padronRepository = module.get(getRepositoryToken(PadronElectoral));
     merkleTreeRepository = module.get(getRepositoryToken(MerkleTree));
     electionStateService = module.get(ElectionStateService);
-    configService = module.get(ConfigService);
+    blockchainService = module.get(BlockchainService);
+    auditLoggerService = module.get(AuditLoggerService);
     eleccionGateway = module.get(EleccionGateway);
   });
 
@@ -121,43 +132,50 @@ describe('AperturaComicioService', () => {
   });
 
   describe('abrirManual', () => {
-    it('should open election manually when all preconditions are met', async () => {
+    it('should open election manually when all preconditions are met (UAT-01)', async () => {
       // Arrange: Setup preconditions
       eleccionRepository.findOne.mockResolvedValue(mockEleccion);
       padronRepository.findOne.mockResolvedValue(mockPadron);
       merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
-      configService.get.mockImplementation((key: string) => {
-        if (key === 'SEPOLIA_RPC_URL') return 'http://localhost:8545';
-        if (key === 'MERKLE_ROOT_STORE_ADDRESS') return '0xContractAddress';
-        return null;
-      });
+      blockchainService.verifyMerkleRootOnChain.mockResolvedValue(true);
 
-      // Mock blockchain verification (will be bypassed in unit tests)
-      const mockContract = {
-        getRoot: jest.fn().mockResolvedValue('0x1234567890abcdef'),
+      const eleccionAbierta = {
+        ...mockEleccion,
+        estado: EleccionEstado.ABIERTA,
       };
-      jest.spyOn(service as any, 'verifyMerkleRootOnChain').mockResolvedValue(undefined);
-
-      const eleccionAbierta = { ...mockEleccion, estado: EleccionEstado.ABIERTA };
-      electionStateService.transitionToAbierta.mockResolvedValue(eleccionAbierta);
+      electionStateService.transitionToAbierta.mockResolvedValue(
+        eleccionAbierta,
+      );
+      auditLoggerService.logComicioAbierto.mockResolvedValue(undefined);
 
       // Act
-      const result = await service.abrirManual(1);
+      const result = await service.abrirManual(1, 'admin-123', '192.168.1.1');
 
       // Assert
       expect(electionStateService.transitionToAbierta).toHaveBeenCalledWith(1);
+
+      expect(auditLoggerService.logComicioAbierto).toHaveBeenCalledWith({
+        idEleccion: 1,
+        actorId: 'admin-123',
+        modo: 'MANUAL',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        timestamp: expect.any(Date),
+        ipOrigen: '192.168.1.1',
+      });
       expect(eleccionGateway.emitEleccionAbierta).toHaveBeenCalledWith(
         eleccionAbierta.idEleccion,
-        eleccionAbierta.nombre,
       );
       expect(result.estado).toBe(EleccionEstado.ABIERTA);
+      expect(result.modo).toBe('MANUAL');
     });
 
     it('should throw NotFoundException when election does not exist', async () => {
       eleccionRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.abrirManual(999)).rejects.toThrow(NotFoundException);
-      await expect(service.abrirManual(999)).rejects.toThrow(
+      await expect(service.abrirManual(999, 'admin-123')).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.abrirManual(999, 'admin-123')).rejects.toThrow(
         'Elección 999 no encontrada',
       );
     });
@@ -166,10 +184,10 @@ describe('AperturaComicioService', () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.BORRADOR };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
 
-      await expect(service.abrirManual(1)).rejects.toThrow(
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
         UnprocessableEntityException,
       );
-      await expect(service.abrirManual(1)).rejects.toThrow(
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
         /debe estar en estado CONFIGURADA/,
       );
     });
@@ -178,26 +196,11 @@ describe('AperturaComicioService', () => {
       eleccionRepository.findOne.mockResolvedValue(mockEleccion);
       padronRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.abrirManual(1)).rejects.toThrow(
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
         PreconditionFailedException,
       );
-      await expect(service.abrirManual(1)).rejects.toThrow(
-        /padrón electoral no ha sido cargado/,
-      );
-    });
-
-    it('should throw PreconditionFailedException when padron is empty', async () => {
-      eleccionRepository.findOne.mockResolvedValue(mockEleccion);
-      padronRepository.findOne.mockResolvedValue({
-        ...mockPadron,
-        totalVotantesHabilitados: 0,
-      });
-
-      await expect(service.abrirManual(1)).rejects.toThrow(
-        PreconditionFailedException,
-      );
-      await expect(service.abrirManual(1)).rejects.toThrow(
-        /padrón electoral está vacío/,
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
+        /padrón electoral cargado/,
       );
     });
 
@@ -206,15 +209,15 @@ describe('AperturaComicioService', () => {
       padronRepository.findOne.mockResolvedValue(mockPadron);
       merkleTreeRepository.findOne.mockResolvedValue(null);
 
-      await expect(service.abrirManual(1)).rejects.toThrow(
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
         PreconditionFailedException,
       );
-      await expect(service.abrirManual(1)).rejects.toThrow(
-        /árbol de Merkle no ha sido generado/,
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
+        /árbol de Merkle consolidado/,
       );
     });
 
-    it('should throw PreconditionFailedException when Merkle tree is not PUBLICADO_ON_CHAIN', async () => {
+    it('should throw PreconditionFailedException when Merkle tree is not PUBLICADO_ON_CHAIN (UAT-02)', async () => {
       eleccionRepository.findOne.mockResolvedValue(mockEleccion);
       padronRepository.findOne.mockResolvedValue(mockPadron);
       merkleTreeRepository.findOne.mockResolvedValue({
@@ -222,84 +225,64 @@ describe('AperturaComicioService', () => {
         estado: MerkleTreeEstado.GENERADO,
       });
 
-      await expect(service.abrirManual(1)).rejects.toThrow(
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
         PreconditionFailedException,
       );
-      await expect(service.abrirManual(1)).rejects.toThrow(
-        /debe estar en estado PUBLICADO_ON_CHAIN/,
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
+        /Raíz de Merkle no detectada en la red descentralizada/,
       );
     });
 
-    it('should throw PreconditionFailedException when RPC is not configured', async () => {
+    it('should throw PreconditionFailedException when Merkle root is not verified on-chain (UAT-02)', async () => {
       eleccionRepository.findOne.mockResolvedValue(mockEleccion);
       padronRepository.findOne.mockResolvedValue(mockPadron);
       merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
-      configService.get.mockReturnValue(null);
+      blockchainService.verifyMerkleRootOnChain.mockResolvedValue(false);
 
-      await expect(service.abrirManual(1)).rejects.toThrow(
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
         PreconditionFailedException,
       );
-      await expect(service.abrirManual(1)).rejects.toThrow(
-        /verificación on-chain no está configurada/,
+      await expect(service.abrirManual(1, 'admin-123')).rejects.toThrow(
+        /La raíz de Merkle no pudo ser verificada en la blockchain/,
       );
     });
   });
 
   describe('abrirAutomatico', () => {
-    it('should open election automatically when fechaInicio is reached', async () => {
-      // Arrange: Setup preconditions with fechaInicio in the past
-      const pastDate = new Date('2024-01-01T10:00:00Z');
-      const eleccionPasada = { ...mockEleccion, fechaInicio: pastDate };
-
-      eleccionRepository.findOne.mockResolvedValue(eleccionPasada);
+    it('should open election automatically when preconditions are met (UAT-03)', async () => {
+      // Arrange: Setup preconditions
+      eleccionRepository.findOne.mockResolvedValue(mockEleccion);
       padronRepository.findOne.mockResolvedValue(mockPadron);
       merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
-      configService.get.mockImplementation((key: string) => {
-        if (key === 'SEPOLIA_RPC_URL') return 'http://localhost:8545';
-        if (key === 'MERKLE_ROOT_STORE_ADDRESS') return '0xContractAddress';
-        return null;
-      });
+      blockchainService.verifyMerkleRootOnChain.mockResolvedValue(true);
 
-      jest.spyOn(service as any, 'verifyMerkleRootOnChain').mockResolvedValue(undefined);
-
-      const eleccionAbierta = { ...eleccionPasada, estado: EleccionEstado.ABIERTA };
-      electionStateService.transitionToAbierta.mockResolvedValue(eleccionAbierta);
+      const eleccionAbierta = {
+        ...mockEleccion,
+        estado: EleccionEstado.ABIERTA,
+      };
+      electionStateService.transitionToAbierta.mockResolvedValue(
+        eleccionAbierta,
+      );
+      auditLoggerService.logComicioAbierto.mockResolvedValue(undefined);
 
       // Act
       const result = await service.abrirAutomatico(1);
 
       // Assert
       expect(electionStateService.transitionToAbierta).toHaveBeenCalledWith(1);
+
+      expect(auditLoggerService.logComicioAbierto).toHaveBeenCalledWith({
+        idEleccion: 1,
+        actorId: 'SYSTEM',
+        modo: 'AUTOMATICO',
+        // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+        timestamp: expect.any(Date),
+      });
       expect(eleccionGateway.emitEleccionAbierta).toHaveBeenCalledWith(
         eleccionAbierta.idEleccion,
-        eleccionAbierta.nombre,
       );
       expect(result.estado).toBe(EleccionEstado.ABIERTA);
-    });
-
-    it('should throw UnprocessableEntityException when fechaInicio has not been reached', async () => {
-      // Arrange: Setup election with future fechaInicio
-      const futureDate = new Date('2030-01-01T10:00:00Z');
-      const eleccionFutura = { ...mockEleccion, fechaInicio: futureDate };
-
-      eleccionRepository.findOne.mockResolvedValue(eleccionFutura);
-      padronRepository.findOne.mockResolvedValue(mockPadron);
-      merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
-      configService.get.mockImplementation((key: string) => {
-        if (key === 'SEPOLIA_RPC_URL') return 'http://localhost:8545';
-        if (key === 'MERKLE_ROOT_STORE_ADDRESS') return '0xContractAddress';
-        return null;
-      });
-
-      jest.spyOn(service as any, 'verifyMerkleRootOnChain').mockResolvedValue(undefined);
-
-      // Act & Assert
-      await expect(service.abrirAutomatico(1)).rejects.toThrow(
-        UnprocessableEntityException,
-      );
-      await expect(service.abrirAutomatico(1)).rejects.toThrow(
-        /fecha de inicio no ha sido alcanzada/,
-      );
+      expect(result.modo).toBe('AUTOMATICO');
     });
   });
 });

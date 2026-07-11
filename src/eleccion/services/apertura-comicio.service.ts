@@ -3,9 +3,10 @@ import {
   NotFoundException,
   PreconditionFailedException,
   UnprocessableEntityException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { Repository } from 'typeorm';
 import { Eleccion } from '../entities/eleccion.entity';
 import { EleccionEstado } from '../enums/eleccion-estado.enum';
 import { AbrirEleccionResponseDto } from '../dto/abrir-eleccion-response.dto';
@@ -14,9 +15,13 @@ import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
+import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
+import { ElectionStateService } from '@/eleccion/services/election-state.service';
 
 @Injectable()
 export class AperturaComicioService {
+  private readonly logger = new Logger(AperturaComicioService.name);
+
   constructor(
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
@@ -26,7 +31,8 @@ export class AperturaComicioService {
     private readonly merkleRepository: Repository<MerkleTree>,
     private readonly blockchainService: BlockchainService,
     private readonly auditLoggerService: AuditLoggerService,
-    private readonly dataSource: DataSource,
+    private readonly eleccionGateway: EleccionGateway,
+    private readonly electionStateService: ElectionStateService,
   ) {}
 
   /**
@@ -89,7 +95,9 @@ export class AperturaComicioService {
   }
 
   /**
-   * Apertura manual del comicio por un administrador.
+   * Apertura manual del comicio por un administrador (UAT-01 VOTAR-320).
+   * Valida precondiciones, sincroniza estado on-chain via ElectionStateService,
+   * registra auditoría y emite evento WebSocket.
    */
   async abrirManual(
     idEleccion: number,
@@ -104,33 +112,42 @@ export class AperturaComicioService {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
 
+    // UAT-02: Validar precondiciones (padrón, Merkle on-chain)
     await this.validarPrecondicionesApertura(eleccion);
 
     const now = new Date();
 
-    return this.dataSource.transaction(async (manager) => {
-      eleccion.estado = EleccionEstado.ABIERTA;
-      await manager.save(Eleccion, eleccion);
+    // AC 3: Transición de estado con sincronización on-chain (captura evento ElectionStateChanged)
+    const eleccionAbierta =
+      await this.electionStateService.transitionToAbierta(idEleccion);
 
-      await this.auditLoggerService.logComicioAbierto({
-        idEleccion,
-        actorId,
-        modo: 'MANUAL',
-        timestamp: now,
-        ipOrigen,
-      });
-
-      return {
-        idEleccion,
-        estado: EleccionEstado.ABIERTA,
-        fechaApertura: now,
-        modo: 'MANUAL',
-      };
+    // Auditoría pública (UAT-01)
+    await this.auditLoggerService.logComicioAbierto({
+      idEleccion,
+      actorId,
+      modo: 'MANUAL',
+      timestamp: now,
+      ipOrigen,
     });
+
+    // Emitir evento WebSocket para clientes conectados
+    this.eleccionGateway.emitEleccionAbierta(eleccionAbierta.idEleccion);
+
+    this.logger.log(
+      `Comicio ${idEleccion} ("${eleccionAbierta.nombre}") abierto manualmente por ${actorId}`,
+    );
+
+    return {
+      idEleccion,
+      estado: EleccionEstado.ABIERTA,
+      fechaApertura: now,
+      modo: 'MANUAL',
+    };
   }
 
   /**
-   * Apertura automática del comicio por timestamp (scheduler).
+   * Apertura automática del comicio por timestamp (scheduler - UAT-03 VOTAR-320).
+   * El backend sincroniza el estado on-chain cuando se alcanza fechaInicio.
    */
   async abrirAutomatico(idEleccion: number): Promise<AbrirEleccionResponseDto> {
     const eleccion = await this.eleccionRepository.findOne({
@@ -141,27 +158,35 @@ export class AperturaComicioService {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
 
+    // UAT-02: Validar precondiciones
     await this.validarPrecondicionesApertura(eleccion);
 
     const now = new Date();
 
-    return this.dataSource.transaction(async (manager) => {
-      eleccion.estado = EleccionEstado.ABIERTA;
-      await manager.save(Eleccion, eleccion);
+    // AC 4: Sincronización automática de estado on-chain
+    const eleccionAbierta =
+      await this.electionStateService.transitionToAbierta(idEleccion);
 
-      await this.auditLoggerService.logComicioAbierto({
-        idEleccion,
-        actorId: 'SYSTEM',
-        modo: 'AUTOMATICO',
-        timestamp: now,
-      });
-
-      return {
-        idEleccion,
-        estado: EleccionEstado.ABIERTA,
-        fechaApertura: now,
-        modo: 'AUTOMATICO',
-      };
+    // Auditoría pública (UAT-03)
+    await this.auditLoggerService.logComicioAbierto({
+      idEleccion,
+      actorId: 'SYSTEM',
+      modo: 'AUTOMATICO',
+      timestamp: now,
     });
+
+    // Emitir evento WebSocket
+    this.eleccionGateway.emitEleccionAbierta(eleccionAbierta.idEleccion);
+
+    this.logger.log(
+      `Comicio ${idEleccion} ("${eleccionAbierta.nombre}") abierto automáticamente`,
+    );
+
+    return {
+      idEleccion,
+      estado: EleccionEstado.ABIERTA,
+      fechaApertura: now,
+      modo: 'AUTOMATICO',
+    };
   }
 }

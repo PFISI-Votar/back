@@ -27,8 +27,8 @@ export class AperturaAutomaticaScheduler implements OnModuleInit {
   }
 
   private startScheduler() {
-    this.intervalId = setInterval(async () => {
-      await this.checkAndOpenElections();
+    this.intervalId = setInterval(() => {
+      void this.checkAndOpenElections();
     }, this.CHECK_INTERVAL_MS);
   }
 
