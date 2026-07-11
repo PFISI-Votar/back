@@ -28,6 +28,7 @@ import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import {
   createAuthedRequest,
   type AuthedRequest,
@@ -221,6 +222,7 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
   describe('UAT-02: Validación de precondiciones', () => {
     it('debe retornar 412 si el Merkle no está publicado on-chain', async () => {
       const { eleccion, padron } = await seedEleccionConfigurada();
+      const syncSpy = jest.spyOn(blockchainService, 'syncElectionState');
 
       // Create a new merkle tree in CONSOLIDADO state (not published on-chain)
       const dummyLeaves = Array.from({ length: 100 }, (_, i) => [
@@ -246,9 +248,16 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
 
       expect(response.body.message).toContain('Fallo de Precondición');
       expect(response.body.message).toContain('Raíz de Merkle');
+
+      const eleccionActualizada = await dataSource
+        .getRepository(Eleccion)
+        .findOne({ where: { idEleccion: eleccion.idEleccion } });
+      expect(eleccionActualizada?.estado).toBe(EleccionEstado.CONFIGURADA);
+      expect(syncSpy).not.toHaveBeenCalled();
     });
 
     it('debe retornar 412 si no hay padrón cargado', async () => {
+      const syncSpy = jest.spyOn(blockchainService, 'syncElectionState');
       const eleccion = dataSource.getRepository(Eleccion).create({
         nombre: 'Elección sin padrón',
         descripcion: 'Test',
@@ -266,10 +275,17 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       expect(response.body.message).toContain(
         'El comicio no tiene un padrón electoral cargado',
       );
+
+      const eleccionActualizada = await dataSource
+        .getRepository(Eleccion)
+        .findOne({ where: { idEleccion: eleccion.idEleccion } });
+      expect(eleccionActualizada?.estado).toBe(EleccionEstado.CONFIGURADA);
+      expect(syncSpy).not.toHaveBeenCalled();
     });
 
     it('debe retornar 412 si la raíz de Merkle no se verifica on-chain', async () => {
       const { eleccion } = await seedEleccionConfigurada();
+      const syncSpy = jest.spyOn(blockchainService, 'syncElectionState');
 
       // Mock de verificación fallida
       jest
@@ -283,6 +299,12 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       expect(response.body.message).toContain(
         'La raíz de Merkle no pudo ser verificada en la blockchain',
       );
+
+      const eleccionActualizada = await dataSource
+        .getRepository(Eleccion)
+        .findOne({ where: { idEleccion: eleccion.idEleccion } });
+      expect(eleccionActualizada?.estado).toBe(EleccionEstado.CONFIGURADA);
+      expect(syncSpy).not.toHaveBeenCalled();
     });
 
     it('debe retornar 422 si el estado no es CONFIGURADA', async () => {
@@ -321,14 +343,16 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       await req.post(`/elecciones/${eleccion.idEleccion}/abrir`).expect(200);
 
       const auditLogs = await dataSource.getRepository(AuditLog).find({
-        where: { idEleccion: eleccion.idEleccion },
+        where: {
+          idEleccion: eleccion.idEleccion,
+          tipoEvento: TipoEventoAudit.COMICIO_ABIERTO,
+        },
       });
 
-      // Verify that audit logs were created
-      expect(auditLogs.length).toBeGreaterThan(0);
-
-      // At least one log should be present - we'll verify the actor
+      expect(auditLogs).toHaveLength(1);
       expect(auditLogs[0].actor).toBe('14988');
+      expect(auditLogs[0].datosAdicionales).toMatchObject({ modo: 'MANUAL' });
+      expect(auditLogs[0].ipOrigen).not.toBe('SYSTEM');
     });
 
     it('debe llamar a syncElectionState', async () => {

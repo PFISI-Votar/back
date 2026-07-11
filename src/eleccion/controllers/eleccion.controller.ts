@@ -131,7 +131,19 @@ export class EleccionesController implements IEleccionController {
     @Req() req: AuthenticatedRequest,
   ): Promise<EleccionResponseDto> {
     const user = assertAuthenticatedUser(req.user);
-    await this.aperturaComicioService.abrirManual(idEleccion, user.sub);
+    await this.aperturaComicioService.abrirManual(
+      idEleccion,
+      user.sub,
+      this.resolveClientIp(req),
+    );
     return this.eleccionesService.obtenerPorId(idEleccion);
+  }
+
+  private resolveClientIp(request: AuthenticatedRequest): string {
+    const forwarded = request.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      return forwarded.split(',')[0]?.trim() ?? 'unknown';
+    }
+    return request.ip ?? 'unknown';
   }
 }

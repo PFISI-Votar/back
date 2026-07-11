@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
 import { CategoriasModule } from '@/categoria/categoria.module';
@@ -25,7 +24,6 @@ import { VotoModule } from '@/voto/voto.module';
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
-    ScheduleModule.forRoot(),
     AuthModule,
     EleccionesModule,
     PadronModule,
