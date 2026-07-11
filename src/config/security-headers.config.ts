@@ -66,5 +66,17 @@ export const applySecurityHeaders = (
   expressApp.use(permissionsPolicyMiddleware);
 };
 
-export const resolveIsProduction = (configService: ConfigService): boolean =>
-  configService.get<boolean>('DEVELOPMENT') === false;
+export const resolveIsProduction = (configService: ConfigService): boolean => {
+  const development = configService.get<string | boolean>('DEVELOPMENT');
+  // Maneja strings 'true'/'false' y booleanos
+  // Si DEVELOPMENT es true o 'true', entonces NO estamos en producción
+  if (development === true || development === 'true') {
+    return false;
+  }
+  // Si DEVELOPMENT es false o 'false', estamos en producción
+  if (development === false || development === 'false') {
+    return true;
+  }
+  // Por defecto (undefined, null, etc), asumir producción por seguridad
+  return true;
+};

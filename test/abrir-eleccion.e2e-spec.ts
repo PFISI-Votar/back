@@ -26,8 +26,6 @@ import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
 import { BlockchainService } from '@/blockchain/blockchain.service';
-import { SmartContractEleccion } from '@/blockchain/entities/smart-contract-eleccion.entity';
-import { TransaccionBlockchain } from '@/blockchain/entities/transaccion-blockchain.entity';
 import {
   createAuthedRequest,
   type AuthedRequest,
@@ -48,8 +46,6 @@ const entities = [
   PadronElectoral,
   PadronVotante,
   MerkleTree,
-  SmartContractEleccion,
-  TransaccionBlockchain,
 ];
 
 describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
