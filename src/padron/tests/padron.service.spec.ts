@@ -840,6 +840,7 @@ describe('PadronService', () => {
         targetLeaf.hashHoja,
       );
 
+      expect(actual.hashHoja).toBe(targetLeaf.hashHoja);
       expect(actual.root).toBe(merkleRoot);
       expect(actual.merkleProof.length).toBeGreaterThan(0);
       expect(

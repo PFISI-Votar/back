@@ -210,11 +210,13 @@ describe('MerkleProofVotante (e2e) — VOTAR-354', () => {
       .set('Cookie', voterCookie)
       .expect(200);
 
-    const { merkleProof, root } = response.body as {
+    const { hashHoja, merkleProof, root } = response.body as {
+      hashHoja: string;
       merkleProof: string[];
       root: string;
     };
 
+    expect(hashHoja).toBe(VOTER_HASH);
     expect(Array.isArray(merkleProof)).toBe(true);
     expect(merkleProof.length).toBeGreaterThan(0);
     expect(root).toMatch(/^0x[0-9a-f]{64}$/);
