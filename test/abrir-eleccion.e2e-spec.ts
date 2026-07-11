@@ -134,7 +134,7 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
     req = createAuthedRequest(app, adminToken);
 
     // Get the mocked BlockchainService
-    blockchainService = app.get(BlockchainService) as jest.Mocked<BlockchainService>;
+    blockchainService = app.get(BlockchainService);
   }, 30000);
 
   afterAll(async () => {
