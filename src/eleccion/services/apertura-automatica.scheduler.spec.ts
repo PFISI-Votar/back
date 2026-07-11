@@ -61,12 +61,14 @@ describe('AperturaAutomaticaScheduler', () => {
 
   afterEach(() => {
     jest.clearAllMocks();
+    jest.restoreAllMocks();
   });
 
   describe('checkAndOpenElections', () => {
     it('debe abrir elecciones CONFIGURADAS cuya fecha de inicio ya pasó', async () => {
       const now = new Date('2025-10-15T09:00:00Z'); // 1 hora después de fechaInicio
-      jest.spyOn(global, 'Date').mockImplementation(() => now);
+      jest.useFakeTimers();
+      jest.setSystemTime(now);
 
       eleccionRepository.find.mockResolvedValue([mockEleccionConfigurada]);
       aperturaComicioService.abrirAutomatico.mockResolvedValue({
@@ -77,6 +79,8 @@ describe('AperturaAutomaticaScheduler', () => {
       });
 
       await (scheduler as any).checkAndOpenElections();
+
+      jest.useRealTimers();
 
       expect(eleccionRepository.find).toHaveBeenCalledWith({
         where: {
