@@ -44,4 +44,15 @@ export class EleccionGateway
     this.logger.log(`Emitiendo evento de apertura para elección ${idEleccion}`);
     this.server.emit('eleccion:abierta', { idEleccion });
   }
+
+  /**
+   * Emite un evento de Merkle publicado on-chain a todos los clientes conectados.
+   * @param idEleccion ID de la elección cuya raíz Merkle fue publicada
+   */
+  emitMerklePublicado(idEleccion: number): void {
+    this.logger.log(
+      `Emitiendo evento de Merkle publicado para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:merkle-publicado', { idEleccion });
+  }
 }

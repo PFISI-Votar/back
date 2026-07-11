@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
@@ -18,6 +19,8 @@ import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
+import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
+import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 
 @ApiTags('elecciones')
 @AdminAuth()
@@ -124,8 +127,10 @@ export class EleccionesController implements IEleccionController {
   })
   async abrirComicio(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Req() req: AuthenticatedRequest,
   ): Promise<EleccionResponseDto> {
-    await this.aperturaComicioService.abrirManual(idEleccion);
+    const user = assertAuthenticatedUser(req.user);
+    await this.aperturaComicioService.abrirManual(idEleccion, user.sub);
     return this.eleccionesService.obtenerPorId(idEleccion);
   }
 }

@@ -5,6 +5,13 @@
 
 set -e
 
+echo "🔄 Reiniciando blockchain local..."
+docker compose restart blockchain
+echo "⏳ Esperando que blockchain esté listo..."
+sleep 5
+echo "✅ Blockchain reiniciado"
+echo ""
+
 echo "🗑️  Vaciando tablas de la base de datos..."
 
 docker compose exec -T postgres psql -U postgres -d votar -c "
