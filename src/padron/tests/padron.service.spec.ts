@@ -583,6 +583,24 @@ describe('PadronService', () => {
     });
   });
 
+  describe('validarPadronParaOficializar', () => {
+    it('debe permitir oficializar cuando existe padrón cargado', async () => {
+      mockPadronRepository.existePadronParaEleccion.mockResolvedValue(true);
+
+      await expect(
+        service.validarPadronParaOficializar(ID_ELECCION),
+      ).resolves.toBeUndefined();
+    });
+
+    it('debe rechazar (422) si no hay padrón electoral cargado', async () => {
+      mockPadronRepository.existePadronParaEleccion.mockResolvedValue(false);
+
+      await expect(
+        service.validarPadronParaOficializar(ID_ELECCION),
+      ).rejects.toThrow(UnprocessableEntityException);
+    });
+  });
+
   describe('eliminarPadron', () => {
     it('debe eliminar el padrón de un comicio en BORRADOR', async () => {
       mockPadronRepository.existePadronParaEleccion.mockResolvedValue(true);
