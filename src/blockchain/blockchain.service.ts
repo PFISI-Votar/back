@@ -30,10 +30,10 @@ interface MerkleRootStoreContract {
     electionId: number,
     root: string,
   ): Promise<ContractTransactionResponse>;
-  setElectionState(
+  getMerkleRoot(
     electionId: number,
-    state: number,
-  ): Promise<ContractTransactionResponse>;
+  ): Promise<[string, bigint] & { root: string; timestamp: bigint }>;
+  isPublished(electionId: number): Promise<boolean>;
 }
 
 @Injectable()
@@ -146,6 +146,58 @@ export class BlockchainService {
   }
 
   /**
+   * Verifies that the Merkle root for an election is published on-chain.
+   * Returns true if the root matches and is non-zero, false otherwise.
+   */
+  async verifyMerkleRootOnChain(
+    electionId: number,
+    expectedRoot: string,
+  ): Promise<boolean> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const contractAddress = this.configService.get<string>(
+      'MERKLE_ROOT_STORE_ADDRESS',
+    );
+
+    if (!rpcUrl || !contractAddress) {
+      throw new ServiceUnavailableException(
+        'La verificación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS).',
+      );
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const contract = new Contract(
+      contractAddress,
+      MERKLE_ROOT_STORE_ABI,
+      provider,
+    ) as unknown as MerkleRootStoreContract;
+
+    try {
+      const [root] = await contract.getMerkleRoot(electionId);
+
+      // Verificar que no sea el hash vacío (0x0000...)
+      const zeroHash =
+        '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+      return root === expectedRoot && root !== zeroHash;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo verificar la raíz Merkle on-chain: ${message}`,
+      );
+    }
+  }
+
+  buildExplorerUrl(txHash: string): string {
+    const base =
+      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
+      'https://sepolia.etherscan.io';
+    return `${base}/tx/${txHash}`;
+  }
+
+  /**
    * Synchronizes the election state to the blockchain.
    * @dev VOTAR-336: Hermetic seal — enables on-chain state validation.
    * This should be called when transitioning to ABIERTA to activate the RootLocked protection.
@@ -181,7 +233,12 @@ export class BlockchainService {
       contractAddress,
       MERKLE_ROOT_STORE_ABI,
       wallet,
-    ) as unknown as MerkleRootStoreContract;
+    ) as unknown as MerkleRootStoreContract & {
+      setElectionState(
+        electionId: number,
+        state: number,
+      ): Promise<ContractTransactionResponse>;
+    };
 
     let receipt: ContractTransactionReceipt | null;
     try {
@@ -215,12 +272,5 @@ export class BlockchainService {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
     };
-  }
-
-  buildExplorerUrl(txHash: string): string {
-    const base =
-      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
-      'https://sepolia.etherscan.io';
-    return `${base}/tx/${txHash}`;
   }
 }

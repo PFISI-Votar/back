@@ -121,15 +121,16 @@ const createRepositories = () => {
   };
 };
 
-const createService = (repositories = createRepositories()) =>
-  new VotoService(
+const createService = (repositories = createRepositories()) => {
+  return new VotoService(
     repositories.eleccionRepository as never,
     repositories.configuracionRepository as never,
     repositories.boletaRepository as never,
     repositories.listaRepository as never,
     repositories.padronVotanteRepository as never,
-    repositories.votoConfirmacionRepository as never,
+    repositories.votoConfirmacionRepository,
   );
+};
 
 describe('VotoService', () => {
   it('devuelve la configuración pública de la BUD sin autenticación', async () => {

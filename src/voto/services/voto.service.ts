@@ -44,10 +44,7 @@ type OfertaVoto = {
   listas: Lista[];
 };
 
-const ESTADOS_ELECCION_APTOS = [
-  EleccionEstado.CONFIGURADA,
-  EleccionEstado.ABIERTA,
-];
+const ESTADOS_ELECCION_APTOS = [EleccionEstado.ABIERTA];
 
 @Injectable()
 export class VotoService {

@@ -62,7 +62,7 @@ describe('ElectionStateService', () => {
   });
 
   describe('transitionToAbierta', () => {
-    it('should transition election to ABIERTA and sync with blockchain', async () => {
+    it('should sync on-chain first then persist ABIERTA', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
       eleccionRepository.save.mockResolvedValue({
@@ -79,14 +79,18 @@ describe('ElectionStateService', () => {
       expect(eleccionRepository.findOne).toHaveBeenCalledWith({
         where: { idEleccion: 1 },
       });
-      expect(eleccionRepository.save).toHaveBeenCalledWith({
-        ...eleccion,
-        estado: EleccionEstado.ABIERTA,
-      });
       expect(blockchainService.syncElectionState).toHaveBeenCalledWith(
         1,
         EleccionEstado.ABIERTA,
       );
+      expect(eleccionRepository.save).toHaveBeenCalledWith({
+        ...eleccion,
+        estado: EleccionEstado.ABIERTA,
+      });
+      const syncOrder =
+        blockchainService.syncElectionState.mock.invocationCallOrder[0];
+      const saveOrder = eleccionRepository.save.mock.invocationCallOrder[0];
+      expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.ABIERTA);
     });
 
@@ -113,15 +117,9 @@ describe('ElectionStateService', () => {
       );
     });
 
-    it('should rollback state change when blockchain sync fails', async () => {
+    it('should not persist DB state when blockchain sync fails', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
-      eleccionRepository.save
-        .mockResolvedValueOnce({ ...eleccion, estado: EleccionEstado.ABIERTA }) // First save (transition)
-        .mockResolvedValueOnce({
-          ...eleccion,
-          estado: EleccionEstado.CONFIGURADA,
-        }); // Rollback save
       blockchainService.syncElectionState.mockRejectedValue(
         new ServiceUnavailableException('Blockchain error'),
       );
@@ -130,21 +128,16 @@ describe('ElectionStateService', () => {
         ServiceUnavailableException,
       );
 
-      // Verify rollback occurred
-      expect(eleccionRepository.save).toHaveBeenCalledTimes(2);
-      expect(eleccionRepository.save).toHaveBeenNthCalledWith(1, {
-        ...eleccion,
-        estado: EleccionEstado.ABIERTA,
-      });
-      expect(eleccionRepository.save).toHaveBeenNthCalledWith(2, {
-        ...eleccion,
-        estado: EleccionEstado.CONFIGURADA,
-      });
+      expect(blockchainService.syncElectionState).toHaveBeenCalledWith(
+        1,
+        EleccionEstado.ABIERTA,
+      );
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
     });
   });
 
   describe('transitionToCerrada', () => {
-    it('should transition election to CERRADA and sync with blockchain', async () => {
+    it('should sync on-chain first then persist CERRADA', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.ABIERTA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
       eleccionRepository.save.mockResolvedValue({
@@ -162,6 +155,10 @@ describe('ElectionStateService', () => {
         1,
         EleccionEstado.CERRADA,
       );
+      const syncOrder =
+        blockchainService.syncElectionState.mock.invocationCallOrder[0];
+      const saveOrder = eleccionRepository.save.mock.invocationCallOrder[0];
+      expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.CERRADA);
     });
 
@@ -174,12 +171,9 @@ describe('ElectionStateService', () => {
       );
     });
 
-    it('should rollback to ABIERTA when blockchain sync fails', async () => {
+    it('should not persist DB state when blockchain sync fails', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.ABIERTA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
-      eleccionRepository.save
-        .mockResolvedValueOnce({ ...eleccion, estado: EleccionEstado.CERRADA })
-        .mockResolvedValueOnce({ ...eleccion, estado: EleccionEstado.ABIERTA });
       blockchainService.syncElectionState.mockRejectedValue(
         new ServiceUnavailableException('Blockchain error'),
       );
@@ -188,12 +182,12 @@ describe('ElectionStateService', () => {
         ServiceUnavailableException,
       );
 
-      expect(eleccionRepository.save).toHaveBeenCalledTimes(2);
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
     });
   });
 
   describe('transitionToEscrutada', () => {
-    it('should transition election to ESCRUTADA and sync with blockchain', async () => {
+    it('should sync on-chain first then persist ESCRUTADA', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.CERRADA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
       eleccionRepository.save.mockResolvedValue({
@@ -211,6 +205,10 @@ describe('ElectionStateService', () => {
         1,
         EleccionEstado.ESCRUTADA,
       );
+      const syncOrder =
+        blockchainService.syncElectionState.mock.invocationCallOrder[0];
+      const saveOrder = eleccionRepository.save.mock.invocationCallOrder[0];
+      expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.ESCRUTADA);
     });
 
@@ -223,15 +221,9 @@ describe('ElectionStateService', () => {
       );
     });
 
-    it('should rollback to CERRADA when blockchain sync fails', async () => {
+    it('should not persist DB state when blockchain sync fails', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.CERRADA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
-      eleccionRepository.save
-        .mockResolvedValueOnce({
-          ...eleccion,
-          estado: EleccionEstado.ESCRUTADA,
-        })
-        .mockResolvedValueOnce({ ...eleccion, estado: EleccionEstado.CERRADA });
       blockchainService.syncElectionState.mockRejectedValue(
         new ServiceUnavailableException('Blockchain error'),
       );
@@ -240,7 +232,7 @@ describe('ElectionStateService', () => {
         ServiceUnavailableException,
       );
 
-      expect(eleccionRepository.save).toHaveBeenCalledTimes(2);
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
     });
   });
 });

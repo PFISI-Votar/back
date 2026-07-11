@@ -29,6 +29,7 @@
     "seed:nacionales-2023": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-nacionales-2023.ts",
     "seed:paso": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-paso.ts",
     "seed": "ts-node -r tsconfig-paths/register src/database/seeds/seed-elecciones-demo.ts",
+    "db:reset": "ts-node -r tsconfig-paths/register scripts/reset-db.ts && npm run seed",
     "admin:register": "node scripts/register-election-admin.mjs",
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs"
   },
@@ -39,8 +40,10 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.1.27",
     "@nestjs/swagger": "^11.0.0",
     "@nestjs/typeorm": "^11.0.1",
+    "@nestjs/websockets": "^11.1.27",
     "@openzeppelin/merkle-tree": "^1.0.8",
     "@types/sanitize-html": "^2.16.1",
     "class-transformer": "^0.5.1",
@@ -61,6 +64,7 @@
     "rxjs": "^7.8.1",
     "sanitize-html": "^2.17.5",
     "sharp": "^0.35.2",
+    "socket.io": "^4.8.3",
     "typeorm": "^0.3.20",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
