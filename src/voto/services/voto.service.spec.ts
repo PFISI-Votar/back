@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  GoneException,
+  NotFoundException,
+} from '@nestjs/common';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
@@ -31,6 +35,7 @@ const createRepositories = () => {
         idEleccion: 1,
         permitirVotoEnBlanco: false,
         metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+        mostrarResultadosTiempoReal: false,
       }),
     },
     boletaRepository: {
@@ -127,6 +132,8 @@ describe('VotoService', () => {
       estado: EleccionEstado.ABIERTA,
       tipoVotacion: TipoVotacion.POR_LISTA,
       metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+      resultadosDefinitivos: false,
+      snapshotCongelado: true,
     });
   });
 
@@ -207,6 +214,19 @@ describe('VotoService', () => {
 
     await expect(service.registrarVotoEmitidoAnonimo(1)).rejects.toThrow(
       ForbiddenException,
+    );
+  });
+
+  it('VOTAR-321: responde HTTP 410 cuando el comicio está CERRADA', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.CERRADA,
+    });
+    const service = createService(repositories);
+
+    await expect(service.registrarVotoEmitidoAnonimo(1)).rejects.toThrow(
+      GoneException,
     );
   });
 });

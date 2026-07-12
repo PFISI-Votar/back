@@ -1,5 +1,6 @@
 import {
   ForbiddenException,
+  GoneException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -33,6 +34,10 @@ type OfertaVoto = {
 };
 
 const ESTADOS_ELECCION_APTOS = [EleccionEstado.ABIERTA];
+const ESTADOS_ELECCION_CERRADOS = [
+  EleccionEstado.CERRADA,
+  EleccionEstado.ESCRUTADA,
+];
 
 @Injectable()
 export class VotoService {
@@ -65,12 +70,18 @@ export class VotoService {
     if (!configuracion) {
       throw new NotFoundException('Configuración del comicio no encontrada');
     }
+    const resultadosDefinitivos = ESTADOS_ELECCION_CERRADOS.includes(
+      eleccion.estado,
+    );
     return {
       idEleccion: eleccion.idEleccion,
       nombre: eleccion.nombre,
       estado: eleccion.estado,
       tipoVotacion: eleccion.tipoVotacion,
       metodosAutenticacion: configuracion.metodosAutenticacion,
+      resultadosDefinitivos,
+      snapshotCongelado:
+        resultadosDefinitivos || !configuracion.mostrarResultadosTiempoReal,
     };
   }
 
@@ -87,11 +98,7 @@ export class VotoService {
     if (!eleccion) {
       throw new NotFoundException('Comicio no encontrado');
     }
-    if (!ESTADOS_ELECCION_APTOS.includes(eleccion.estado)) {
-      throw new ForbiddenException(
-        'El comicio no admite registro anónimo de voto en este estado',
-      );
-    }
+    this.assertEleccionAceptaVotos(eleccion);
     await this.auditLogger.logVotoEmitido({
       idEleccion,
       endpoint: `POST /elecciones/${idEleccion}/votos/emitido-anonimo`,
@@ -124,9 +131,7 @@ export class VotoService {
     if (!eleccion) {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
-    if (!ESTADOS_ELECCION_APTOS.includes(eleccion.estado)) {
-      throw new ForbiddenException('La elección no está habilitada para votar');
-    }
+    this.assertEleccionAceptaVotos(eleccion);
 
     const configuracion = await this.configuracionRepository.findOne({
       where: { idEleccion },
@@ -179,6 +184,20 @@ export class VotoService {
       categorias,
       listas: listasOrdenadas,
     };
+  }
+
+  /**
+   * VOTAR-321: closed elections must answer HTTP 410 Gone on vote attempts.
+   */
+  private assertEleccionAceptaVotos(eleccion: Eleccion): void {
+    if (ESTADOS_ELECCION_CERRADOS.includes(eleccion.estado)) {
+      throw new GoneException(
+        'El período de votación ha concluido. El comicio está cerrado.',
+      );
+    }
+    if (!ESTADOS_ELECCION_APTOS.includes(eleccion.estado)) {
+      throw new ForbiddenException('La elección no está habilitada para votar');
+    }
   }
 
   private mapCategorias(oferta: OfertaVoto): CategoriaBoletaDigitalDto[] {

@@ -80,6 +80,7 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
     const mockBlockchainService = {
       verifyMerkleRootOnChain: jest.fn(),
       syncElectionState: jest.fn(),
+      syncElectionWindow: jest.fn(),
       publishMerkleRoot: jest.fn(),
       buildExplorerUrl: jest.fn(),
     };
@@ -197,6 +198,10 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       jest
         .spyOn(blockchainService, 'verifyMerkleRootOnChain')
         .mockResolvedValue(true);
+      jest.spyOn(blockchainService, 'syncElectionWindow').mockResolvedValue({
+        txHash: '0xwindow',
+        blockNumber: 12344,
+      });
       jest.spyOn(blockchainService, 'syncElectionState').mockResolvedValue({
         txHash: '0xaabbccdd',
         blockNumber: 12345,
@@ -335,6 +340,10 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       jest
         .spyOn(blockchainService, 'verifyMerkleRootOnChain')
         .mockResolvedValue(true);
+      jest.spyOn(blockchainService, 'syncElectionWindow').mockResolvedValue({
+        txHash: '0xwindow',
+        blockNumber: 12344,
+      });
       jest.spyOn(blockchainService, 'syncElectionState').mockResolvedValue({
         txHash: '0xaabbccdd',
         blockNumber: 12345,
@@ -355,9 +364,15 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       expect(auditLogs[0].ipOrigen).not.toBe('SYSTEM');
     });
 
-    it('debe llamar a syncElectionState', async () => {
+    it('debe llamar a syncElectionWindow y syncElectionState', async () => {
       const { eleccion } = await seedEleccionConfigurada();
 
+      const windowSpy = jest
+        .spyOn(blockchainService, 'syncElectionWindow')
+        .mockResolvedValue({
+          txHash: '0xwindow',
+          blockNumber: 12344,
+        });
       const syncSpy = jest
         .spyOn(blockchainService, 'syncElectionState')
         .mockResolvedValue({
@@ -371,6 +386,11 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
 
       await req.post(`/elecciones/${eleccion.idEleccion}/abrir`).expect(200);
 
+      expect(windowSpy).toHaveBeenCalledWith(
+        eleccion.idEleccion,
+        eleccion.fechaInicio,
+        eleccion.fechaFin,
+      );
       expect(syncSpy).toHaveBeenCalledWith(
         eleccion.idEleccion,
         EleccionEstado.ABIERTA,

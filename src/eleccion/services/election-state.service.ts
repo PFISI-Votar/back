@@ -27,6 +27,7 @@ export class ElectionStateService {
   /**
    * Transitions an election to the ABIERTA (OPEN) state and syncs with blockchain.
    * This activates the hermetic seal (RootLocked) on-chain before enabling voting off-chain.
+   * Also publishes the voting window so BallotContract can close by `block.timestamp` (VOTAR-321).
    */
   async transitionToAbierta(idEleccion: number): Promise<Eleccion> {
     const eleccion = await this.findEleccionOrFail(idEleccion);
@@ -35,6 +36,11 @@ export class ElectionStateService {
         `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
       );
     }
+    await this.blockchainService.syncElectionWindow(
+      eleccion.idEleccion,
+      eleccion.fechaInicio,
+      eleccion.fechaFin,
+    );
     return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
   }
 
