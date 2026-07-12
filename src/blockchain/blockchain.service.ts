@@ -273,4 +273,83 @@ export class BlockchainService {
       blockNumber: receipt.blockNumber,
     };
   }
+
+  /**
+   * Publishes the voting window on-chain so BallotContract can close autonomously
+   * when `block.timestamp >= endTime` (VOTAR-321).
+   */
+  async syncElectionWindow(
+    electionId: number,
+    startTime: Date,
+    endTime: Date,
+  ): Promise<{ txHash: string; blockNumber: number }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const contractAddress = this.configService.get<string>(
+      'MERKLE_ROOT_STORE_ADDRESS',
+    );
+    const privateKey = this.configService.get<string>(
+      'ELECTION_ADMIN_PRIVATE_KEY',
+    );
+
+    if (!rpcUrl || !contractAddress || !privateKey) {
+      throw new ServiceUnavailableException(
+        'La sincronización de ventana on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+      );
+    }
+
+    const startUnix = Math.floor(startTime.getTime() / 1000);
+    const endUnix = Math.floor(endTime.getTime() / 1000);
+    if (!Number.isFinite(startUnix) || !Number.isFinite(endUnix) || endUnix <= startUnix) {
+      throw new ServiceUnavailableException(
+        'La ventana electoral on-chain es inválida (endTime debe ser posterior a startTime).',
+      );
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    const contract = new Contract(
+      contractAddress,
+      MERKLE_ROOT_STORE_ABI,
+      wallet,
+    ) as unknown as {
+      setElectionWindow(
+        electionId: number,
+        startTime: number,
+        endTime: number,
+      ): Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.setElectionWindow(electionId, startUnix, endUnix);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      if (
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee ELECTION_ADMIN_ROLE en el contrato.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo sincronizar la ventana electoral on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'La transacción de ventana electoral no devolvió recibo de confirmación.',
+      );
+    }
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+    };
+  }
 }

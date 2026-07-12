@@ -1,6 +1,7 @@
 /**
- * Minimal ABI for MerkleRootStore.sol (US-335 & VOTAR-336).
- * @dev VOTAR-336: Added setElectionState and getElectionState for hermetic seal.
+ * Minimal ABI for MerkleRootStore.sol (US-335, VOTAR-336, VOTAR-321).
+ * @dev VOTAR-336: setElectionState / getElectionState for hermetic seal.
+ * @dev VOTAR-321: election window for autonomous on-chain closure.
  */
 export const MERKLE_ROOT_STORE_ABI = [
   'function publishRoot(uint256 electionId, bytes32 root) external',
@@ -8,6 +9,10 @@ export const MERKLE_ROOT_STORE_ABI = [
   'function isPublished(uint256 electionId) view returns (bool)',
   'function setElectionState(uint256 electionId, uint8 state) external',
   'function getElectionState(uint256 electionId) view returns (uint8)',
+  'function setElectionWindow(uint256 electionId, uint256 startTime, uint256 endTime) external',
+  'function getElectionEndTime(uint256 electionId) view returns (uint256)',
+  'function getElectionWindow(uint256 electionId) view returns (uint256 startTime, uint256 endTime)',
   'event RootPublished(uint256 indexed electionId, bytes32 root, uint256 timestamp)',
   'event ElectionStateChanged(uint256 indexed electionId, uint8 newState)',
+  'event ElectionWindowSet(uint256 indexed electionId, uint256 startTime, uint256 endTime)',
 ] as const;

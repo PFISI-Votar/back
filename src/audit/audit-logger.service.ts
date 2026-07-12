@@ -28,6 +28,14 @@ export interface LogComicioAbiertoInput {
   ipOrigen?: string;
 }
 
+export interface LogComicioCerradoInput {
+  idEleccion: number;
+  actorId: string;
+  modo: 'MANUAL' | 'AUTOMATICO';
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
 /** Campos que permitirían cruzar un evento de voto con logs de SSO (VOTAR-379 UAT-05). */
 const FORBIDDEN_VOTO_JOIN_KEYS = [
   'ip',
@@ -149,6 +157,32 @@ export class AuditLoggerService {
       ipOrigen: input.ipOrigen ?? 'SYSTEM',
       endpoint: input.modo === 'MANUAL' ? '/elecciones/:id/abrir' : 'SCHEDULER',
       datosAdicionales: { modo: input.modo },
+    });
+
+    await this.auditLogRepository.save(entry);
+  }
+
+  async logComicioCerrado(input: LogComicioCerradoInput): Promise<void> {
+    const descripcion =
+      input.modo === 'MANUAL'
+        ? `Cierre manual del comicio por ${input.actorId}`
+        : `Cierre automático del comicio por timestamp`;
+
+    const hashRegistro = createHash('sha256')
+      .update(
+        `${TipoEventoAudit.COMICIO_CERRADO}|${input.idEleccion}|${input.actorId}|${input.modo}|${input.timestamp.toISOString()}`,
+      )
+      .digest('hex');
+
+    const entry = this.auditLogRepository.create({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_CERRADO,
+      actor: input.actorId,
+      descripcion,
+      hashRegistro,
+      ipOrigen: input.ipOrigen ?? 'SYSTEM',
+      endpoint: input.modo === 'MANUAL' ? '/elecciones/:id/cerrar' : 'SCHEDULER',
+      datosAdicionales: { modo: input.modo, snapshotCongelado: true },
     });
 
     await this.auditLogRepository.save(entry);

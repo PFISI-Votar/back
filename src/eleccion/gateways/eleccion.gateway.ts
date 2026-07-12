@@ -55,4 +55,13 @@ export class EleccionGateway
     );
     this.server.emit('eleccion:merkle-publicado', { idEleccion });
   }
+
+  /**
+   * Emite un evento de elección cerrada a todos los clientes conectados (VOTAR-321).
+   * @param idEleccion ID de la elección que fue cerrada
+   */
+  emitEleccionCerrada(idEleccion: number): void {
+    this.logger.log(`Emitiendo evento de cierre para elección ${idEleccion}`);
+    this.server.emit('eleccion:cerrada', { idEleccion });
+  }
 }
