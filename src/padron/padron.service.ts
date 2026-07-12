@@ -8,6 +8,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { EleccionEstado } from '../eleccion/enums/eleccion-estado.enum';
+import { EleccionGateway } from '../eleccion/gateways/eleccion.gateway';
 import { ImportarPadronResponseDto } from './dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from './dto/listar-votantes-response.dto';
 import { NovedadPadronDto } from './dto/novedad-padron.dto';
@@ -48,6 +49,7 @@ export class PadronService implements IPadronService {
     private readonly padronRepository: IPadronRepository,
     private readonly merkleBuilderService: MerkleBuilderService,
     private readonly blockchainService: BlockchainService,
+    private readonly eleccionGateway: EleccionGateway,
   ) {}
 
   async importarPadron(
@@ -294,6 +296,9 @@ export class PadronService implements IPadronService {
       fechaPublicacionOnChain: resultado.publishedAt,
       direccionContrato: resultado.contractAddress,
     });
+
+    // Emitir evento WebSocket para notificar a los clientes
+    this.eleccionGateway.emitMerklePublicado(idEleccion);
 
     const merkleActualizado =
       await this.padronRepository.obtenerMerklePorEleccion(idEleccion);

@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { CategoriasModule } from '@/categoria/categoria.module';
 import { PadronModule } from '@/padron/padron.module';
@@ -18,7 +18,7 @@ import { ElectoralImageService } from '@/common/images/electoral-image.service';
     TypeOrmModule.forFeature([Eleccion, Lista, Boleta, Categoria]),
     RulesEngineModule,
     CategoriasModule,
-    PadronModule,
+    forwardRef(() => PadronModule),
   ],
   controllers: [ListaController],
   providers: [

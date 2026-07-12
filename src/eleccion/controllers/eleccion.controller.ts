@@ -9,6 +9,7 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
@@ -17,12 +18,18 @@ import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
+import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
+import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
+import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 
 @ApiTags('elecciones')
 @AdminAuth()
 @Controller('elecciones')
 export class EleccionesController implements IEleccionController {
-  constructor(private readonly eleccionesService: EleccionesService) {}
+  constructor(
+    private readonly eleccionesService: EleccionesService,
+    private readonly aperturaComicioService: AperturaComicioService,
+  ) {}
 
   @Get()
   @ApiOperation({ summary: 'Listar todos los comicios' })
@@ -89,5 +96,54 @@ export class EleccionesController implements IEleccionController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<void> {
     return this.eleccionesService.eliminarEleccion(idEleccion);
+  }
+
+  @Post(':idEleccion/abrir')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Abrir comicio manualmente (VOTAR-320)',
+    description:
+      'Valida precondiciones (estado CONFIGURADA, padrón cargado, Merkle PUBLICADO_ON_CHAIN y verificación on-chain) y transiciona el comicio al estado ABIERTA. Sincroniza el estado con el Smart Contract.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Comicio abierto exitosamente',
+    type: EleccionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 412,
+    description:
+      'Fallo de Precondición: padrón no cargado, Merkle no publicado on-chain, o raíz de Merkle no detectada en la red descentralizada',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'Comicio no está en estado CONFIGURADA',
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      'La sincronización on-chain falló (Smart Contract no accesible o cuenta sin permisos)',
+  })
+  async abrirComicio(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<EleccionResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    await this.aperturaComicioService.abrirManual(
+      idEleccion,
+      user.sub,
+      this.resolveClientIp(req),
+    );
+    return this.eleccionesService.obtenerPorId(idEleccion);
+  }
+
+  private resolveClientIp(request: AuthenticatedRequest): string {
+    const forwarded = request.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      return forwarded.split(',')[0]?.trim() ?? 'unknown';
+    }
+    return request.ip ?? 'unknown';
   }
 }
