@@ -1,6 +1,7 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { INestApplication } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
@@ -25,11 +26,23 @@ describe('Security headers (e2e) — VOTAR-381', () => {
   };
 
   const createApp = async (development: boolean): Promise<void> => {
-    process.env.DEVELOPMENT = development ? 'true' : 'false';
+    // Crear un ConfigService mock que sobrescribe solo DEVELOPMENT
+    const mockConfigService = {
+      get: jest.fn((key: string) => {
+        if (key === 'DEVELOPMENT') {
+          return development; // Retorna boolean directamente
+        }
+        // Para otras keys, usar el valor real del proceso
+        return process.env[key];
+      }),
+    };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(ConfigService)
+      .useValue(mockConfigService)
+      .compile();
 
     app = moduleFixture.createNestApplication<NestExpressApplication>();
     configureApp(app);
@@ -47,8 +60,19 @@ describe('Security headers (e2e) — VOTAR-381', () => {
   });
 
   describe('development mode', () => {
+    // Establecer DEVELOPMENT='true' antes de cualquier beforeEach para que
+    // ConfigModule lo lea durante la compilación del módulo
+    beforeAll(() => {
+      process.env.DEVELOPMENT = 'true';
+    });
+
     beforeEach(async () => {
       await createApp(true);
+    });
+
+    afterAll(() => {
+      // Restaurar a false para otros test suites
+      process.env.DEVELOPMENT = 'false';
     });
 
     it('GET / includes X-Content-Type-Options nosniff (UAT-05)', async () => {

@@ -64,7 +64,7 @@ const resolvePersonaFields = (nick, persona) => {
   }
   return {
     identificadorSso: nick,
-    emailInstitucional: email,
+    email,
     nombre: nombre || nick,
   };
 };
@@ -90,7 +90,7 @@ export const removePlaceholderAdmin = async () => {
       `
         DELETE FROM autoridad_electoral
         WHERE identificador_sso = 'votar.admin'
-          AND email_institucional = 'admin@votar.local'
+          AND email = 'admin@votar.local'
       `,
     );
   } finally {
@@ -106,24 +106,24 @@ export const upsertElectionAdmin = async (autoridad) => {
       `
         INSERT INTO autoridad_electoral (
           identificador_sso,
-          email_institucional,
+          email,
           nombre,
           rol
         ) VALUES ($1, $2, $3, 'ELECTION_ADMIN')
         ON CONFLICT (identificador_sso) DO UPDATE SET
-          email_institucional = EXCLUDED.email_institucional,
+          email = EXCLUDED.email,
           nombre = EXCLUDED.nombre,
           rol = 'ELECTION_ADMIN'
         RETURNING
           id_autoridad,
           identificador_sso,
-          email_institucional,
+          email,
           nombre,
           rol
       `,
       [
         autoridad.identificadorSso,
-        autoridad.emailInstitucional,
+        autoridad.email,
         autoridad.nombre,
       ],
     );

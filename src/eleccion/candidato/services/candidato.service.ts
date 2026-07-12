@@ -5,6 +5,9 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { CLAVES_DATOS_CANDIDATO_UNICOS } from '@/eleccion/candidato/constants/datos-candidato-unicos.constant';
+import { DatosAdicionalesValidationException } from '@/eleccion/candidato/exceptions/datos-adicionales-validation.exception';
+import { CampoCandidatoDefinicion } from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
 import { CandidatoDatosValidatorService } from '@/eleccion/candidato/services/candidato-datos-validator.service';
 import { ConfiguracionDatosCandidatoService } from '@/eleccion/candidato/services/configuracion-datos-candidato.service';
 import {
@@ -47,9 +50,16 @@ export class CandidatoService {
       await this.configuracionDatosCandidatoService.obtenerCamposPorEleccion(
         idEleccion,
       );
+    const datosAdicionales = dto.datosAdicionales ?? {};
     this.candidatoDatosValidatorService.validateDatosAdicionales(
       campos,
-      dto.datosAdicionales ?? {},
+      datosAdicionales,
+    );
+    await this.validateDatosAdicionalesUnicos(
+      idEleccion,
+      datosAdicionales,
+      campos,
+      null,
     );
     const candidato = this.candidatoRepository.create({
       idLista,
@@ -112,6 +122,12 @@ export class CandidatoService {
       this.candidatoDatosValidatorService.validateDatosAdicionales(
         campos,
         dto.datosAdicionales,
+      );
+      await this.validateDatosAdicionalesUnicos(
+        idEleccion,
+        dto.datosAdicionales,
+        campos,
+        candidato.idCandidato,
       );
       candidato.datosAdicionales = dto.datosAdicionales;
     }
@@ -230,6 +246,75 @@ export class CandidatoService {
         `Se alcanzó el máximo de ${categoria.cantidadCargos} postulante(s) para el rol "${categoria.nombre}" en esta lista`,
       );
     }
+  }
+
+  private async validateDatosAdicionalesUnicos(
+    idEleccion: number,
+    datos: Record<string, unknown>,
+    campos: CampoCandidatoDefinicion[],
+    excludeCandidatoId: number | null,
+  ): Promise<void> {
+    const camposUnicos = campos.filter((campo) =>
+      CLAVES_DATOS_CANDIDATO_UNICOS.includes(
+        campo.clave as (typeof CLAVES_DATOS_CANDIDATO_UNICOS)[number],
+      ),
+    );
+    if (camposUnicos.length === 0) {
+      return;
+    }
+
+    const candidatosExistentes = await this.candidatoRepository
+      .createQueryBuilder('candidato')
+      .innerJoin('candidato.lista', 'lista')
+      .innerJoin('lista.boleta', 'boleta')
+      .where('boleta.idEleccion = :idEleccion', { idEleccion })
+      .getMany();
+
+    const errors = camposUnicos.flatMap((campo) => {
+      const valor = datos[campo.clave];
+      if (this.isEmptyDatoAdicional(valor)) {
+        return [];
+      }
+      const valorNormalizado = this.normalizeDatoAdicionalUnico(valor);
+      const duplicado = candidatosExistentes.some(
+        (candidato) =>
+          candidato.idCandidato !== excludeCandidatoId &&
+          this.normalizeDatoAdicionalUnico(
+            candidato.datosAdicionales?.[campo.clave],
+          ) === valorNormalizado,
+      );
+      if (!duplicado) {
+        return [];
+      }
+      return [
+        {
+          clave: campo.clave,
+          message: `Ya existe un candidato con este ${campo.etiqueta.toLowerCase()} en el comicio`,
+        },
+      ];
+    });
+
+    if (errors.length > 0) {
+      throw new DatosAdicionalesValidationException(errors);
+    }
+  }
+
+  private isEmptyDatoAdicional(valor: unknown): boolean {
+    return (
+      valor === undefined ||
+      valor === null ||
+      (typeof valor === 'string' && valor.trim() === '')
+    );
+  }
+
+  private normalizeDatoAdicionalUnico(valor: unknown): string {
+    if (typeof valor === 'string') {
+      return valor.trim().toLocaleLowerCase();
+    }
+    if (typeof valor === 'number' || typeof valor === 'boolean') {
+      return String(valor).toLocaleLowerCase();
+    }
+    return '';
   }
 
   private toResponse(candidato: Candidato): CandidatoResponseDto {
