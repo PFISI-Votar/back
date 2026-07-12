@@ -40,7 +40,9 @@ export class CierreComicioService {
     return this.cerrar(idEleccion, 'MANUAL', actorId, ipOrigen);
   }
 
-  async cerrarAutomatico(idEleccion: number): Promise<CerrarEleccionResponseDto> {
+  async cerrarAutomatico(
+    idEleccion: number,
+  ): Promise<CerrarEleccionResponseDto> {
     return this.cerrar(idEleccion, 'AUTOMATICO', 'SYSTEM');
   }
 

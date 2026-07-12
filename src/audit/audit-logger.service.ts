@@ -181,7 +181,8 @@ export class AuditLoggerService {
       descripcion,
       hashRegistro,
       ipOrigen: input.ipOrigen ?? 'SYSTEM',
-      endpoint: input.modo === 'MANUAL' ? '/elecciones/:id/cerrar' : 'SCHEDULER',
+      endpoint:
+        input.modo === 'MANUAL' ? '/elecciones/:id/cerrar' : 'SCHEDULER',
       datosAdicionales: { modo: input.modo, snapshotCongelado: true },
     });
 

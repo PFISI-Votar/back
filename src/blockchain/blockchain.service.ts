@@ -299,7 +299,11 @@ export class BlockchainService {
 
     const startUnix = Math.floor(startTime.getTime() / 1000);
     const endUnix = Math.floor(endTime.getTime() / 1000);
-    if (!Number.isFinite(startUnix) || !Number.isFinite(endUnix) || endUnix <= startUnix) {
+    if (
+      !Number.isFinite(startUnix) ||
+      !Number.isFinite(endUnix) ||
+      endUnix <= startUnix
+    ) {
       throw new ServiceUnavailableException(
         'La ventana electoral on-chain es inválida (endTime debe ser posterior a startTime).',
       );
@@ -321,7 +325,11 @@ export class BlockchainService {
 
     let receipt: ContractTransactionReceipt | null;
     try {
-      const tx = await contract.setElectionWindow(electionId, startUnix, endUnix);
+      const tx = await contract.setElectionWindow(
+        electionId,
+        startUnix,
+        endUnix,
+      );
       receipt = await tx.wait(1);
     } catch (error) {
       const message =
