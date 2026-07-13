@@ -10,7 +10,6 @@ import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { PadronModule } from '@/padron/padron.module';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { BudPublicController } from '@/voto/controllers/bud-public.controller';
-import { ReciboController } from '@/voto/controllers/recibo.controller';
 import { VotoController } from '@/voto/controllers/voto.controller';
 import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
 import { VotoEmitidoAnonimoRateLimitGuard } from '@/voto/guards/voto-emitido-anonimo-rate-limit.guard';
@@ -30,7 +29,7 @@ import { VotoService } from '@/voto/services/voto.service';
       PadronVotante,
     ]),
   ],
-  controllers: [BudPublicController, VotoController, ReciboController],
+  controllers: [BudPublicController, VotoController],
   providers: [
     VotoService,
     MerkleProofRateLimitGuard,
