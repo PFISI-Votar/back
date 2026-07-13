@@ -16,6 +16,18 @@ export const envValidationSchema = Joi.object({
   JWT_VOTER_ACCESS_EXPIRES_IN: Joi.string().default('30m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('8h'),
   JWT_EXPIRES_IN: Joi.string().optional(),
+  /** Emisor (iss) esperado en tokens de sesión / OIDC (VOTAR-314). */
+  JWT_ISSUER: Joi.string().default('https://votar.local/idp'),
+  /** Audiencia (aud) esperada en tokens de sesión / OIDC (VOTAR-314). */
+  JWT_AUDIENCE: Joi.string().default('votar-api'),
+  /**
+   * URI del JWKS del IdP/SSO. Vacío = usar claves locales del BFF (interino)
+   * expuestas en GET /auth/.well-known/jwks.json.
+   */
+  JWT_JWKS_URI: Joi.string().uri().allow('').optional(),
+  JWT_PRIVATE_KEY: Joi.string().optional(),
+  JWT_PUBLIC_KEY: Joi.string().optional(),
+  JWT_KID: Joi.string().optional(),
   AUTOGESTION_BASE_URL: Joi.string()
     .uri()
     .default('https://webservice.frvm.utn.edu.ar/autogestion'),
