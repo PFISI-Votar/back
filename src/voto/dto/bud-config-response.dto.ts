@@ -18,4 +18,16 @@ export class BudConfigResponseDto {
 
   @ApiProperty({ enum: MetodoAutenticacion, isArray: true })
   metodosAutenticacion: MetodoAutenticacion[];
+
+  @ApiProperty({
+    description:
+      'True cuando el comicio está CERRADA/ESCRUTADA (resultados definitivos e inmutables)',
+  })
+  resultadosDefinitivos: boolean;
+
+  @ApiProperty({
+    description:
+      'True cuando el Portal de Transparencia debe dejar de actualizar dinámicamente',
+  })
+  snapshotCongelado: boolean;
 }

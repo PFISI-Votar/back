@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditModule } from '@/audit/audit.module';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -11,13 +12,13 @@ import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { BudPublicController } from '@/voto/controllers/bud-public.controller';
 import { ReciboController } from '@/voto/controllers/recibo.controller';
 import { VotoController } from '@/voto/controllers/voto.controller';
-import { VotoConfirmacion } from '@/voto/entities/voto-confirmacion.entity';
 import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
-import { VotoRateLimitGuard } from '@/voto/guards/voto-rate-limit.guard';
+import { VotoEmitidoAnonimoRateLimitGuard } from '@/voto/guards/voto-emitido-anonimo-rate-limit.guard';
 import { VotoService } from '@/voto/services/voto.service';
 
 @Module({
   imports: [
+    AuditModule,
     PadronModule,
     TypeOrmModule.forFeature([
       Eleccion,
@@ -27,10 +28,13 @@ import { VotoService } from '@/voto/services/voto.service';
       Lista,
       Candidato,
       PadronVotante,
-      VotoConfirmacion,
     ]),
   ],
   controllers: [BudPublicController, VotoController, ReciboController],
-  providers: [VotoService, VotoRateLimitGuard, MerkleProofRateLimitGuard],
+  providers: [
+    VotoService,
+    MerkleProofRateLimitGuard,
+    VotoEmitidoAnonimoRateLimitGuard,
+  ],
 })
 export class VotoModule {}

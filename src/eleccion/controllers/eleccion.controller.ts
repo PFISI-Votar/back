@@ -19,6 +19,7 @@ import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
+import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 
@@ -29,6 +30,7 @@ export class EleccionesController implements IEleccionController {
   constructor(
     private readonly eleccionesService: EleccionesService,
     private readonly aperturaComicioService: AperturaComicioService,
+    private readonly cierreComicioService: CierreComicioService,
   ) {}
 
   @Get()
@@ -132,6 +134,42 @@ export class EleccionesController implements IEleccionController {
   ): Promise<EleccionResponseDto> {
     const user = assertAuthenticatedUser(req.user);
     await this.aperturaComicioService.abrirManual(
+      idEleccion,
+      user.sub,
+      this.resolveClientIp(req),
+    );
+    return this.eleccionesService.obtenerPorId(idEleccion);
+  }
+
+  @Post(':idEleccion/cerrar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Cerrar comicio manualmente (VOTAR-321)',
+    description:
+      'Transiciona el comicio ABIERTA → CERRADA, sincroniza CLOSED on-chain, congela el snapshot del dashboard público y bloquea nuevos sufragios (HTTP 410).',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Comicio cerrado exitosamente',
+    type: EleccionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 422,
+    description: 'Comicio no está en estado ABIERTA',
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      'La sincronización on-chain falló (Smart Contract no accesible o cuenta sin permisos)',
+  })
+  async cerrarComicio(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<EleccionResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    await this.cierreComicioService.cerrarManual(
       idEleccion,
       user.sub,
       this.resolveClientIp(req),

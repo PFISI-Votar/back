@@ -32,7 +32,6 @@ import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { hashVotante } from '@/padron/utils/keccak.util';
-import { VotoConfirmacion } from '@/voto/entities/voto-confirmacion.entity';
 import { VotoModule } from '@/voto/voto.module';
 import {
   createAuthedRequest,
@@ -65,7 +64,6 @@ const entities = [
   PadronElectoral,
   PadronVotante,
   MerkleTree,
-  VotoConfirmacion,
 ];
 
 const buildEleccionPayload = () => ({

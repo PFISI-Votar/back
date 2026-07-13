@@ -14,6 +14,8 @@ import { EleccionRepository } from '@/eleccion/repositories/eleccion.repository'
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
 import { AperturaAutomaticaScheduler } from '@/eleccion/services/apertura-automatica.scheduler';
+import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
+import { CierreAutomaticoScheduler } from '@/eleccion/services/cierre-automatico.scheduler';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
@@ -43,11 +45,18 @@ import { AuditModule } from '@/audit/audit.module';
     ElectionStateService,
     AperturaComicioService,
     AperturaAutomaticaScheduler,
+    CierreComicioService,
+    CierreAutomaticoScheduler,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,
     },
   ],
-  exports: [ELECCION_REPOSITORY, AperturaComicioService, EleccionGateway],
+  exports: [
+    ELECCION_REPOSITORY,
+    AperturaComicioService,
+    CierreComicioService,
+    EleccionGateway,
+  ],
 })
 export class EleccionesModule {}

@@ -1,7 +1,6 @@
 import {
-  BadRequestException,
-  ConflictException,
   ForbiddenException,
+  GoneException,
   NotFoundException,
 } from '@nestjs/common';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
@@ -9,11 +8,9 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
-import { VotoConfirmacionEstado } from '@/voto/entities/voto-confirmacion.entity';
 import { VotoService } from '@/voto/services/voto.service';
 
 const VOTANTE_HASH = 'a'.repeat(64);
-const IDEMPOTENCY_KEY = '11111111-1111-4111-8111-111111111111';
 
 const createQueryBuilderMock = (count = 1) => ({
   innerJoin: jest.fn().mockReturnThis(),
@@ -38,6 +35,7 @@ const createRepositories = () => {
         idEleccion: 1,
         permitirVotoEnBlanco: false,
         metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+        mostrarResultadosTiempoReal: false,
       }),
     },
     boletaRepository: {
@@ -105,32 +103,22 @@ const createRepositories = () => {
     padronVotanteRepository: {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
     },
-    votoConfirmacionRepository: {
-      findOne: jest.fn().mockResolvedValue(null),
-      create: jest.fn(
-        (input: Record<string, unknown>): Record<string, unknown> => input,
-      ),
-      save: jest.fn((input: Record<string, unknown>) =>
-        Promise.resolve({
-          ...input,
-          recibidoEn: new Date('2026-06-22T00:00:00.000Z'),
-        }),
-      ),
-    },
     queryBuilder,
   };
 };
 
-const createService = (repositories = createRepositories()) => {
-  return new VotoService(
+const createService = (
+  repositories = createRepositories(),
+  auditLogger = { logVotoEmitido: jest.fn().mockResolvedValue({}) },
+) =>
+  new VotoService(
     repositories.eleccionRepository as never,
     repositories.configuracionRepository as never,
     repositories.boletaRepository as never,
     repositories.listaRepository as never,
     repositories.padronVotanteRepository as never,
-    repositories.votoConfirmacionRepository,
+    auditLogger as never,
   );
-};
 
 describe('VotoService', () => {
   it('devuelve la configuración pública de la BUD sin autenticación', async () => {
@@ -144,6 +132,8 @@ describe('VotoService', () => {
       estado: EleccionEstado.ABIERTA,
       tipoVotacion: TipoVotacion.POR_LISTA,
       metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+      resultadosDefinitivos: false,
+      snapshotCongelado: true,
     });
   });
 
@@ -191,111 +181,52 @@ describe('VotoService', () => {
     );
   });
 
-  it('rechaza más de una selección en la misma categoría', async () => {
-    const service = createService();
+  it('UAT-05: registra VOTO_EMITIDO anónimo sin identidad ni payload de voto', async () => {
+    const auditLogger = { logVotoEmitido: jest.fn().mockResolvedValue({}) };
+    const service = createService(createRepositories(), auditLogger);
 
-    await expect(
-      service.confirmarVoto(
-        1,
-        {
-          idempotencyKey: IDEMPOTENCY_KEY,
-          selecciones: [
-            { idCategoria: 1, idCandidato: 100 },
-            { idCategoria: 1, idCandidato: 200 },
-          ],
-        },
-        VOTANTE_HASH,
-      ),
-    ).rejects.toThrow(BadRequestException);
-  });
+    const actual = await service.registrarVotoEmitidoAnonimo(1);
 
-  it('acepta una confirmación válida sin persistir la selección en claro', async () => {
-    const repositories = createRepositories();
-    const service = createService(repositories);
-
-    const actual = await service.confirmarVoto(
-      1,
-      {
-        idempotencyKey: IDEMPOTENCY_KEY,
-        selecciones: [
-          { idCategoria: 1, idCandidato: 100 },
-          { idCategoria: 2, idCandidato: 101 },
-        ],
-      },
-      VOTANTE_HASH,
-    );
-
-    expect(actual.estado).toBe(VotoConfirmacionEstado.RECIBIDO);
-    expect(actual.comprobanteHash).toMatch(/^[0-9a-f]{64}$/);
-    const [confirmacionPersistida] =
-      repositories.votoConfirmacionRepository.save.mock.calls[0];
-    expect(confirmacionPersistida).not.toHaveProperty('selecciones');
-  });
-
-  it('devuelve el comprobante existente ante el mismo idempotencyKey y payload', async () => {
-    const repositories = createRepositories();
-    const service = createService(repositories);
-    const first = await service.confirmarVoto(
-      1,
-      {
-        idempotencyKey: IDEMPOTENCY_KEY,
-        selecciones: [
-          { idCategoria: 1, idCandidato: 100 },
-          { idCategoria: 2, idCandidato: 101 },
-        ],
-      },
-      VOTANTE_HASH,
-    );
-    repositories.votoConfirmacionRepository.findOne
-      .mockResolvedValueOnce({
-        idEleccion: 1,
-        votanteHash: VOTANTE_HASH,
-        idempotencyKey: IDEMPOTENCY_KEY,
-        payloadHash: first.payloadHash,
-        comprobanteHash: first.comprobanteHash,
-        estado: VotoConfirmacionEstado.RECIBIDO,
-        recibidoEn: new Date('2026-06-22T00:00:00.000Z'),
-      })
-      .mockResolvedValue(null);
-
-    const actual = await service.confirmarVoto(
-      1,
-      {
-        idempotencyKey: IDEMPOTENCY_KEY,
-        selecciones: [
-          { idCategoria: 2, idCandidato: 101 },
-          { idCategoria: 1, idCandidato: 100 },
-        ],
-      },
-      VOTANTE_HASH,
-    );
-
-    expect(actual.idempotente).toBe(true);
-    expect(actual.comprobanteHash).toBe(first.comprobanteHash);
-  });
-
-  it('rechaza reutilizar idempotencyKey con otro payload', async () => {
-    const repositories = createRepositories();
-    repositories.votoConfirmacionRepository.findOne.mockResolvedValueOnce({
+    expect(actual).toEqual({ registrado: true, idEleccion: 1 });
+    expect(auditLogger.logVotoEmitido).toHaveBeenCalledWith({
       idEleccion: 1,
-      votanteHash: VOTANTE_HASH,
-      idempotencyKey: IDEMPOTENCY_KEY,
-      payloadHash: 'b'.repeat(64),
+      endpoint: 'POST /elecciones/1/votos/emitido-anonimo',
+    });
+  });
+
+  it('UAT-05: rechaza registro anónimo si el comicio no existe', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue(null);
+    const service = createService(repositories);
+
+    await expect(service.registrarVotoEmitidoAnonimo(99)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('UAT-05: rechaza registro anónimo en BORRADOR', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.BORRADOR,
     });
     const service = createService(repositories);
 
-    await expect(
-      service.confirmarVoto(
-        1,
-        {
-          idempotencyKey: IDEMPOTENCY_KEY,
-          selecciones: [
-            { idCategoria: 1, idCandidato: 100 },
-            { idCategoria: 2, idCandidato: 101 },
-          ],
-        },
-        VOTANTE_HASH,
-      ),
-    ).rejects.toThrow(ConflictException);
+    await expect(service.registrarVotoEmitidoAnonimo(1)).rejects.toThrow(
+      ForbiddenException,
+    );
+  });
+
+  it('VOTAR-321: responde HTTP 410 cuando el comicio está CERRADA', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.CERRADA,
+    });
+    const service = createService(repositories);
+
+    await expect(service.registrarVotoEmitidoAnonimo(1)).rejects.toThrow(
+      GoneException,
+    );
   });
 });

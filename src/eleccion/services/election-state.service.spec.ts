@@ -36,6 +36,7 @@ describe('ElectionStateService', () => {
 
     const mockBlockchainService = {
       syncElectionState: jest.fn(),
+      syncElectionWindow: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -69,6 +70,10 @@ describe('ElectionStateService', () => {
         ...eleccion,
         estado: EleccionEstado.ABIERTA,
       });
+      blockchainService.syncElectionWindow.mockResolvedValue({
+        txHash: '0xwin',
+        blockNumber: 12344,
+      });
       blockchainService.syncElectionState.mockResolvedValue({
         txHash: '0xabc123',
         blockNumber: 12345,
@@ -79,6 +84,11 @@ describe('ElectionStateService', () => {
       expect(eleccionRepository.findOne).toHaveBeenCalledWith({
         where: { idEleccion: 1 },
       });
+      expect(blockchainService.syncElectionWindow).toHaveBeenCalledWith(
+        1,
+        eleccion.fechaInicio,
+        eleccion.fechaFin,
+      );
       expect(blockchainService.syncElectionState).toHaveBeenCalledWith(
         1,
         EleccionEstado.ABIERTA,
@@ -120,6 +130,10 @@ describe('ElectionStateService', () => {
     it('should not persist DB state when blockchain sync fails', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
+      blockchainService.syncElectionWindow.mockResolvedValue({
+        txHash: '0xwin',
+        blockNumber: 1,
+      });
       blockchainService.syncElectionState.mockRejectedValue(
         new ServiceUnavailableException('Blockchain error'),
       );
