@@ -26,7 +26,8 @@ export class ContratoBlockchainController {
     name: 'red',
     required: false,
     enum: RedBlockchain,
-    description: 'Filtra por red; si se omite, devuelve el registro más reciente',
+    description:
+      'Filtra por red; si se omite, devuelve el registro más reciente',
   })
   @ApiResponse({ status: 200, type: ElectionFactoryContratoResponseDto })
   @ApiResponse({ status: 404, description: 'Factory no registrada' })

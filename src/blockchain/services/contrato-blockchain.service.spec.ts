@@ -13,7 +13,10 @@ describe('ContratoBlockchainService — VOTAR-337', () => {
 
   const mockRepository = {
     findOne: jest.fn(),
-    create: jest.fn((value) => value),
+    create: jest.fn(
+      (value: Partial<ContratoBlockchain>): Partial<ContratoBlockchain> =>
+        value,
+    ),
     save: jest.fn(),
   };
 
@@ -54,10 +57,14 @@ describe('ContratoBlockchainService — VOTAR-337', () => {
   describe('upsertElectionFactory', () => {
     it('inserts a new factory row when none exists (UAT-02)', async () => {
       mockRepository.findOne.mockResolvedValue(null);
-      mockRepository.save.mockImplementation(async (entity) => ({
-        idContrato: 1,
-        ...entity,
-      }));
+      mockRepository.save.mockImplementation(
+        (entity: Partial<ContratoBlockchain>): Promise<ContratoBlockchain> =>
+          Promise.resolve({
+            ...factoryRow,
+            ...entity,
+            idContrato: 1,
+          } as ContratoBlockchain),
+      );
 
       const saved = await service.upsertElectionFactory({
         direccionContrato: factoryRow.direccionContrato,
@@ -88,7 +95,10 @@ describe('ContratoBlockchainService — VOTAR-337', () => {
 
     it('updates the existing factory row for the same network', async () => {
       mockRepository.findOne.mockResolvedValue({ ...factoryRow });
-      mockRepository.save.mockImplementation(async (entity) => entity);
+      mockRepository.save.mockImplementation(
+        (entity: ContratoBlockchain): Promise<ContratoBlockchain> =>
+          Promise.resolve(entity),
+      );
 
       const updatedAddress = '0x0000000000000000000000000000000000000337';
       await service.upsertElectionFactory({

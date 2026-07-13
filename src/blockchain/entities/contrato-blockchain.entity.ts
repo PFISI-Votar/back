@@ -88,7 +88,12 @@ export class ContratoBlockchain {
   })
   merkleRootStoreAddress: string | null;
 
-  @Column({ name: 'admin_address', type: 'varchar', length: 42, nullable: true })
+  @Column({
+    name: 'admin_address',
+    type: 'varchar',
+    length: 42,
+    nullable: true,
+  })
   adminAddress: string | null;
 
   @CreateDateColumn({ name: 'fecha_registro', type: 'timestamptz' })
