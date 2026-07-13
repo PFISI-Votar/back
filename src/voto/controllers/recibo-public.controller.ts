@@ -32,9 +32,9 @@ export class ReciboPublicController {
   @Get('verificar/:txHash')
   @ApiOperation({
     summary:
-      'Verificar participación electoral por TransactionHash (sin revelar el voto)',
+      'Verificar inclusión del voto por TransactionHash (sin revelar el candidato)',
     description:
-      'Consulta on-chain el evento SignedVoteCast. Confirma inclusión en bloque sin devolver selectionHash, nullifier ni identidad.',
+      'VOTAR-360/366: consulta on-chain el evento SignedVoteCast. Confirma inclusión en bloque sin devolver selectionHash, nullifier ni identidad.',
   })
   @ApiParam({
     name: 'txHash',
@@ -42,7 +42,11 @@ export class ReciboPublicController {
   })
   @ApiResponse({ status: 200, type: VerificarReciboResponseDto })
   @ApiResponse({ status: 400, description: 'Hash inválido' })
-  @ApiResponse({ status: 404, description: 'Participación no encontrada' })
+  @ApiResponse({
+    status: 404,
+    description:
+      'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
+  })
   @ApiResponse({ status: 429, description: 'Rate limit excedido' })
   @ApiResponse({ status: 503, description: 'RPC no disponible' })
   verificar(

@@ -106,7 +106,11 @@ describe('BlockchainService', () => {
     );
   });
 
-  describe('getVoteParticipationByTxHash — VOTAR-360', () => {
+  it('getNetworkDisplayName defaults to Sepolia', () => {
+    expect(service.getNetworkDisplayName()).toBe('Sepolia');
+  });
+
+  describe('getVoteParticipationByTxHash — VOTAR-360/366', () => {
     const ballot = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
     const txHash = '0x' + 'ab'.repeat(32);
 
@@ -139,18 +143,18 @@ describe('BlockchainService', () => {
       expect(actual).not.toHaveProperty('nullifier');
     });
 
-    it('throws NotFound when receipt is missing', async () => {
+    it('throws NotFound when receipt is missing (VOTAR-366 UAT-02)', async () => {
       mockGetTransactionReceipt.mockResolvedValue(null);
       await expect(
         service.getVoteParticipationByTxHash(txHash),
-      ).rejects.toThrow(/No se encontró una transacción/);
+      ).rejects.toThrow(/registro de sufragio no pudo ser encontrado/i);
     });
 
-    it('throws when SignedVoteCast is absent', async () => {
+    it('throws when SignedVoteCast is absent (VOTAR-366 UAT-02)', async () => {
       mockParseLog.mockReturnValue(null);
       await expect(
         service.getVoteParticipationByTxHash(txHash),
-      ).rejects.toThrow(/SignedVoteCast/);
+      ).rejects.toThrow(/registro de sufragio no pudo ser encontrado/i);
     });
   });
 

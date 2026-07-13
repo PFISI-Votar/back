@@ -46,6 +46,8 @@ export class ReciboService {
       eleccion?.nombre ?? `Elección #${participation.idEleccion}`;
     const timestamp = participation.timestamp.toISOString();
 
+    const networkName = this.blockchainService.getNetworkDisplayName();
+
     return {
       confirmado: true,
       idEleccion: participation.idEleccion,
@@ -58,7 +60,8 @@ export class ReciboService {
         participation.txHash,
       ),
       estadoTx: 'CONFIRMADA',
-      mensaje: `Su participación fue confirmada en el bloque ${participation.blockNumber}. El contenido del sufragio no es revelado.`,
+      // VOTAR-366 UAT-01: inclusion confirmation without revealing the vote.
+      mensaje: `Su voto ha sido incluido con éxito en el bloque número ${participation.blockNumber} de la blockchain de ${networkName}`,
     };
   }
 
