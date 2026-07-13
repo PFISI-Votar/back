@@ -8,6 +8,7 @@ const mockPublishRoot = jest.fn();
 const mockSetElectionState = jest.fn();
 const mockWait = jest.fn();
 const mockGetBlock = jest.fn();
+const mockGetTransactionReceipt = jest.fn();
 const mockParseLog = jest.fn();
 
 jest.mock('ethers', () => {
@@ -21,6 +22,7 @@ jest.mock('ethers', () => {
     Wallet: jest.fn().mockImplementation(() => ({})),
     JsonRpcProvider: jest.fn().mockImplementation(() => ({
       getBlock: mockGetBlock,
+      getTransactionReceipt: mockGetTransactionReceipt,
     })),
     Interface: jest.fn().mockImplementation(() => ({
       parseLog: mockParseLog,
@@ -43,6 +45,7 @@ describe('BlockchainService', () => {
         MERKLE_ROOT_STORE_ADDRESS: '0x55d1d115309872C16B9646362C82fFa246F3F652',
         MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
         ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
+        BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
         ETHERSCAN_BASE_URL: 'https://sepolia.etherscan.io',
       };
       return values[key];
@@ -101,6 +104,54 @@ describe('BlockchainService', () => {
     expect(service.buildExplorerUrl('0xabc')).toBe(
       'https://sepolia.etherscan.io/tx/0xabc',
     );
+  });
+
+  describe('getVoteParticipationByTxHash — VOTAR-360', () => {
+    const ballot = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+    const txHash = '0x' + 'ab'.repeat(32);
+
+    beforeEach(() => {
+      mockGetTransactionReceipt.mockResolvedValue({
+        hash: txHash,
+        status: 1,
+        to: ballot,
+        blockNumber: 4582193,
+        logs: [{ topics: ['0x1'], data: '0x' }],
+      });
+      mockParseLog.mockReturnValue({
+        name: 'SignedVoteCast',
+        args: [7n, '0xleaf', '0xnull', '0xsel', '0xsigner'],
+      });
+      mockGetBlock.mockResolvedValue({ timestamp: 1720708200 });
+    });
+
+    it('returns participation metadata without vote content fields', async () => {
+      const actual = await service.getVoteParticipationByTxHash(txHash);
+
+      expect(actual).toEqual({
+        txHash: txHash.toLowerCase(),
+        idEleccion: 7,
+        blockNumber: 4582193,
+        timestamp: new Date(1720708200 * 1000),
+        contractAddress: ballot,
+      });
+      expect(actual).not.toHaveProperty('selectionHash');
+      expect(actual).not.toHaveProperty('nullifier');
+    });
+
+    it('throws NotFound when receipt is missing', async () => {
+      mockGetTransactionReceipt.mockResolvedValue(null);
+      await expect(
+        service.getVoteParticipationByTxHash(txHash),
+      ).rejects.toThrow(/No se encontró una transacción/);
+    });
+
+    it('throws when SignedVoteCast is absent', async () => {
+      mockParseLog.mockReturnValue(null);
+      await expect(
+        service.getVoteParticipationByTxHash(txHash),
+      ).rejects.toThrow(/SignedVoteCast/);
+    });
   });
 
   describe('syncElectionState — VOTAR-336', () => {
