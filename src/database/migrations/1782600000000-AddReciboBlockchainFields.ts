@@ -12,9 +12,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * - codigo_verificacion_e2e: UUID único para verificación End-to-End
  * - contract_address: Dirección del smart contract
  */
-export class AddReciboBlockchainFields1782600000000
-  implements MigrationInterface
-{
+export class AddReciboBlockchainFields1782600000000 implements MigrationInterface {
   name = 'AddReciboBlockchainFields1782600000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

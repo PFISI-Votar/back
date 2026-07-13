@@ -76,6 +76,11 @@ export class VotoConfirmacion {
   })
   codigoVerificacionE2E: string;
 
-  @Column({ name: 'contract_address', type: 'varchar', length: 42, nullable: true })
+  @Column({
+    name: 'contract_address',
+    type: 'varchar',
+    length: 42,
+    nullable: true,
+  })
   contractAddress?: string;
 }

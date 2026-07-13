@@ -1,11 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import {
-  IsString,
-  IsInt,
-  IsOptional,
-  Matches,
-  IsArray,
-} from 'class-validator';
+import { IsString, IsInt, IsOptional, Matches, IsArray } from 'class-validator';
 
 /**
  * VOTAR-360: DTO para registrar voto después de transmisión a blockchain.

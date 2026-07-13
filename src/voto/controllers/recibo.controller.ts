@@ -5,12 +5,7 @@ import {
   Param,
   UseGuards,
 } from '@nestjs/common';
-import {
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { ThrottlerGuard } from '@nestjs/throttler';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -67,7 +62,10 @@ export class ReciboController {
   ): Promise<VerificarReciboResponseDto> {
     // Detectar tipo de código para evitar error de cast UUID en PostgreSQL
     const esTxHash = /^0x[0-9a-fA-F]{64}$/i.test(codigo);
-    const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(codigo);
+    const esUuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        codigo,
+      );
 
     let confirmacion: VotoConfirmacion | null = null;
 

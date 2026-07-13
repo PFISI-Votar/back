@@ -124,7 +124,10 @@ export class VotoController {
     type: RegistrarVotoBlockchainResponseDto,
     description: 'Voto registrado exitosamente con UUID E2E generado',
   })
-  @ApiResponse({ status: 400, description: 'Payload inválido o txHash mal formado' })
+  @ApiResponse({
+    status: 400,
+    description: 'Payload inválido o txHash mal formado',
+  })
   @ApiResponse({ status: 401, description: 'Sesión de votante inválida' })
   @ApiResponse({ status: 403, description: 'Votante o comicio no habilitado' })
   @ApiResponse({ status: 429, description: 'Rate limit excedido' })
