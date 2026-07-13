@@ -124,7 +124,7 @@ describe('BlockchainService', () => {
       });
       mockParseLog.mockReturnValue({
         name: 'SignedVoteCast',
-        args: [7n, '0xleaf', '0xnull', '0xsel', '0xsigner'],
+        args: [7n, '0xnull', '0xsel', '0xsigner'],
       });
       mockGetBlock.mockResolvedValue({ timestamp: 1720708200 });
     });

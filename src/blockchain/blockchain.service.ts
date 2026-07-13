@@ -231,8 +231,9 @@ export class BlockchainService {
 
   /**
    * VOTAR-360/366: confirm SignedVoteCast inclusion by txHash without exposing vote choice.
-   * selectionHash / nullifier / voterLeaf are parsed only to prove the event exists
-   * and are never returned to callers.
+   * selectionHash / nullifier are parsed only to prove the event exists and are never
+   * returned to callers. SignedVoteCast omits voterLeaf (VOTAR-346) so padron identity
+   * cannot be joined to VoteCast preferences on-chain.
    */
   async getVoteParticipationByTxHash(
     txHash: string,
