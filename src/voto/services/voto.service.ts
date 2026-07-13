@@ -171,7 +171,7 @@ export class VotoService {
           estado: VotoConfirmacionEstado.RECIBIDO,
           txHash,
           txTimestamp,
-          txStatus: 'CONFIRMADA' as any, // Simulado como confirmado inmediatamente
+          txStatus: VotoConfirmacionTxStatus.CONFIRMADA, // Simulado como confirmado inmediatamente
           contractAddress: '0x0000000000000000000000000000000000000000', // Placeholder
           // codigoVerificacionE2E se genera automáticamente por TypeORM
         }),
