@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import { UnauthorizedException } from '@nestjs/common';
 import { VotanteAuthService } from '@/auth/services/votante-auth.service';
 import { AutogestionService } from '@/auth/services/autogestion.service';
+import { JwksService } from '@/auth/services/jwks.service';
 import { PadronEligibilityService } from '@/padron/services/padron-eligibility.service';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
@@ -51,6 +52,13 @@ describe('VotanteAuthService', () => {
         {
           provide: PadronEligibilityService,
           useValue: mockPadronEligibilityService,
+        },
+        {
+          provide: JwksService,
+          useValue: {
+            assertCanIssueLocalAccessTokens: jest.fn(),
+            isRemoteMode: jest.fn().mockReturnValue(false),
+          },
         },
         {
           provide: getRepositoryToken(Eleccion),

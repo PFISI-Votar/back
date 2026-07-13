@@ -86,10 +86,17 @@ const runMigrationsIfNeeded = async () => {
   await runCommand('npm', ['run', 'migrate']);
 };
 
-const ensureJwtSecret = () => {
-  if (!process.env.JWT_SECRET || process.env.JWT_SECRET.length < 16) {
+const ensureJwtIdentityConfig = () => {
+  // VOTAR-314: access tokens usan RS256 + JWKS. JWT_SECRET es legacy/opcional.
+  if (process.env.JWT_SECRET && process.env.JWT_SECRET.length < 16) {
     throw new Error(
-      'JWT_SECRET debe tener al menos 16 caracteres. Configuralo en .env antes de iniciar.',
+      'JWT_SECRET (legacy, opcional) debe tener al menos 16 caracteres si está definido.',
+    );
+  }
+  const jwksUri = process.env.JWT_JWKS_URI?.trim();
+  if (jwksUri) {
+    console.warn(
+      '[dev] Modo SSO (JWT_JWKS_URI remoto): el BFF no emite JWT locales; use tokens del IdP.',
     );
   }
 };
@@ -136,7 +143,7 @@ const runOptionalSeed = async () => {
 };
 
 export const bootstrapDevEnvironment = async () => {
-  ensureJwtSecret();
+  ensureJwtIdentityConfig();
 
   const dbHost = process.env.DB_HOST ?? 'localhost';
   const dbPort = Number(process.env.DB_PORT ?? 5432);
