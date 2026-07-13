@@ -23,6 +23,7 @@ describe('ReciboService (VOTAR-360)', () => {
     buildExplorerUrl: jest.fn(
       (hash: string) => `https://sepolia.etherscan.io/tx/${hash}`,
     ),
+    getNetworkDisplayName: jest.fn(() => 'Sepolia'),
   };
 
   const eleccionRepository = {
@@ -64,12 +65,14 @@ describe('ReciboService (VOTAR-360)', () => {
     service = module.get(ReciboService);
   });
 
-  it('verificarPorTxHash confirma participación sin revelar el voto (UAT-02)', async () => {
+  it('verificarPorTxHash confirma inclusión sin revelar el voto (VOTAR-366 UAT-01)', async () => {
     const result = await service.verificarPorTxHash(txHash);
 
     expect(result.confirmado).toBe(true);
     expect(result.blockNumber).toBe(4582193);
-    expect(result.mensaje).toContain('bloque 4582193');
+    expect(result.mensaje).toBe(
+      'Su voto ha sido incluido con éxito en el bloque número 4582193 de la blockchain de Sepolia',
+    );
     expect(result).not.toHaveProperty('selectionHash');
     expect(result).not.toHaveProperty('nullifier');
     expect(result).not.toHaveProperty('voterLeaf');

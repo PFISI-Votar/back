@@ -40,7 +40,7 @@ export class VerificarReciboResponseDto {
 
   @ApiProperty({
     example:
-      'Su participación fue confirmada en el bloque 4582193. El contenido del sufragio no es revelado.',
+      'Su voto ha sido incluido con éxito en el bloque número 4582193 de la blockchain de Sepolia',
   })
   mensaje: string;
 }

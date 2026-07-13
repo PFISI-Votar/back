@@ -211,7 +211,26 @@ export class BlockchainService {
   }
 
   /**
-   * VOTAR-360: confirm SignedVoteCast inclusion by txHash without exposing vote choice.
+   * VOTAR-366: human-readable chain label for inclusion confirmation messages.
+   */
+  getNetworkDisplayName(): string {
+    const configured = this.configService.get<string>(
+      'BLOCKCHAIN_NETWORK_NAME',
+    );
+    if (configured?.trim()) {
+      return configured.trim();
+    }
+    const explorerBase =
+      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
+      'https://sepolia.etherscan.io';
+    if (explorerBase.includes('sepolia')) {
+      return 'Sepolia';
+    }
+    return 'Ethereum';
+  }
+
+  /**
+   * VOTAR-360/366: confirm SignedVoteCast inclusion by txHash without exposing vote choice.
    * selectionHash / nullifier are parsed only to prove the event exists and are never
    * returned to callers. SignedVoteCast omits voterLeaf (VOTAR-346) so padron identity
    * cannot be joined to VoteCast preferences on-chain.
@@ -246,20 +265,20 @@ export class BlockchainService {
 
     if (!receipt) {
       throw new NotFoundException(
-        'No se encontró una transacción con ese TransactionHash.',
+        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
     if (receipt.status !== 1) {
       throw new NotFoundException(
-        'La transacción existe pero no fue confirmada exitosamente.',
+        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
     const toAddress = receipt.to?.toLowerCase();
     if (!toAddress || toAddress !== ballotAddress.toLowerCase()) {
       throw new NotFoundException(
-        'La transacción no corresponde al contrato de boleta electoral.',
+        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
@@ -279,7 +298,7 @@ export class BlockchainService {
 
     if (!voteEvent) {
       throw new NotFoundException(
-        'La transacción no contiene un evento SignedVoteCast de participación.',
+        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
