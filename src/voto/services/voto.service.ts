@@ -32,8 +32,13 @@ import {
 } from '@/voto/dto/confirmar-voto.dto';
 import { ConfirmarVotoResponseDto } from '@/voto/dto/confirmar-voto-response.dto';
 import {
+  RegistrarVotoBlockchainDto,
+  RegistrarVotoBlockchainResponseDto,
+} from '@/voto/dto/registrar-voto-blockchain.dto';
+import {
   VotoConfirmacion,
   VotoConfirmacionEstado,
+  VotoConfirmacionTxStatus,
 } from '@/voto/entities/voto-confirmacion.entity';
 
 type OfertaVoto = {
@@ -425,6 +430,106 @@ export class VotoService {
       contractAddress: confirmacion.contractAddress,
       codigoVerificacionE2E: confirmacion.codigoVerificacionE2E,
       txStatus: confirmacion.txStatus,
+    };
+  }
+
+  /**
+   * VOTAR-360: Registra un voto después de transmisión exitosa a blockchain.
+   *
+   * Este método es llamado por el frontend (bud-voting-wizard) después de
+   * transmitir el voto firmado directamente a la blockchain via web3.
+   *
+   * Crea un registro en VotoConfirmacion con el txHash y genera el UUID E2E.
+   */
+  async registrarVotoBlockchain(
+    idEleccion: number,
+    dto: RegistrarVotoBlockchainDto,
+    votanteHash: string,
+  ): Promise<RegistrarVotoBlockchainResponseDto> {
+    // Validar que la elección esté abierta y el votante habilitado
+    await this.assertVotanteHabilitado(idEleccion, votanteHash);
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+
+    if (!eleccion || !ESTADOS_ELECCION_APTOS.includes(eleccion.estado)) {
+      throw new ForbiddenException('La elección no está disponible para votar');
+    }
+
+    // Verificar que el txHash no haya sido registrado previamente (anti-replay)
+    const existente = await this.votoConfirmacionRepository.findOne({
+      where: { txHash: dto.txHash },
+    });
+
+    if (existente) {
+      // Si ya existe, devolver el registro existente (idempotencia)
+      return {
+        idEleccion: existente.idEleccion,
+        estado: existente.estado,
+        comprobanteHash: existente.comprobanteHash,
+        payloadHash: existente.payloadHash,
+        recibidoEn: existente.recibidoEn.toISOString(),
+        codigoVerificacionE2E: existente.codigoVerificacionE2E,
+        txHash: existente.txHash!,
+        blockNumber: existente.blockNumber!,
+        txStatus: existente.txStatus!,
+        contractAddress: existente.contractAddress,
+      };
+    }
+
+    // Generar hashes derivados
+    const payloadHash = this.hashPayload({
+      idEleccion,
+      votoEnBlanco: false, // El wizard no envía voto en blanco via blockchain
+      selecciones: dto.categorias.map((idCategoria) => ({
+        idCategoria,
+        idCandidato: 0, // No almacenamos candidatos por privacidad
+      })),
+    });
+
+    // El comprobanteHash es el hash del payload + txHash (vincula off-chain con on-chain)
+    const comprobanteHash = createHash('sha256')
+      .update(payloadHash + dto.txHash)
+      .digest('hex');
+
+    // Generar idempotency key basado en el nullifier (previene doble registro)
+    const idempotencyKey = createHash('sha256')
+      .update(dto.nullifier)
+      .digest('hex')
+      .slice(0, 32); // Convertir a formato UUID-like
+
+    const idempotencyKeyUuid = `${idempotencyKey.slice(0, 8)}-${idempotencyKey.slice(8, 12)}-${idempotencyKey.slice(12, 16)}-${idempotencyKey.slice(16, 20)}-${idempotencyKey.slice(20, 32)}`;
+
+    // Crear registro de confirmación
+    const confirmacion = await this.votoConfirmacionRepository.save(
+      this.votoConfirmacionRepository.create({
+        idEleccion,
+        votanteHash,
+        idempotencyKey: idempotencyKeyUuid,
+        payloadHash,
+        comprobanteHash,
+        estado: VotoConfirmacionEstado.RECIBIDO,
+        // Campos blockchain (VOTAR-360)
+        txHash: dto.txHash,
+        blockNumber: dto.blockNumber,
+        txTimestamp: new Date(dto.timestamp),
+        txStatus: VotoConfirmacionTxStatus.CONFIRMADA, // Ya fue confirmado en blockchain
+        contractAddress: dto.contractAddress,
+        // codigoVerificacionE2E se genera automáticamente por TypeORM (UUID)
+      }),
+    );
+
+    return {
+      idEleccion: confirmacion.idEleccion,
+      estado: confirmacion.estado,
+      comprobanteHash: confirmacion.comprobanteHash,
+      payloadHash: confirmacion.payloadHash,
+      recibidoEn: confirmacion.recibidoEn.toISOString(),
+      codigoVerificacionE2E: confirmacion.codigoVerificacionE2E,
+      txHash: confirmacion.txHash!,
+      blockNumber: confirmacion.blockNumber!,
+      txStatus: confirmacion.txStatus!,
+      contractAddress: confirmacion.contractAddress,
     };
   }
 }
