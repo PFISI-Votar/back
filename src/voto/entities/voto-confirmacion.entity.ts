@@ -18,7 +18,6 @@ export enum VotoConfirmacionTxStatus {
 }
 
 @Entity('voto_confirmacion')
-@Unique(['idEleccion', 'votanteHash'])
 @Unique(['idEleccion', 'idempotencyKey'])
 export class VotoConfirmacion {
   @PrimaryGeneratedColumn('uuid', { name: 'id_voto_confirmacion' })
