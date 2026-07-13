@@ -12,6 +12,7 @@ import {
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { VoterJwtPayload } from '@/auth/interfaces/voter-jwt-payload.interface';
 import { AutogestionService } from '@/auth/services/autogestion.service';
+import { JwksService } from '@/auth/services/jwks.service';
 import { resolveDni } from '@/auth/utils/resolve-dni.util';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
@@ -32,6 +33,7 @@ export class VotanteAuthService {
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
     private readonly padronEligibilityService: PadronEligibilityService,
+    private readonly jwksService: JwksService,
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
     @InjectRepository(ConfiguracionComicio)
@@ -64,6 +66,7 @@ export class VotanteAuthService {
     }
     const sub = persona.legajo?.toString() ?? nick;
     const name = [persona.nombre, persona.apellido].filter(Boolean).join(' ');
+    this.jwksService.assertCanIssueLocalAccessTokens();
     const payload: VoterJwtPayload = {
       sub,
       role: JwtRole.VOTER,
