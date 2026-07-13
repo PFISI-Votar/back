@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   Contract,
@@ -9,9 +13,18 @@ import {
   Log,
   Wallet,
 } from 'ethers';
+import { BALLOT_CONTRACT_ABI } from './constants/ballot-contract.abi';
 import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+
+export type VoteParticipationOnChain = {
+  txHash: string;
+  idEleccion: number;
+  blockNumber: number;
+  timestamp: Date;
+  contractAddress: string;
+};
 
 /**
  * Maps backend EleccionEstado to smart contract ElectionState enum.
@@ -195,6 +208,99 @@ export class BlockchainService {
       this.configService.get<string>('ETHERSCAN_BASE_URL') ??
       'https://sepolia.etherscan.io';
     return `${base}/tx/${txHash}`;
+  }
+
+  /**
+   * VOTAR-360: confirm SignedVoteCast inclusion by txHash without exposing vote choice.
+   * selectionHash / nullifier / voterLeaf are parsed only to prove the event exists
+   * and are never returned to callers.
+   */
+  async getVoteParticipationByTxHash(
+    txHash: string,
+  ): Promise<VoteParticipationOnChain> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const ballotAddress = this.configService.get<string>(
+      'BALLOT_CONTRACT_ADDRESS',
+    );
+
+    if (!rpcUrl || !ballotAddress) {
+      throw new ServiceUnavailableException(
+        'La verificación on-chain no está configurada (SEPOLIA_RPC_URL, BALLOT_CONTRACT_ADDRESS).',
+      );
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
+    try {
+      receipt = await provider.getTransactionReceipt(txHash);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar la transacción on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new NotFoundException(
+        'No se encontró una transacción con ese TransactionHash.',
+      );
+    }
+
+    if (receipt.status !== 1) {
+      throw new NotFoundException(
+        'La transacción existe pero no fue confirmada exitosamente.',
+      );
+    }
+
+    const toAddress = receipt.to?.toLowerCase();
+    if (!toAddress || toAddress !== ballotAddress.toLowerCase()) {
+      throw new NotFoundException(
+        'La transacción no corresponde al contrato de boleta electoral.',
+      );
+    }
+
+    const iface = new Interface(BALLOT_CONTRACT_ABI);
+    const voteEvent = receipt.logs
+      .map((log: Log) => {
+        try {
+          return iface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        } catch {
+          return null;
+        }
+      })
+      .find((parsed) => parsed?.name === 'SignedVoteCast');
+
+    if (!voteEvent) {
+      throw new NotFoundException(
+        'La transacción no contiene un evento SignedVoteCast de participación.',
+      );
+    }
+
+    const idEleccion = Number(voteEvent.args[0]);
+    if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
+      throw new NotFoundException(
+        'El evento SignedVoteCast no incluye un id de elección válido.',
+      );
+    }
+
+    const block = await provider.getBlock(receipt.blockNumber);
+    const timestamp = block?.timestamp
+      ? new Date(Number(block.timestamp) * 1000)
+      : new Date();
+
+    return {
+      txHash: receipt.hash.toLowerCase(),
+      idEleccion,
+      blockNumber: receipt.blockNumber,
+      timestamp,
+      contractAddress: ballotAddress,
+    };
   }
 
   /**

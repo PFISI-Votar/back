@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
 import { CategoriasModule } from '@/categoria/categoria.module';
@@ -25,12 +24,6 @@ import { VotoModule } from '@/voto/voto.module';
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
-    ThrottlerModule.forRoot([
-      {
-        ttl: 60000, // 60 segundos
-        limit: 5, // 5 requests por minuto para endpoints públicos
-      },
-    ]),
     AuthModule,
     EleccionesModule,
     PadronModule,
