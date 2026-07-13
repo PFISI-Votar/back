@@ -45,7 +45,8 @@ export class ReciboController {
   })
   @ApiParam({
     name: 'codigo',
-    description: 'Código de verificación E2E (UUID)',
+    description:
+      'Código de verificación E2E (UUID) o txHash de blockchain (0x...)',
     example: 'a1b2c3d4-5678-90ab-cdef-1234567890ab',
   })
   @ApiResponse({
@@ -64,9 +65,23 @@ export class ReciboController {
   async verificarRecibo(
     @Param('codigo') codigo: string,
   ): Promise<VerificarReciboResponseDto> {
-    const confirmacion = await this.votoConfirmacionRepository.findOne({
-      where: { codigoVerificacionE2E: codigo },
-    });
+    // Detectar tipo de código para evitar error de cast UUID en PostgreSQL
+    const esTxHash = /^0x[0-9a-fA-F]{64}$/i.test(codigo);
+    const esUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(codigo);
+
+    let confirmacion: VotoConfirmacion | null = null;
+
+    if (esUuid) {
+      // Buscar por UUID (codigoVerificacionE2E)
+      confirmacion = await this.votoConfirmacionRepository.findOne({
+        where: { codigoVerificacionE2E: codigo },
+      });
+    } else if (esTxHash) {
+      // Buscar por txHash (0x...)
+      confirmacion = await this.votoConfirmacionRepository.findOne({
+        where: { txHash: codigo },
+      });
+    }
 
     if (!confirmacion) {
       throw new NotFoundException(
