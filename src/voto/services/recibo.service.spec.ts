@@ -118,7 +118,7 @@ describe('ReciboService (VOTAR-360)', () => {
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('obtenerClavePublica falla si no hay clave configurada', async () => {
+  it('obtenerClavePublica falla si no hay clave configurada', () => {
     configService.get.mockReturnValue(undefined);
     expect(() => service.obtenerClavePublica()).toThrow(
       ServiceUnavailableException,
