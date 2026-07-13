@@ -29,7 +29,9 @@ DB_PASSWORD=postgres
 DB_NAME=votar
 DEV_ADMIN_NICK=tuLegajo
 DEV_ADMIN_PASSWORD=tuPasswordUTN
-JWT_SECRET=dev-secret-min-16-chars
+JWT_ISSUER=https://votar.local/idp
+JWT_AUDIENCE=votar-api
+# JWT_JWKS_URI vacío = modo BFF interino (RS256 local + /auth/.well-known/jwks.json)
 ```
 
 No hace falta configurar variables de blockchain en local: el repo `blockchain/` las genera en `.env.blockchain.local` (gitignored).

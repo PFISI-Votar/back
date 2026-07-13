@@ -1,4 +1,10 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createPublicKey, KeyObject } from 'node:crypto';
 import { JWKS_CACHE_TTL_MS } from '@/auth/constants/jwt-identity.constants';
@@ -23,7 +29,7 @@ export type JwtRejectionReason =
   | 'token_malformed';
 
 @Injectable()
-export class JwksService {
+export class JwksService implements OnModuleInit {
   private readonly logger = new Logger(JwksService.name);
   private readonly jwksUri: string | undefined;
   private cache: CachedJwks | null = null;
@@ -34,6 +40,39 @@ export class JwksService {
   ) {
     const uri = this.configService.get<string>('JWT_JWKS_URI')?.trim();
     this.jwksUri = uri && uri.length > 0 ? uri : undefined;
+  }
+
+  onModuleInit(): void {
+    if (this.isRemoteMode()) {
+      this.logger.warn(
+        'Modo SSO (JWT_JWKS_URI remoto): solo se verifican tokens del IdP. ' +
+          'El BFF no debe emitir JWT locales incompatibles; ' +
+          '/auth/.well-known/jwks.json no se publica.',
+      );
+      return;
+    }
+    this.logger.log(
+      'Modo BFF interino (JWT_JWKS_URI vacío): firma RS256 local, ' +
+        'publica /auth/.well-known/jwks.json y verifica contra esas claves.',
+    );
+  }
+
+  /** true cuando JWT_JWKS_URI apunta a un IdP/SSO externo. */
+  isRemoteMode(): boolean {
+    return Boolean(this.jwksUri);
+  }
+
+  /**
+   * Guardrail: en modo SSO no se emiten JWT firmados por el BFF
+   * (serían incompatibles con el JWKS remoto del IdP).
+   */
+  assertCanIssueLocalAccessTokens(): void {
+    if (this.isRemoteMode()) {
+      throw new ServiceUnavailableException(
+        'Modo SSO activo (JWT_JWKS_URI remoto): el BFF no emite JWT locales. ' +
+          'Use tokens emitidos por el IdP o deje JWT_JWKS_URI vacío para el modo BFF interino.',
+      );
+    }
   }
 
   /**
@@ -55,8 +94,13 @@ export class JwksService {
       throw new UnauthorizedException('Token JWT malformado');
     }
 
-    const document = await this.getJwksDocument();
-    const jwk = this.selectJwk(document, kid);
+    let document = await this.getJwksDocument();
+    let jwk = this.selectJwk(document, kid);
+    // Rotación de claves: kid desconocido → refresh forzado una vez (SSO remoto).
+    if (!jwk && this.isRemoteMode() && kid) {
+      document = await this.getJwksDocument(true);
+      jwk = this.selectJwk(document, kid);
+    }
     if (!jwk) {
       throw new UnauthorizedException('Clave de firma no encontrada en JWKS');
     }

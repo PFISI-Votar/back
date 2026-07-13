@@ -1,10 +1,4 @@
 import cookieParser from 'cookie-parser';
-import {
-  createServer,
-  IncomingMessage,
-  Server,
-  ServerResponse,
-} from 'node:http';
 import { generateKeyPairSync } from 'node:crypto';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -65,30 +59,8 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
   let jwtService: JwtService;
   let jwtKeysService: JwtKeysService;
   let auditLogRepository: Repository<AuditLog>;
-  let jwksServer: Server | undefined;
-  let jwksUri: string;
-  let jwksPayload: unknown = { keys: [] };
 
   beforeAll(async () => {
-    jwksServer = createServer((req: IncomingMessage, res: ServerResponse) => {
-      if (req.url === '/.well-known/jwks.json') {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(jwksPayload));
-        return;
-      }
-      res.writeHead(404);
-      res.end();
-    });
-
-    await new Promise<void>((resolve) =>
-      jwksServer!.listen(0, '127.0.0.1', resolve),
-    );
-    const address = jwksServer.address();
-    if (!address || typeof address === 'string') {
-      throw new Error('jwks server address unavailable');
-    }
-    jwksUri = `http://127.0.0.1:${address.port}/.well-known/jwks.json`;
-
     const db = newDb({ autoCreateForeignKeyIndices: true });
     db.public.registerFunction({
       name: 'current_database',
@@ -105,12 +77,11 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
           isGlobal: true,
           load: [
             () => ({
-              JWT_SECRET: 'test-secret-for-e2e-tests-min-16',
+              // Modo A (BFF interino): JWT_JWKS_URI vacío
               JWT_ACCESS_EXPIRES_IN: '15m',
               JWT_REFRESH_EXPIRES_IN: '8h',
               JWT_ISSUER: DEFAULT_JWT_ISSUER,
               JWT_AUDIENCE: DEFAULT_JWT_AUDIENCE,
-              JWT_JWKS_URI: jwksUri,
               AUTOGESTION_BASE_URL: 'https://autogestion.test',
               DEVELOPMENT: true,
             }),
@@ -148,7 +119,6 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
 
     jwtService = app.get(JwtService);
     jwtKeysService = app.get(JwtKeysService);
-    jwksPayload = jwtKeysService.getJwks();
     auditLogRepository = dataSource.getRepository(AuditLog);
   }, 60000);
 
@@ -158,11 +128,6 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
     }
     if (dataSource?.isInitialized) {
       await dataSource.destroy();
-    }
-    if (jwksServer) {
-      await new Promise<void>((resolve, reject) =>
-        jwksServer!.close((err) => (err ? reject(err) : resolve())),
-      );
     }
   });
 
@@ -196,7 +161,7 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
       .expect(200);
   });
 
-  it('UAT-02: firma forjada → 401', async () => {
+  it('UAT-02: firma forjada → 401 y auditLogger', async () => {
     const other = generateKeyPairSync('rsa', {
       modulusLength: 2048,
       publicKeyEncoding: { type: 'spki', format: 'pem' },
@@ -214,13 +179,28 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
       },
     );
 
+    const countBefore = await auditLogRepository.count({
+      where: { tipoEvento: TipoEventoAudit.ACCESO_DENEGADO },
+    });
+
     await request(app.getHttpServer())
       .get('/elecciones')
       .set(withBearer(forged))
       .expect(401);
+
+    const logs = await auditLogRepository.find({
+      where: { tipoEvento: TipoEventoAudit.ACCESO_DENEGADO },
+      order: { timestamp: 'DESC' },
+    });
+    expect(logs.length).toBeGreaterThan(countBefore);
+    expect(logs[0].actor).toBe('anonymous');
+    expect(logs[0].endpoint).toBe('GET /elecciones');
+    expect(logs[0].datosAdicionales).toEqual(
+      expect.objectContaining({ reason: 'invalid_signature' }),
+    );
   });
 
-  it('UAT-03: iss/aud discrepantes → 401 y entrada en auditLogger', async () => {
+  it('UAT-03: iss discrepante → 401 y auditLogger con reason invalid_issuer', async () => {
     const badIssToken = jwt.sign(
       { sub: '14988', role: JwtRole.ELECTION_ADMIN },
       jwtKeysService.getPrivateKeyPem(),
@@ -252,13 +232,11 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
     expect(latest.actor).toBe('anonymous');
     expect(latest.endpoint).toBe('GET /elecciones');
     expect(latest.datosAdicionales).toEqual(
-      expect.objectContaining({
-        reason: expect.stringMatching(/invalid_issuer|invalid_signature/),
-      }),
+      expect.objectContaining({ reason: 'invalid_issuer' }),
     );
   });
 
-  it('UAT-03b: audiencia inválida → 401 y audit', async () => {
+  it('UAT-03b: audiencia inválida → 401 y audit con reason invalid_audience', async () => {
     const badAudToken = jwt.sign(
       { sub: '14988', role: JwtRole.ELECTION_ADMIN },
       jwtKeysService.getPrivateKeyPem(),
@@ -286,9 +264,7 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
     });
     expect(logs.length).toBeGreaterThan(countBefore);
     expect(logs[0].datosAdicionales).toEqual(
-      expect.objectContaining({
-        reason: expect.stringMatching(/invalid_audience|invalid_signature/),
-      }),
+      expect.objectContaining({ reason: 'invalid_audience' }),
     );
   });
 });

@@ -148,6 +148,67 @@ describe('JwksService (VOTAR-314)', () => {
       /Clave de firma no encontrada/,
     );
   });
+
+  it('refresca JWKS remoto una vez ante kid desconocido en caché', async () => {
+    const keysService = createKeysService();
+    const initialDoc = {
+      keys: [{ ...buildJwksDocument(suiteMaterial).keys[0], kid: 'old-kid' }],
+    };
+    const rotatedDoc = buildJwksDocument(suiteMaterial);
+    let fetchCount = 0;
+
+    const server: Server = createServer(
+      (req: IncomingMessage, res: ServerResponse) => {
+        if (req.url === '/jwks') {
+          fetchCount += 1;
+          const body = fetchCount === 1 ? initialDoc : rotatedDoc;
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(body));
+          return;
+        }
+        res.writeHead(404);
+        res.end();
+      },
+    );
+
+    await new Promise<void>((resolve) =>
+      server.listen(0, '127.0.0.1', resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('server address unavailable');
+    }
+    const jwksUri = `http://127.0.0.1:${address.port}/jwks`;
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        JwksService,
+        { provide: JwtKeysService, useValue: keysService },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: (key: string) =>
+              key === 'JWT_JWKS_URI' ? jwksUri : undefined,
+          },
+        },
+      ],
+    }).compile();
+    await module.init();
+
+    const jwksService = module.get(JwksService);
+    // Warm cache with old kid
+    await jwksService.getJwksDocument();
+    expect(fetchCount).toBe(1);
+
+    const token = signWithMaterial({ sub: '1' });
+    const key = await jwksService.getVerificationKey(token);
+    expect(key).toBeDefined();
+    expect(fetchCount).toBe(2);
+
+    await new Promise<void>((resolve, reject) =>
+      server.close((err) => (err ? reject(err) : resolve())),
+    );
+  });
 });
 
 describe('classifyJwtRejection', () => {

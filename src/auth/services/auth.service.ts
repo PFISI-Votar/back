@@ -9,6 +9,7 @@ import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 import { JwtPayload } from '@/auth/interfaces/jwt-payload.interface';
 import { AutogestionService } from '@/auth/services/autogestion.service';
+import { JwksService } from '@/auth/services/jwks.service';
 import {
   RefreshSessionIdentity,
   RefreshTokenService,
@@ -30,6 +31,7 @@ export class AuthService {
     private readonly autogestionService: AutogestionService,
     private readonly jwtService: JwtService,
     private readonly refreshTokenService: RefreshTokenService,
+    private readonly jwksService: JwksService,
     @InjectRepository(AutoridadElectoral)
     private readonly autoridadRepository: Repository<AutoridadElectoral>,
   ) {}
@@ -82,6 +84,7 @@ export class AuthService {
     identity: RefreshSessionIdentity,
     role: JwtRole,
   ): Promise<AuthTokensResponse> {
+    this.jwksService.assertCanIssueLocalAccessTokens();
     const payload: JwtPayload = {
       sub: identity.sub,
       role,

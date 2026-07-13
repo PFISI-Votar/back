@@ -4,6 +4,7 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuthService } from '@/auth/services/auth.service';
 import { AutogestionService } from '@/auth/services/autogestion.service';
+import { JwksService } from '@/auth/services/jwks.service';
 import { RefreshTokenService } from '@/auth/services/refresh-token.service';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
@@ -42,6 +43,13 @@ describe('AuthService', () => {
             issueSession: issueSessionMock,
             rotateSession: rotateSessionMock,
             revokeSession: revokeSessionMock,
+          },
+        },
+        {
+          provide: JwksService,
+          useValue: {
+            assertCanIssueLocalAccessTokens: jest.fn(),
+            isRemoteMode: jest.fn().mockReturnValue(false),
           },
         },
         {

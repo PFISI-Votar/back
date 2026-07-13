@@ -11,7 +11,11 @@ export const envValidationSchema = Joi.object({
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
   UPLOADS_DIR: Joi.string().default('uploads'),
-  JWT_SECRET: Joi.string().min(16).required(),
+  /**
+   * Legacy / opcional. Los access tokens usan RS256 + JWKS (VOTAR-314);
+   * ya no se firma ni verifica con JWT_SECRET.
+   */
+  JWT_SECRET: Joi.string().min(16).optional(),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('15m'),
   JWT_VOTER_ACCESS_EXPIRES_IN: Joi.string().default('30m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('8h'),
@@ -21,8 +25,11 @@ export const envValidationSchema = Joi.object({
   /** Audiencia (aud) esperada en tokens de sesión / OIDC (VOTAR-314). */
   JWT_AUDIENCE: Joi.string().default('votar-api'),
   /**
-   * URI del JWKS del IdP/SSO. Vacío = usar claves locales del BFF (interino)
-   * expuestas en GET /auth/.well-known/jwks.json.
+   * Modos mutuamente excluyentes (VOTAR-314):
+   * - Vacío (default / BFF interino): firma RS256 local, publica
+   *   GET /auth/.well-known/jwks.json y verifica contra esas claves.
+   * - URI remota (SSO IdP): solo verifica tokens del IdP; el BFF no emite
+   *   JWT locales incompatibles ni publica JWKS propio.
    */
   JWT_JWKS_URI: Joi.string().uri().allow('').optional(),
   JWT_PRIVATE_KEY: Joi.string().optional(),
