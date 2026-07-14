@@ -8,10 +8,17 @@ import { ReporteNovedadesResponseDto } from '../dto/reporte-novedades-response.d
 import { TotalVotantesResponseDto } from '../dto/total-votantes-response.dto';
 import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
 
+/** Contexto de auditoría para operaciones administrativas del padrón (VOTAR-370). */
+export interface PadronAuditContext {
+  actorId: string;
+  ipOrigen?: string;
+}
+
 export interface IPadronService {
   importarPadron(
     idEleccion: number,
     archivo: Express.Multer.File,
+    auditContext?: PadronAuditContext,
   ): Promise<ImportarPadronResponseDto>;
   obtenerResumen(idEleccion: number): Promise<PadronResumenResponseDto>;
   obtenerReporteNovedades(
