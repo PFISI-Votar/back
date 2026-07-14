@@ -32,15 +32,10 @@ const createService = (options?: {
   estado?: EleccionEstado | null;
 }) => {
   const config =
-    options?.config === null
-      ? null
-      : { ...baseConfig, ...options?.config };
-  const registro =
-    options && 'registro' in options ? options.registro : null;
+    options?.config === null ? null : { ...baseConfig, ...options?.config };
+  const registro = options && 'registro' in options ? options.registro : null;
   const estado =
-    options && 'estado' in options
-      ? options.estado
-      : EleccionEstado.ABIERTA;
+    options && 'estado' in options ? options.estado : EleccionEstado.ABIERTA;
 
   const saved: Array<{
     idEleccion: number;
@@ -50,9 +45,9 @@ const createService = (options?: {
   }> = [];
 
   const eleccionRepository = {
-    findOne: jest.fn().mockResolvedValue(
-      estado === null ? null : { idEleccion: 1, estado },
-    ),
+    findOne: jest
+      .fn()
+      .mockResolvedValue(estado === null ? null : { idEleccion: 1, estado }),
   };
   const configuracionRepository = {
     findOne: jest.fn().mockResolvedValue(config),
@@ -69,9 +64,9 @@ const createService = (options?: {
         : null,
     ),
     create: jest.fn((data: (typeof saved)[number]) => ({ ...data })),
-    save: jest.fn(async (entity: (typeof saved)[number]) => {
+    save: jest.fn((entity: (typeof saved)[number]) => {
       saved.push(entity);
-      return entity;
+      return Promise.resolve(entity);
     }),
   };
 

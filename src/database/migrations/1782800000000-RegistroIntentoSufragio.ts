@@ -3,9 +3,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 /**
  * VOTAR-328: contador off-chain de intentos de sufragio para feedback en BUD.
  */
-export class RegistroIntentoSufragio1782800000000
-  implements MigrationInterface
-{
+export class RegistroIntentoSufragio1782800000000 implements MigrationInterface {
   name = 'RegistroIntentoSufragio1782800000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
