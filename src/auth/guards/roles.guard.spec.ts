@@ -38,20 +38,22 @@ describe('RolesGuard', () => {
       .mockReturnValue([JwtRole.ELECTION_ADMIN]);
   });
 
-  it('allows access when user has required role', () => {
+  it('allows access when user has required role', async () => {
     const context = createContext({
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
     });
 
-    expect(guard.canActivate(context)).toBe(true);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
     expect(logAccesoDenegadoMock).not.toHaveBeenCalled();
   });
 
-  it('throws 403 and logs audit when role is insufficient', () => {
+  it('throws 403 and logs audit when role is insufficient', async () => {
     const context = createContext({ sub: '15079', role: JwtRole.VOTER });
 
-    expect(() => guard.canActivate(context)).toThrow(ForbiddenException);
+    await expect(guard.canActivate(context)).rejects.toThrow(
+      ForbiddenException,
+    );
     expect(logAccesoDenegadoMock).toHaveBeenCalledWith(
       expect.objectContaining({
         actorId: '15079',
@@ -61,10 +63,10 @@ describe('RolesGuard', () => {
     );
   });
 
-  it('passes through when no roles are required', () => {
+  it('passes through when no roles are required', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(undefined);
     const context = createContext(undefined);
 
-    expect(guard.canActivate(context)).toBe(true);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
   });
 });
