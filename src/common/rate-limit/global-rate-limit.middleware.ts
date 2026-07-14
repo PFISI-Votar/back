@@ -25,7 +25,9 @@ export const createGlobalRateLimitMiddleware = (
 
   return (req: Request, res: Response, next: NextFunction): void => {
     const path = req.path ?? req.url ?? '/';
-    if (skipPaths.some((prefix) => path === prefix || path.startsWith(prefix))) {
+    if (
+      skipPaths.some((prefix) => path === prefix || path.startsWith(prefix))
+    ) {
       next();
       return;
     }
@@ -36,8 +38,7 @@ export const createGlobalRateLimitMiddleware = (
       res.setHeader('Retry-After', String(decision.retryAfterSeconds));
       res.status(429).json({
         statusCode: 429,
-        message:
-          'Demasiadas solicitudes. Intente nuevamente más tarde.',
+        message: 'Demasiadas solicitudes. Intente nuevamente más tarde.',
         error: 'Too Many Requests',
       });
       return;

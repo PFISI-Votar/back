@@ -3,13 +3,19 @@ import { createGlobalRateLimitMiddleware } from './global-rate-limit.middleware'
 
 type HeaderStore = Record<string, string>;
 
+type MockResponse = {
+  setHeader: (name: string, value: string | number) => void;
+  status: (code: number) => MockResponse;
+  json: () => MockResponse;
+};
+
 const invoke = (
   middleware: (req: Request, res: Response, next: NextFunction) => void,
   ip: string,
   path = '/elecciones/1/configuracion-bud',
 ): Promise<{ status?: number; headers: HeaderStore; nextCalled: boolean }> => {
   const headers: HeaderStore = {};
-  let status: number | undefined;
+  let statusCode: number | undefined;
   let nextCalled = false;
 
   const req = {
@@ -19,26 +25,26 @@ const invoke = (
     headers: {},
   } as Request;
 
-  const res = {
+  const res: MockResponse = {
     setHeader(name: string, value: string | number) {
       headers[name.toLowerCase()] = String(value);
     },
     status(code: number) {
-      status = code;
-      return this;
+      statusCode = code;
+      return res;
     },
     json() {
-      return this;
+      return res;
     },
-  } as unknown as Response;
+  };
 
   return new Promise((resolve) => {
-    middleware(req, res, () => {
+    middleware(req, res as unknown as Response, () => {
       nextCalled = true;
-      resolve({ status, headers, nextCalled });
+      resolve({ status: statusCode, headers, nextCalled });
     });
     if (!nextCalled) {
-      resolve({ status, headers, nextCalled });
+      resolve({ status: statusCode, headers, nextCalled });
     }
   });
 };
