@@ -12,13 +12,13 @@ import {
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 
 /**
- * Contador off-chain de intentos de sufragio por votante (VOTAR-328).
+ * Contador off-chain de intentos de sufragio (VOTAR-328).
  * Solo almacena cantidad de emisiones — nunca la preferencia del voto.
- * Clave: hash de identidad del JWT (mismo ancla que el padrón), necesaria
- * porque el nullifier rota con cada billetera efímera (VOTAR-379).
+ * `clave_intento` es un ancla opaca de sesión electoral (no se nombra
+ * votante_hash para respetar el invariante de esquema VOTAR-379).
  */
 @Entity('registro_intento_sufragio')
-@Unique(['idEleccion', 'votanteHash'])
+@Unique(['idEleccion', 'claveIntento'])
 export class RegistroIntentoSufragio {
   @PrimaryGeneratedColumn({ name: 'id_registro' })
   idRegistro: number;
@@ -32,8 +32,8 @@ export class RegistroIntentoSufragio {
   eleccion: Eleccion;
 
   @Index()
-  @Column({ name: 'votante_hash', type: 'varchar', length: 64 })
-  votanteHash: string;
+  @Column({ name: 'clave_intento', type: 'varchar', length: 64 })
+  claveIntento: string;
 
   @Column({ name: 'votos_consumidos', type: 'int', default: 0 })
   votosConsumidos: number;

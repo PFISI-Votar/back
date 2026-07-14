@@ -30,11 +30,11 @@ export class RevotePolicyService {
    */
   async obtenerEstado(
     idEleccion: number,
-    votanteHash: string,
+    claveIntento: string,
   ): Promise<EstadoRevotoResponseDto> {
     const { config } = await this.loadElectionConfig(idEleccion);
     const registro = await this.intentoRepository.findOne({
-      where: { idEleccion, votanteHash },
+      where: { idEleccion, claveIntento },
     });
     return this.buildEstado(config, registro);
   }
@@ -44,7 +44,7 @@ export class RevotePolicyService {
    */
   async registrarConsumo(
     idEleccion: number,
-    votanteHash: string,
+    claveIntento: string,
   ): Promise<EstadoRevotoResponseDto> {
     const { eleccion, config } = await this.loadElectionConfig(idEleccion);
     if (!ESTADOS_APTOS_VOTO.includes(eleccion.estado)) {
@@ -55,13 +55,13 @@ export class RevotePolicyService {
 
     const maxVotos = this.resolveMaxVotos(config);
     let registro = await this.intentoRepository.findOne({
-      where: { idEleccion, votanteHash },
+      where: { idEleccion, claveIntento },
     });
 
     if (!registro) {
       registro = this.intentoRepository.create({
         idEleccion,
-        votanteHash,
+        claveIntento,
         votosConsumidos: 0,
         ultimoIntentoAt: null,
       });

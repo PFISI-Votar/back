@@ -39,7 +39,7 @@ const createService = (options?: {
 
   const saved: Array<{
     idEleccion: number;
-    votanteHash: string;
+    claveIntento: string;
     votosConsumidos: number;
     ultimoIntentoAt: Date | null;
   }> = [];
@@ -57,7 +57,7 @@ const createService = (options?: {
       registro
         ? {
             idEleccion: 1,
-            votanteHash: VOTANTE_HASH,
+            claveIntento: VOTANTE_HASH,
             votosConsumidos: registro.votosConsumidos,
             ultimoIntentoAt: registro.ultimoIntentoAt,
           }
