@@ -48,9 +48,25 @@ const mockEleccionGateway = {
   emitMerklePublicado: jest.fn(),
 };
 
+type PadronAuditPayload = {
+  idEleccion: number;
+  actorId: string;
+  nombreArchivo: string;
+  ipOrigen?: string;
+  merkleRoot?: string;
+  razon?: string;
+  totalProcesados?: number;
+  totalImportados?: number;
+  duplicadosExcluidos?: number;
+};
+
 const mockAuditLoggerService = {
-  logPadronCargado: jest.fn().mockResolvedValue(undefined),
-  logPadronCargaFallida: jest.fn().mockResolvedValue(undefined),
+  logPadronCargado: jest
+    .fn<Promise<undefined>, [PadronAuditPayload]>()
+    .mockResolvedValue(undefined),
+  logPadronCargaFallida: jest
+    .fn<Promise<undefined>, [PadronAuditPayload]>()
+    .mockResolvedValue(undefined),
 };
 
 /** Construye un archivo CSV simulado en memoria (como lo entrega multer). */
@@ -503,9 +519,11 @@ describe('PadronService', () => {
         totalImportados: 100,
         duplicadosExcluidos: 2,
         ipOrigen: '10.0.0.5',
-        merkleRoot: expect.stringMatching(REGEX_KECCAK),
       }),
     );
+    const cargadoPayload =
+      mockAuditLoggerService.logPadronCargado.mock.calls[0][0];
+    expect(cargadoPayload.merkleRoot).toMatch(REGEX_KECCAK);
   });
 
   it('VOTAR-370 UAT-03: registra fallo de integridad y re-lanza el error', async () => {
@@ -524,9 +542,11 @@ describe('PadronService', () => {
         actorId: '14988',
         nombreArchivo: 'padron.csv',
         ipOrigen: '10.0.0.5',
-        razon: expect.stringMatching(/columnas requeridas|dni|email/i),
       }),
     );
+    const falloPayload =
+      mockAuditLoggerService.logPadronCargaFallida.mock.calls[0][0];
+    expect(falloPayload.razon).toMatch(/columnas requeridas|dni|email/i);
   });
 
   describe('obtenerResumen', () => {

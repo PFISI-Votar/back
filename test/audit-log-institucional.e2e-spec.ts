@@ -330,7 +330,8 @@ describe('Audit Log institucional (e2e) — VOTAR-370', () => {
     expect(fallo.hashAnterior).toBe(previa.hashRegistro);
     expect(fallo.hashRegistro).toMatch(/^[0-9a-f]{64}$/);
     expect(fallo.hashRegistro).not.toBe(previa.hashRegistro);
-    expect(previa.hashAnterior === AUDIT_GENESIS_HASH || previa.hashAnterior)
-      .toBeTruthy();
+    expect(
+      previa.hashAnterior === AUDIT_GENESIS_HASH || previa.hashAnterior,
+    ).toBeTruthy();
   });
 });

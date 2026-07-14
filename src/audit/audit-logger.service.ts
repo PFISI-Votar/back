@@ -249,7 +249,8 @@ export class AuditLoggerService {
       tipoEvento: TipoEventoAudit.COMICIO_CERRADO,
       actorId: input.actorId,
       descripcion,
-      endpoint: input.modo === 'MANUAL' ? '/elecciones/:id/cerrar' : 'SCHEDULER',
+      endpoint:
+        input.modo === 'MANUAL' ? '/elecciones/:id/cerrar' : 'SCHEDULER',
       ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
       datosAdicionales: {
         modo: input.modo,

@@ -7,35 +7,47 @@ import {
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 
+type AuditRepoMock = {
+  create: jest.Mock;
+  save: jest.Mock;
+  find: jest.Mock;
+  manager: {
+    transaction: jest.Mock;
+  };
+};
+
 describe('AuditLoggerService', () => {
   let service: AuditLoggerService;
   const stored: AuditLog[] = [];
   let nextId = 1;
 
   const createMock = jest.fn((data: Partial<AuditLog>) => data as AuditLog);
-  const saveMock = jest.fn(async (data: Partial<AuditLog>) => {
+  const saveMock = jest.fn((data: Partial<AuditLog>) => {
     const entry = {
       ...data,
       idLog: nextId++,
     } as AuditLog;
     stored.push(entry);
-    return entry;
+    return Promise.resolve(entry);
   });
-  const findMock = jest.fn(async () => {
+  const findMock = jest.fn(() => {
     if (stored.length === 0) {
-      return [];
+      return Promise.resolve([] as AuditLog[]);
     }
-    return [stored[stored.length - 1]];
+    return Promise.resolve([stored[stored.length - 1]]);
   });
 
-  const repoMock = {
+  const repoMock: AuditRepoMock = {
     create: createMock,
     save: saveMock,
     find: findMock,
     manager: {
       transaction: jest.fn(
-        async (cb: (manager: { getRepository: () => typeof repoMock }) => Promise<AuditLog>) =>
-          cb({ getRepository: () => repoMock }),
+        (
+          cb: (manager: {
+            getRepository: () => AuditRepoMock;
+          }) => Promise<AuditLog>,
+        ) => cb({ getRepository: () => repoMock }),
       ),
     },
   };
@@ -250,7 +262,9 @@ describe('AuditLoggerService', () => {
       nivel: 'ERROR',
       nombreArchivo: 'corrupto.csv',
     });
-    expect(fallo.descripcion).toMatch(/Advertencia\/Error|fallo de integridad/i);
+    expect(fallo.descripcion).toMatch(
+      /Advertencia\/Error|fallo de integridad/i,
+    );
     expect(fallo.descripcion).toContain('corrupto.csv');
   });
 });
