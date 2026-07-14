@@ -5,6 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
+import { createGlobalRateLimitMiddleware } from '@/common/rate-limit/global-rate-limit.middleware';
 import {
   applySecurityHeaders,
   resolveIsProduction,
@@ -25,6 +26,18 @@ export const configureApp = (app: NestExpressApplication): void => {
   if (isProduction && requireHttps) {
     app.use(requireHttpsMiddleware);
   }
+
+  // VOTAR-394 — rate limiting global por IP (apiRouter)
+  const rateLimitWindowMs =
+    configService.get<number>('RATE_LIMIT_WINDOW_MS') ?? 60_000;
+  const rateLimitMaxRequests =
+    configService.get<number>('RATE_LIMIT_MAX_REQUESTS') ?? 100;
+  app.use(
+    createGlobalRateLimitMiddleware({
+      windowMs: rateLimitWindowMs,
+      maxRequests: rateLimitMaxRequests,
+    }),
+  );
 
   const frontendUrl =
     configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';

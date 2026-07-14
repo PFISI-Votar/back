@@ -5,6 +5,10 @@ export const envValidationSchema = Joi.object({
   REQUIRE_HTTPS: Joi.boolean().truthy('true').falsy('false').default(false),
   PORT: Joi.number().port().default(3000),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+  /** Ventana deslizante del rate limit global por IP (VOTAR-394). */
+  RATE_LIMIT_WINDOW_MS: Joi.number().integer().min(1000).default(60_000),
+  /** Máximo de requests por IP dentro de la ventana (VOTAR-394). */
+  RATE_LIMIT_MAX_REQUESTS: Joi.number().integer().min(1).default(100),
   DB_HOST: Joi.string().hostname().required(),
   DB_PORT: Joi.number().port().default(5432),
   DB_USERNAME: Joi.string().required(),

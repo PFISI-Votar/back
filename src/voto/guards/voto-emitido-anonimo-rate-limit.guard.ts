@@ -5,7 +5,9 @@ import {
   HttpStatus,
   Injectable,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
+import { InMemoryIpRateLimiter } from '@/common/rate-limit/in-memory-ip-rate-limiter';
+import { resolveClientIp } from '@/common/utils/resolve-client-ip';
 
 const WINDOW_MS = 60_000;
 const MAX_ATTEMPTS = 30;
@@ -16,23 +18,21 @@ const MAX_ATTEMPTS = 30;
  */
 @Injectable()
 export class VotoEmitidoAnonimoRateLimitGuard implements CanActivate {
-  private readonly attempts = new Map<string, number[]>();
+  private readonly limiter = new InMemoryIpRateLimiter(WINDOW_MS, MAX_ATTEMPTS);
 
   canActivate(context: ExecutionContext): boolean {
-    const request = context.switchToHttp().getRequest<Request>();
-    const key = request.ip ?? 'unknown';
-    const now = Date.now();
-    const recentAttempts = (this.attempts.get(key) ?? []).filter(
-      (timestamp) => now - timestamp < WINDOW_MS,
-    );
-    if (recentAttempts.length >= MAX_ATTEMPTS) {
+    const http = context.switchToHttp();
+    const request = http.getRequest<Request>();
+    const response = http.getResponse<Response>();
+    const decision = this.limiter.consume(resolveClientIp(request));
+
+    if (!decision.allowed) {
+      response.setHeader('Retry-After', String(decision.retryAfterSeconds));
       throw new HttpException(
         'Demasiados registros anónimos de voto. Intente nuevamente en un minuto.',
         HttpStatus.TOO_MANY_REQUESTS,
       );
     }
-    recentAttempts.push(now);
-    this.attempts.set(key, recentAttempts);
     return true;
   }
 }

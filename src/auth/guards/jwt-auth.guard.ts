@@ -10,6 +10,9 @@ import {
   classifyJwtRejection,
   JwtRejectionReason,
 } from '@/auth/services/jwks.service';
+import { resolveClientIp } from '@/common/utils/resolve-client-ip';
+
+export { resolveClientIp } from '@/common/utils/resolve-client-ip';
 
 @Injectable()
 export class JwtAuthGuard extends AuthGuard('jwt') {
@@ -48,11 +51,3 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
       .catch(() => undefined);
   }
 }
-
-export const resolveClientIp = (request: Request): string => {
-  const forwarded = request.headers['x-forwarded-for'];
-  if (typeof forwarded === 'string' && forwarded.length > 0) {
-    return forwarded.split(',')[0]?.trim() ?? 'unknown';
-  }
-  return request.ip ?? 'unknown';
-};
