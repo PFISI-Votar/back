@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { VoterJwtPayload } from '@/auth/interfaces/voter-jwt-payload.interface';
+import { JwksService } from '@/auth/services/jwks.service';
 import {
   assertVoterAuthenticatedUser,
   VoterJwtStrategy,
@@ -18,11 +19,17 @@ describe('VoterJwtStrategy', () => {
         {
           provide: ConfigService,
           useValue: {
-            get: jest.fn((key: string) =>
-              key === 'JWT_SECRET'
-                ? 'test-secret-for-e2e-tests-min-16'
-                : undefined,
-            ),
+            get: jest.fn((key: string) => {
+              if (key === 'JWT_ISSUER') return 'https://votar.local/idp';
+              if (key === 'JWT_AUDIENCE') return 'votar-api';
+              return undefined;
+            }),
+          },
+        },
+        {
+          provide: JwksService,
+          useValue: {
+            getVerificationKey: jest.fn(),
           },
         },
       ],
