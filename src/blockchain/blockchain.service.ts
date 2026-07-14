@@ -13,6 +13,7 @@ import {
   Log,
   Wallet,
 } from 'ethers';
+import { AUDIT_VIEW_ABI } from './constants/audit-view.abi';
 import { BALLOT_CONTRACT_ABI } from './constants/ballot-contract.abi';
 import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
@@ -24,6 +25,12 @@ export type VoteParticipationOnChain = {
   blockNumber: number;
   timestamp: Date;
   contractAddress: string;
+};
+
+export type ParticipationStatsOnChain = {
+  totalVotes: number;
+  blankVotes: number;
+  nullVotes: number;
 };
 
 /**
@@ -398,6 +405,74 @@ export class BlockchainService {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
     };
+  }
+
+  /**
+   * Gas-free participation aggregates from AuditViewContract (VOTAR-350).
+   */
+  async getParticipationStats(
+    electionId: number,
+  ): Promise<ParticipationStatsOnChain> {
+    const contract = this.getAuditViewContract();
+    try {
+      const [totalVotes, blankVotes, nullVotes] =
+        (await contract.getParticipationStats(electionId)) as [
+          bigint,
+          bigint,
+          bigint,
+        ];
+      return {
+        totalVotes: Number(totalVotes),
+        blankVotes: Number(blankVotes),
+        nullVotes: Number(nullVotes),
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudieron consultar las métricas de participación on-chain: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * Running tally for a candidate id from AuditViewContract (VOTAR-350).
+   */
+  async getVotesByCandidate(
+    electionId: number,
+    candidateId: number | bigint | string,
+  ): Promise<number> {
+    const contract = this.getAuditViewContract();
+    try {
+      const votes = (await contract.getVotesByCandidate(
+        electionId,
+        candidateId,
+      )) as bigint;
+      return Number(votes);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar el escrutinio on-chain del candidato: ${message}`,
+      );
+    }
+  }
+
+  private getAuditViewContract(): Contract {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const auditViewAddress =
+      this.configService.get<string>('AUDIT_VIEW_ADDRESS');
+    if (!rpcUrl || !auditViewAddress) {
+      throw new ServiceUnavailableException(
+        'La consulta de escrutinio on-chain no está configurada (SEPOLIA_RPC_URL, AUDIT_VIEW_ADDRESS).',
+      );
+    }
+    const provider = new JsonRpcProvider(rpcUrl);
+    return new Contract(auditViewAddress, AUDIT_VIEW_ABI, provider);
   }
 
   /**
