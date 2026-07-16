@@ -43,10 +43,13 @@ export const envValidationSchema = Joi.object({
   MERKLE_UPDATER_PRIVATE_KEY: Joi.string().optional(),
   ELECTION_ADMIN_PRIVATE_KEY: Joi.string().optional(),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
+  ELECTION_FACTORY_ADDRESS: Joi.string().optional(),
   RECIBO_SIGNING_PRIVATE_KEY: Joi.string().optional(),
   CHAIN_ID: Joi.number().default(11155111),
   ETHERSCAN_BASE_URL: Joi.string()
     .uri()
     .allow('')
     .default('https://sepolia.etherscan.io'),
+  ELECTION_FACTORY_ARTIFACT_PATH: Joi.string().optional(),
+  ELECTION_FACTORY_NETWORK: Joi.string().optional(),
 });
