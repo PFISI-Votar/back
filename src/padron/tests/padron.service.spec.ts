@@ -6,6 +6,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { AuditLoggerService } from '../../audit/audit-logger.service';
 import { PadronService } from '../padron.service';
 import {
   CrearPadronInput,
@@ -45,6 +46,27 @@ const mockBlockchainService = {
 
 const mockEleccionGateway = {
   emitMerklePublicado: jest.fn(),
+};
+
+type PadronAuditPayload = {
+  idEleccion: number;
+  actorId: string;
+  nombreArchivo: string;
+  ipOrigen?: string;
+  merkleRoot?: string;
+  razon?: string;
+  totalProcesados?: number;
+  totalImportados?: number;
+  duplicadosExcluidos?: number;
+};
+
+const mockAuditLoggerService = {
+  logPadronCargado: jest
+    .fn<Promise<undefined>, [PadronAuditPayload]>()
+    .mockResolvedValue(undefined),
+  logPadronCargaFallida: jest
+    .fn<Promise<undefined>, [PadronAuditPayload]>()
+    .mockResolvedValue(undefined),
 };
 
 /** Construye un archivo CSV simulado en memoria (como lo entrega multer). */
@@ -102,11 +124,14 @@ describe('PadronService', () => {
         { provide: PADRON_REPOSITORY, useValue: mockPadronRepository },
         { provide: BlockchainService, useValue: mockBlockchainService },
         { provide: EleccionGateway, useValue: mockEleccionGateway },
+        { provide: AuditLoggerService, useValue: mockAuditLoggerService },
       ],
     }).compile();
 
     service = module.get<PadronService>(PadronService);
 
+    mockAuditLoggerService.logPadronCargado.mockResolvedValue(undefined);
+    mockAuditLoggerService.logPadronCargaFallida.mockResolvedValue(undefined);
     mockPadronRepository.buscarEleccionPorId.mockResolvedValue({
       idEleccion: ID_ELECCION,
       estado: EleccionEstado.BORRADOR,
@@ -475,6 +500,53 @@ describe('PadronService', () => {
     await expect(
       service.importarPadron(ID_ELECCION, buildCsvValido(1)),
     ).rejects.toThrow(ConflictException);
+  });
+
+  it('VOTAR-370 UAT-02: registra PADRON_CARGADO enriquecido al importar con contexto', async () => {
+    const inputArchivo = buildCsvUat01();
+
+    await service.importarPadron(ID_ELECCION, inputArchivo, {
+      actorId: '14988',
+      ipOrigen: '10.0.0.5',
+    });
+
+    expect(mockAuditLoggerService.logPadronCargado).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idEleccion: ID_ELECCION,
+        actorId: '14988',
+        nombreArchivo: 'padron.csv',
+        totalProcesados: 105,
+        totalImportados: 100,
+        duplicadosExcluidos: 2,
+        ipOrigen: '10.0.0.5',
+      }),
+    );
+    const cargadoPayload =
+      mockAuditLoggerService.logPadronCargado.mock.calls[0][0];
+    expect(cargadoPayload.merkleRoot).toMatch(REGEX_KECCAK);
+  });
+
+  it('VOTAR-370 UAT-03: registra fallo de integridad y re-lanza el error', async () => {
+    const archivoCorrupto = buildCsvFile('columna_invalida\n1,2');
+
+    await expect(
+      service.importarPadron(ID_ELECCION, archivoCorrupto, {
+        actorId: '14988',
+        ipOrigen: '10.0.0.5',
+      }),
+    ).rejects.toThrow(BadRequestException);
+
+    expect(mockAuditLoggerService.logPadronCargaFallida).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idEleccion: ID_ELECCION,
+        actorId: '14988',
+        nombreArchivo: 'padron.csv',
+        ipOrigen: '10.0.0.5',
+      }),
+    );
+    const falloPayload =
+      mockAuditLoggerService.logPadronCargaFallida.mock.calls[0][0];
+    expect(falloPayload.razon).toMatch(/columnas requeridas|dni|email/i);
   });
 
   describe('obtenerResumen', () => {

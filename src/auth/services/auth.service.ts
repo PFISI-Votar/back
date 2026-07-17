@@ -2,6 +2,7 @@ import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { LoginDto } from '@/auth/dto/login.dto';
 import { AuthUserDto } from '@/auth/dto/auth-response.dto';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
@@ -25,6 +26,10 @@ export type AuthSessionResult = {
   refreshToken: string;
 };
 
+export type LoginAuditContext = {
+  ipOrigen?: string;
+};
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -32,11 +37,15 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly refreshTokenService: RefreshTokenService,
     private readonly jwksService: JwksService,
+    private readonly auditLoggerService: AuditLoggerService,
     @InjectRepository(AutoridadElectoral)
     private readonly autoridadRepository: Repository<AutoridadElectoral>,
   ) {}
 
-  async login(dto: LoginDto): Promise<AuthSessionResult> {
+  async login(
+    dto: LoginDto,
+    auditContext?: LoginAuditContext,
+  ): Promise<AuthSessionResult> {
     const nick = dto.nick.trim();
     const hash = await this.autogestionService.login(nick, dto.password);
     const usuario = await this.autogestionService.fetchUsuario(nick, hash);
@@ -58,6 +67,14 @@ export class AuthService {
     const response = await this.buildAuthResponse(identity, role);
     const { refreshToken } =
       await this.refreshTokenService.issueSession(identity);
+
+    // VOTAR-370: registro automático de LOGIN institucional exitoso
+    await this.auditLoggerService.logLogin({
+      actorId: sub,
+      ipOrigen: auditContext?.ipOrigen,
+      role,
+    });
+
     return { response, refreshToken };
   }
 

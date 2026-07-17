@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { JwtService } from '@nestjs/jwt';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { AuthService } from '@/auth/services/auth.service';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { JwksService } from '@/auth/services/jwks.service';
@@ -27,6 +28,7 @@ describe('AuthService', () => {
   });
   const rotateSessionMock = jest.fn();
   const revokeSessionMock = jest.fn();
+  const logLoginMock = jest.fn().mockResolvedValue(undefined);
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -53,6 +55,10 @@ describe('AuthService', () => {
           },
         },
         {
+          provide: AuditLoggerService,
+          useValue: { logLogin: logLoginMock },
+        },
+        {
           provide: getRepositoryToken(AutoridadElectoral),
           useValue: { findOne: jest.fn() },
         },
@@ -64,6 +70,7 @@ describe('AuthService', () => {
     jest.clearAllMocks();
     signAsyncMock.mockResolvedValue('signed-jwt');
     issueSessionMock.mockResolvedValue({ refreshToken: 'refresh-token' });
+    logLoginMock.mockResolvedValue(undefined);
   });
 
   it('issues access and refresh tokens for ELECTION_ADMIN authority', async () => {
@@ -85,10 +92,13 @@ describe('AuthService', () => {
       fechaRegistro: new Date(),
     });
 
-    const actualResult = await service.login({
-      nick: '14988',
-      password: 'secret',
-    });
+    const actualResult = await service.login(
+      {
+        nick: '14988',
+        password: 'secret',
+      },
+      { ipOrigen: '10.0.0.8' },
+    );
 
     expect(signAsyncMock).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -99,6 +109,11 @@ describe('AuthService', () => {
     expect(issueSessionMock).toHaveBeenCalledWith(
       expect.objectContaining({ identificadorSso: '14988' }),
     );
+    expect(logLoginMock).toHaveBeenCalledWith({
+      actorId: '14988',
+      ipOrigen: '10.0.0.8',
+      role: JwtRole.ELECTION_ADMIN,
+    });
     expect(actualResult.response.accessToken).toBe('signed-jwt');
     expect(actualResult.refreshToken).toBe('refresh-token');
     expect(actualResult.response.user.role).toBe(JwtRole.ELECTION_ADMIN);
