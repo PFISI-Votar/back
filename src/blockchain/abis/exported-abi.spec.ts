@@ -48,7 +48,7 @@ describe('VOTAR-385 exported ABI consumption (UAT-04)', () => {
     const loaded = JSON.parse(readFileSync(path, 'utf8')) as typeof payload;
     expect(loaded.abiHash).toBe(abiHash);
 
-    const iface = new Interface(loaded.abi as never);
+    const iface = new Interface(loaded.abi);
     const data = iface.encodeFunctionData('publishRoot', [1n, ZeroHash]);
     expect(data.startsWith('0x')).toBe(true);
     expect(data.length).toBeGreaterThan(10);
@@ -80,7 +80,7 @@ describe('VOTAR-385 exported ABI consumption (UAT-04)', () => {
         ],
       },
     ];
-    const iface = new Interface(abi as never);
+    const iface = new Interface(abi);
     const data = iface.encodeFunctionData('createElection', [
       42n,
       {
