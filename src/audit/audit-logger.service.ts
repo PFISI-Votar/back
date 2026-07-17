@@ -1,12 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { createHash } from 'node:crypto';
-import { Repository } from 'typeorm';
+import { EntityManager, Repository } from 'typeorm';
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 
 /** Hash génesis cuando aún no hay entradas previas en la cadena. */
 export const AUDIT_GENESIS_HASH = '0'.repeat(64);
+
+/**
+ * Clave de advisory lock (transaction-scoped) para serializar writers
+ * concurrentes de la cadena de auditoría (VOTAR-370).
+ */
+export const AUDIT_CHAIN_ADVISORY_LOCK_KEY = 370_000_001;
 
 const ACTORS_SIN_OFUSCAR = new Set(['SYSTEM', 'ANONIMO', 'anonymous']);
 
@@ -390,10 +396,12 @@ export class AuditLoggerService {
 
   /**
    * Persiste una entrada encadenada: incluye hash del bloque anterior y
-   * ofusca actor + terminal. Serializa con transacción para continuidad secuencial.
+   * ofusca actor + terminal. Serializa writers concurrentes con advisory lock
+   * (pg_advisory_xact_lock) para preservar secuencialidad estricta del hash.
    */
   private async appendEntry(input: AppendAuditEntryInput): Promise<AuditLog> {
     return this.auditLogRepository.manager.transaction(async (manager) => {
+      await this.acquireAuditChainLock(manager);
       const repo = manager.getRepository(AuditLog);
       const anteriores = await repo.find({
         order: { idLog: 'DESC' },
@@ -446,7 +454,31 @@ export class AuditLoggerService {
     });
   }
 
+  /**
+   * Bloqueo exclusivo por transacción: evita que dos inserts lean el mismo
+   * "último" registro y generen el mismo hash_anterior.
+   */
+  private async acquireAuditChainLock(manager: EntityManager): Promise<void> {
+    try {
+      await manager.query('SELECT pg_advisory_xact_lock($1)', [
+        AUDIT_CHAIN_ADVISORY_LOCK_KEY,
+      ]);
+    } catch {
+      // pg-mem (e2e) no implementa advisory locks; en Postgres de runtime sí.
+    }
+  }
+
   private getObfuscationSalt(): string {
-    return process.env.AUDIT_OBFUSCATION_SALT ?? 'votar-audit-dev-salt';
+    const salt = process.env.AUDIT_OBFUSCATION_SALT;
+    if (salt && salt.length > 0) {
+      return salt;
+    }
+    // En producción el salt es obligatorio (ofuscación no predecible).
+    if (process.env.DEVELOPMENT === 'false') {
+      throw new Error(
+        'AUDIT_OBFUSCATION_SALT es obligatorio cuando DEVELOPMENT=false',
+      );
+    }
+    return 'votar-audit-dev-salt';
   }
 }

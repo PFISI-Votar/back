@@ -7,6 +7,11 @@ import {
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 
+type AuditTxManagerMock = {
+  getRepository: () => AuditRepoMock;
+  query: jest.Mock;
+};
+
 type AuditRepoMock = {
   create: jest.Mock;
   save: jest.Mock;
@@ -36,6 +41,7 @@ describe('AuditLoggerService', () => {
     }
     return Promise.resolve([stored[stored.length - 1]]);
   });
+  const queryMock = jest.fn().mockResolvedValue(undefined);
 
   const repoMock: AuditRepoMock = {
     create: createMock,
@@ -43,11 +49,11 @@ describe('AuditLoggerService', () => {
     find: findMock,
     manager: {
       transaction: jest.fn(
-        (
-          cb: (manager: {
-            getRepository: () => AuditRepoMock;
-          }) => Promise<AuditLog>,
-        ) => cb({ getRepository: () => repoMock }),
+        (cb: (manager: AuditTxManagerMock) => Promise<AuditLog>) =>
+          cb({
+            getRepository: () => repoMock,
+            query: queryMock,
+          }),
       ),
     },
   };
@@ -58,6 +64,7 @@ describe('AuditLoggerService', () => {
     createMock.mockClear();
     saveMock.mockClear();
     findMock.mockClear();
+    queryMock.mockClear();
     repoMock.manager.transaction.mockClear();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -186,6 +193,10 @@ describe('AuditLoggerService', () => {
       ipOrigen: '10.0.0.1',
     });
 
+    expect(queryMock).toHaveBeenCalledWith(
+      'SELECT pg_advisory_xact_lock($1)',
+      [370_000_001],
+    );
     expect(first.hashAnterior).toBe(AUDIT_GENESIS_HASH);
     expect(first.hashRegistro).toMatch(/^[0-9a-f]{64}$/);
     expect(second.hashAnterior).toBe(first.hashRegistro);
