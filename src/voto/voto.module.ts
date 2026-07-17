@@ -14,11 +14,13 @@ import { BudPublicController } from '@/voto/controllers/bud-public.controller';
 import { DashboardPublicController } from '@/voto/controllers/dashboard-public.controller';
 import { ReciboPublicController } from '@/voto/controllers/recibo-public.controller';
 import { VotoController } from '@/voto/controllers/voto.controller';
+import { RegistroIntentoSufragio } from '@/voto/entities/registro-intento-sufragio.entity';
 import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
 import { ReciboPublicRateLimitGuard } from '@/voto/guards/recibo-public-rate-limit.guard';
 import { VotoEmitidoAnonimoRateLimitGuard } from '@/voto/guards/voto-emitido-anonimo-rate-limit.guard';
 import { DashboardPublicoService } from '@/voto/services/dashboard-publico.service';
 import { ReciboService } from '@/voto/services/recibo.service';
+import { RevotePolicyService } from '@/voto/services/revote-policy.service';
 import { VotoService } from '@/voto/services/voto.service';
 
 @Module({
@@ -34,6 +36,7 @@ import { VotoService } from '@/voto/services/voto.service';
       Lista,
       Candidato,
       PadronVotante,
+      RegistroIntentoSufragio,
     ]),
   ],
   controllers: [
@@ -46,6 +49,7 @@ import { VotoService } from '@/voto/services/voto.service';
     VotoService,
     DashboardPublicoService,
     ReciboService,
+    RevotePolicyService,
     MerkleProofRateLimitGuard,
     VotoEmitidoAnonimoRateLimitGuard,
     ReciboPublicRateLimitGuard,
