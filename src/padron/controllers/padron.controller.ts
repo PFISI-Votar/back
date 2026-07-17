@@ -7,6 +7,7 @@ import {
   ParseIntPipe,
   Post,
   Query,
+  Req,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
@@ -20,6 +21,8 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
+import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
+import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 import { ImportarPadronResponseDto } from '../dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from '../dto/listar-votantes-response.dto';
 import { PaginacionPadronQueryDto } from '../dto/paginacion-padron-query.dto';
@@ -85,8 +88,13 @@ export class PadronController implements IPadronController {
   async importarPadron(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
     @UploadedFile() archivo: Express.Multer.File,
+    @Req() request: AuthenticatedRequest,
   ): Promise<ImportarPadronResponseDto> {
-    return this.padronService.importarPadron(idEleccion, archivo);
+    const user = assertAuthenticatedUser(request.user);
+    return this.padronService.importarPadron(idEleccion, archivo, {
+      actorId: user.sub,
+      ipOrigen: this.resolveClientIp(request),
+    });
   }
 
   @Get()
@@ -247,5 +255,13 @@ export class PadronController implements IPadronController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<void> {
     return this.padronService.eliminarPadron(idEleccion);
+  }
+
+  private resolveClientIp(request: AuthenticatedRequest): string {
+    const forwarded = request.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      return forwarded.split(',')[0]?.trim() ?? 'unknown';
+    }
+    return request.ip ?? 'unknown';
   }
 }

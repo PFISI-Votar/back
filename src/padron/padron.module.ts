@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditModule } from '../audit/audit.module';
 import { BlockchainModule } from '../blockchain/blockchain.module';
 import { EleccionesModule } from '../eleccion/eleccion.module';
 import { Eleccion } from '../eleccion/entities/eleccion.entity';
@@ -16,6 +17,7 @@ import { PadronPublicController } from './controllers/padron-public.controller';
 
 @Module({
   imports: [
+    AuditModule,
     BlockchainModule,
     forwardRef(() => EleccionesModule),
     TypeOrmModule.forFeature([
