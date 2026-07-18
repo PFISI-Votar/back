@@ -10,11 +10,12 @@ import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
-import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
-import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
-import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
+import {
+  OfertaElectoral,
+  OfertaElectoralQueryService,
+} from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { BudConfigResponseDto } from '@/voto/dto/bud-config-response.dto';
 import {
@@ -24,14 +25,6 @@ import {
   CategoriaBoletaEstado,
 } from '@/voto/dto/boleta-digital-response.dto';
 import { VotoEmitidoAnonimoResponseDto } from '@/voto/dto/voto-emitido-anonimo-response.dto';
-
-type OfertaVoto = {
-  eleccion: Eleccion;
-  configuracion: ConfiguracionComicio;
-  boleta: Boleta;
-  categorias: Categoria[];
-  listas: Lista[];
-};
 
 const ESTADOS_ELECCION_APTOS = [EleccionEstado.ABIERTA];
 const ESTADOS_ELECCION_CERRADOS = [
@@ -46,12 +39,9 @@ export class VotoService {
     private readonly eleccionRepository: Repository<Eleccion>,
     @InjectRepository(ConfiguracionComicio)
     private readonly configuracionRepository: Repository<ConfiguracionComicio>,
-    @InjectRepository(Boleta)
-    private readonly boletaRepository: Repository<Boleta>,
-    @InjectRepository(Lista)
-    private readonly listaRepository: Repository<Lista>,
     @InjectRepository(PadronVotante)
     private readonly padronVotanteRepository: Repository<PadronVotante>,
+    private readonly ofertaElectoralQueryService: OfertaElectoralQueryService,
     private readonly auditLogger: AuditLoggerService,
   ) {}
 
@@ -124,66 +114,13 @@ export class VotoService {
     };
   }
 
-  private async obtenerOfertaVoto(idEleccion: number): Promise<OfertaVoto> {
-    const eleccion = await this.eleccionRepository.findOne({
-      where: { idEleccion },
-    });
-    if (!eleccion) {
-      throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
-    }
-    this.assertEleccionAceptaVotos(eleccion);
-
-    const configuracion = await this.configuracionRepository.findOne({
-      where: { idEleccion },
-    });
-    if (!configuracion) {
-      throw new NotFoundException(
-        `Configuración del comicio ${idEleccion} no encontrada`,
-      );
-    }
-
-    const boleta = await this.boletaRepository.findOne({
-      where: { idEleccion },
-      relations: ['categorias'],
-    });
-    if (!boleta) {
-      throw new NotFoundException(
-        `Boleta del comicio ${idEleccion} no encontrada`,
-      );
-    }
-    if (boleta.estado !== EstadoBoleta.PUBLICADA) {
-      throw new ForbiddenException('La boleta no está publicada');
-    }
-
-    const categorias = (boleta.categorias ?? [])
-      .slice()
-      .sort((a, b) => a.orden - b.orden || a.idCategoria - b.idCategoria);
-    const listas = await this.listaRepository.find({
-      where: { idBoleta: boleta.idBoleta, estado: EstadoLista.OFICIALIZADA },
-      relations: ['candidatos'],
-    });
-
-    const listasOrdenadas = listas
-      .filter((lista) => lista.listId !== null || lista.candidatos?.length > 0)
-      .sort(
-        (a, b) =>
-          (a.listId ?? a.idLista) - (b.listId ?? b.idLista) ||
-          a.idLista - b.idLista,
-      )
-      .map((lista) => ({
-        ...lista,
-        candidatos: (lista.candidatos ?? [])
-          .slice()
-          .sort((a, b) => a.orden - b.orden || a.idCandidato - b.idCandidato),
-      })) as Lista[];
-
-    return {
-      eleccion,
-      configuracion,
-      boleta,
-      categorias,
-      listas: listasOrdenadas,
-    };
+  private async obtenerOfertaVoto(
+    idEleccion: number,
+  ): Promise<OfertaElectoral> {
+    const oferta =
+      await this.ofertaElectoralQueryService.obtenerOfertaPublicada(idEleccion);
+    this.assertEleccionAceptaVotos(oferta.eleccion);
+    return oferta;
   }
 
   /**
@@ -200,7 +137,7 @@ export class VotoService {
     }
   }
 
-  private mapCategorias(oferta: OfertaVoto): CategoriaBoletaDigitalDto[] {
+  private mapCategorias(oferta: OfertaElectoral): CategoriaBoletaDigitalDto[] {
     return oferta.categorias.map((categoria) => {
       const candidatos = this.mapCandidatosPorCategoria(
         oferta.listas,

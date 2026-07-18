@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ServiceUnavailableException,
+  UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -12,10 +13,15 @@ import {
   JsonRpcProvider,
   Log,
   Wallet,
+  ZeroAddress,
 } from 'ethers';
+import { AUDIT_VIEW_CONTRACT_ABI } from './constants/audit-view-contract.abi';
 import { BALLOT_CONTRACT_ABI } from './constants/ballot-contract.abi';
+import { ELECTION_FACTORY_CONTRACT_ABI } from './constants/election-factory-contract.abi';
 import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
+import { VOTE_REGISTRY_CONTRACT_ABI } from './constants/vote-registry-contract.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
+import { ContratoBlockchainService } from './services/contrato-blockchain.service';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 export type VoteParticipationOnChain = {
@@ -24,6 +30,24 @@ export type VoteParticipationOnChain = {
   blockNumber: number;
   timestamp: Date;
   contractAddress: string;
+};
+
+export type ElectionContractAddresses = {
+  ballot: string;
+  voteRegistry: string;
+  auditView: string;
+};
+
+export type ParticipationStatsOnChain = {
+  totalVotes: number;
+  blankVotes: number;
+  nullVotes: number;
+};
+
+export type VoteCastTimelinePoint = {
+  etiqueta: string;
+  acumulado: number;
+  nuevos: number;
 };
 
 /**
@@ -51,7 +75,10 @@ interface MerkleRootStoreContract {
 
 @Injectable()
 export class BlockchainService {
-  constructor(private readonly configService: ConfigService) {}
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly contratoBlockchainService: ContratoBlockchainService,
+  ) {}
 
   /**
    * Publishes the Merkle root for an election on Sepolia via MerkleRootStore.
@@ -485,5 +512,307 @@ export class BlockchainService {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
     };
+  }
+
+  /**
+   * VOTAR-365: resolves AuditView + VoteRegistry addresses for an election.
+   * Prefers ElectionFactory.getElection; falls back to env vars for local/dev.
+   */
+  async resolveElectionContracts(
+    idEleccion: number,
+  ): Promise<ElectionContractAddresses> {
+    const fromEnv = this.resolveContractsFromEnv();
+    if (fromEnv) {
+      return fromEnv;
+    }
+
+    const rpcUrl = this.requireRpcUrl();
+    let factory: { direccionContrato: string };
+    try {
+      factory = await this.contratoBlockchainService.getElectionFactory();
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new ServiceUnavailableException(
+          'ElectionFactory no registrada y no hay AUDIT_VIEW_CONTRACT_ADDRESS / VOTE_REGISTRY_CONTRACT_ADDRESS configuradas.',
+        );
+      }
+      throw error;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const contract = new Contract(
+      factory.direccionContrato,
+      ELECTION_FACTORY_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      getElection: (electionId: number) => Promise<{
+        ballot: string;
+        voteRegistry: string;
+        auditView: string;
+        exists: boolean;
+      }>;
+    };
+
+    let deployment: {
+      ballot: string;
+      voteRegistry: string;
+      auditView: string;
+      exists: boolean;
+    };
+    try {
+      deployment = await contract.getElection(idEleccion);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo resolver los contratos del comicio on-chain: ${message}`,
+      );
+    }
+
+    if (
+      !deployment.exists ||
+      !deployment.auditView ||
+      deployment.auditView === ZeroAddress ||
+      !deployment.voteRegistry ||
+      deployment.voteRegistry === ZeroAddress
+    ) {
+      throw new UnprocessableEntityException(
+        `El comicio ${idEleccion} no tiene contratos electorales desplegados on-chain.`,
+      );
+    }
+
+    return {
+      ballot: deployment.ballot,
+      voteRegistry: deployment.voteRegistry,
+      auditView: deployment.auditView,
+    };
+  }
+
+  /**
+   * VOTAR-365 / VOTAR-350: aggregate participation via AuditViewContract.
+   */
+  async getParticipationStats(
+    idEleccion: number,
+  ): Promise<ParticipationStatsOnChain> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      getParticipationStats: (
+        electionId: number,
+      ) => Promise<[bigint, bigint, bigint]>;
+    };
+
+    try {
+      const [totalVotes, blankVotes, nullVotes] =
+        await auditView.getParticipationStats(idEleccion);
+      return {
+        totalVotes: Number(totalVotes),
+        blankVotes: Number(blankVotes),
+        nullVotes: Number(nullVotes),
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudieron obtener las estadísticas de participación on-chain: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * VOTAR-365 / VOTAR-350: running tally for a candidate id (0 if unknown).
+   */
+  async getVotesByCandidate(
+    idEleccion: number,
+    candidateId: number,
+  ): Promise<number> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      getVotesByCandidate: (
+        electionId: number,
+        candidateId: number,
+      ) => Promise<bigint>;
+    };
+
+    try {
+      const votes = await auditView.getVotesByCandidate(
+        idEleccion,
+        candidateId,
+      );
+      return Number(votes);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo obtener el tally on-chain del candidato ${candidateId}: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * VOTAR-365: builds an hourly cumulative series from VoteCast events.
+   * Only the first vote per voterHash increments the accumulator (revotes ignored).
+   */
+  async getVoteCastTimeline(
+    idEleccion: number,
+    horasVentana = 12,
+  ): Promise<VoteCastTimelinePoint[]> {
+    const hours = Math.max(1, Math.min(72, Math.floor(horasVentana)));
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const registry = new Contract(
+      addresses.voteRegistry,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      filters: {
+        VoteCast: (electionId: number) => unknown;
+      };
+      queryFilter: (filter: unknown) => Promise<
+        Array<{
+          args: {
+            voterHash: string;
+            isOverwrite: boolean;
+          };
+          blockNumber: number;
+        }>
+      >;
+    };
+
+    let events: Array<{
+      args: { voterHash: string; isOverwrite: boolean };
+      blockNumber: number;
+    }>;
+    try {
+      const filter = registry.filters.VoteCast(idEleccion);
+      events = await registry.queryFilter(filter);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar la curva temporal de VoteCast: ${message}`,
+      );
+    }
+
+    const firstVotes: Array<{ voterHash: string; timestampMs: number }> = [];
+    const seenVoters = new Set<string>();
+    const blockTimestampCache = new Map<number, number>();
+
+    const sortedEvents = [...events].sort(
+      (a, b) => a.blockNumber - b.blockNumber,
+    );
+
+    for (const event of sortedEvents) {
+      const voterHash = String(event.args.voterHash).toLowerCase();
+      if (seenVoters.has(voterHash)) {
+        continue;
+      }
+      if (event.args.isOverwrite === true) {
+        continue;
+      }
+      seenVoters.add(voterHash);
+
+      let timestampMs = blockTimestampCache.get(event.blockNumber);
+      if (timestampMs === undefined) {
+        const block = await provider.getBlock(event.blockNumber);
+        timestampMs = block?.timestamp
+          ? Number(block.timestamp) * 1000
+          : Date.now();
+        blockTimestampCache.set(event.blockNumber, timestampMs);
+      }
+      firstVotes.push({ voterHash, timestampMs });
+    }
+
+    const nowMs = Date.now();
+    const windowStartMs = nowMs - hours * 60 * 60 * 1000;
+    const bucketCount = hours;
+    const buckets = Array.from({ length: bucketCount }, (_, index) => {
+      const startMs = windowStartMs + index * 60 * 60 * 1000;
+      const endMs = startMs + 60 * 60 * 1000;
+      return { startMs, endMs, nuevos: 0 };
+    });
+
+    const votesBeforeWindow = firstVotes.filter(
+      (vote) => vote.timestampMs < windowStartMs,
+    ).length;
+
+    for (const vote of firstVotes) {
+      if (vote.timestampMs < windowStartMs || vote.timestampMs > nowMs) {
+        continue;
+      }
+      const bucketIndex = Math.min(
+        bucketCount - 1,
+        Math.floor((vote.timestampMs - windowStartMs) / (60 * 60 * 1000)),
+      );
+      buckets[bucketIndex].nuevos += 1;
+    }
+
+    let acumulado = votesBeforeWindow;
+    return buckets.map((bucket) => {
+      acumulado += bucket.nuevos;
+      const date = new Date(bucket.startMs);
+      const etiqueta = date.toLocaleTimeString('es-AR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'America/Argentina/Buenos_Aires',
+      });
+      return {
+        etiqueta,
+        acumulado,
+        nuevos: bucket.nuevos,
+      };
+    });
+  }
+
+  private requireRpcUrl(): string {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    if (!rpcUrl) {
+      throw new ServiceUnavailableException(
+        'La consulta on-chain no está configurada (SEPOLIA_RPC_URL).',
+      );
+    }
+    return rpcUrl;
+  }
+
+  private resolveContractsFromEnv(): ElectionContractAddresses | null {
+    const auditView = this.configService.get<string>(
+      'AUDIT_VIEW_CONTRACT_ADDRESS',
+    );
+    const voteRegistry = this.configService.get<string>(
+      'VOTE_REGISTRY_CONTRACT_ADDRESS',
+    );
+    const ballot =
+      this.configService.get<string>('BALLOT_CONTRACT_ADDRESS') ?? ZeroAddress;
+    if (
+      auditView?.trim() &&
+      voteRegistry?.trim() &&
+      auditView !== ZeroAddress &&
+      voteRegistry !== ZeroAddress
+    ) {
+      return {
+        auditView: auditView.trim(),
+        voteRegistry: voteRegistry.trim(),
+        ballot: ballot.trim(),
+      };
+    }
+    return null;
   }
 }
