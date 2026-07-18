@@ -336,7 +336,8 @@ describe('BlockchainService', () => {
       mockConfig.get.mockImplementation((key: string) => {
         const values: Record<string, string> = {
           SEPOLIA_RPC_URL: 'https://sepolia.example.com',
-          MERKLE_ROOT_STORE_ADDRESS: '0x55d1d115309872C16B9646362C82fFa246F3F652',
+          MERKLE_ROOT_STORE_ADDRESS:
+            '0x55d1d115309872C16B9646362C82fFa246F3F652',
           MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
           ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
           BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
