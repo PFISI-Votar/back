@@ -9,6 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { BoletaDigitalResponseDto } from '@/voto/dto/boleta-digital-response.dto';
 import { BudConfigResponseDto } from '@/voto/dto/bud-config-response.dto';
 import { VotoEmitidoAnonimoResponseDto } from '@/voto/dto/voto-emitido-anonimo-response.dto';
 import { VotoEmitidoAnonimoRateLimitGuard } from '@/voto/guards/voto-emitido-anonimo-rate-limit.guard';
@@ -31,6 +32,25 @@ export class BudPublicController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<BudConfigResponseDto> {
     return this.votoService.obtenerConfiguracionBud(idEleccion);
+  }
+
+  @Get('oferta-oficializada')
+  @ApiOperation({
+    summary:
+      'Catálogo público de listas y candidatos oficializados (VOTAR-368)',
+    description:
+      'Endpoint público sin JWT. Devuelve categorías, agrupaciones políticas y candidatos con fotos solo cuando la boleta está PUBLICADA.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: BoletaDigitalResponseDto })
+  @ApiResponse({
+    status: 404,
+    description: 'Comicio no encontrado u oferta no oficializada',
+  })
+  obtenerOfertaPublica(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<BoletaDigitalResponseDto> {
+    return this.votoService.obtenerOfertaPublica(idEleccion);
   }
 
   @Post('votos/emitido-anonimo')
