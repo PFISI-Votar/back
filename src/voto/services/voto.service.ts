@@ -113,6 +113,24 @@ export class VotoService {
     await this.assertVotanteHabilitado(idEleccion, votanteHash);
     const oferta = await this.obtenerOfertaVoto(idEleccion);
 
+    return this.mapOfertaToBoletaDigital(oferta);
+  }
+
+  /**
+   * VOTAR-368: catálogo público de listas y candidatos oficializados.
+   * Sin JWT, sin validación de padrón y disponible tras oficialización
+   * (CONFIGURADA / ABIERTA / CERRADA / ESCRUTADA).
+   */
+  async obtenerOfertaPublica(
+    idEleccion: number,
+  ): Promise<BoletaDigitalResponseDto> {
+    const oferta = await this.loadOfertaOficializada(idEleccion);
+    return this.mapOfertaToBoletaDigital(oferta);
+  }
+
+  private mapOfertaToBoletaDigital(
+    oferta: OfertaVoto,
+  ): BoletaDigitalResponseDto {
     return {
       idEleccion: oferta.eleccion.idEleccion,
       nombreEleccion: oferta.eleccion.nombre,
@@ -125,13 +143,24 @@ export class VotoService {
   }
 
   private async obtenerOfertaVoto(idEleccion: number): Promise<OfertaVoto> {
+    const oferta = await this.loadOfertaOficializada(idEleccion);
+    this.assertEleccionAceptaVotos(oferta.eleccion);
+    return oferta;
+  }
+
+  /**
+   * Carga la oferta electoral oficializada (boleta PUBLICADA + listas OFICIALIZADA).
+   * No valida el estado del comicio ni la pertenencia al padrón.
+   */
+  private async loadOfertaOficializada(
+    idEleccion: number,
+  ): Promise<OfertaVoto> {
     const eleccion = await this.eleccionRepository.findOne({
       where: { idEleccion },
     });
     if (!eleccion) {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
-    this.assertEleccionAceptaVotos(eleccion);
 
     const configuracion = await this.configuracionRepository.findOne({
       where: { idEleccion },
@@ -152,7 +181,9 @@ export class VotoService {
       );
     }
     if (boleta.estado !== EstadoBoleta.PUBLICADA) {
-      throw new ForbiddenException('La boleta no está publicada');
+      throw new NotFoundException(
+        'La oferta electoral aún no fue oficializada',
+      );
     }
 
     const categorias = (boleta.categorias ?? [])
