@@ -158,7 +158,9 @@ describe('AperturaComicioService', () => {
       merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
       blockchainService.verifyMerkleRootOnChain.mockResolvedValue(true);
       configuracionRepository.findOne.mockResolvedValue({ ...mockConfig });
-      configuracionRepository.save.mockImplementation(async (entity) => entity);
+      configuracionRepository.save.mockImplementation((entity) =>
+        Promise.resolve(entity),
+      );
 
       const eleccionAbierta = {
         ...mockEleccion,
@@ -276,7 +278,9 @@ describe('AperturaComicioService', () => {
       merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
       blockchainService.verifyMerkleRootOnChain.mockResolvedValue(true);
       configuracionRepository.findOne.mockResolvedValue({ ...mockConfig });
-      configuracionRepository.save.mockImplementation(async (entity) => entity);
+      configuracionRepository.save.mockImplementation((entity) =>
+        Promise.resolve(entity),
+      );
 
       const eleccionAbierta = {
         ...mockEleccion,
