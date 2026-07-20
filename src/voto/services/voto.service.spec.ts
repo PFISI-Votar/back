@@ -229,4 +229,135 @@ describe('VotoService', () => {
       GoneException,
     );
   });
+
+  describe('obtenerOfertaPublica — VOTAR-368', () => {
+    it('UAT-01: devuelve categorías ordenadas con candidatos oficializados sin autenticación', async () => {
+      const repositories = createRepositories();
+      const service = createService(repositories);
+
+      const actual = await service.obtenerOfertaPublica(1);
+
+      expect(actual.categorias.map((categoria) => categoria.nombre)).toEqual([
+        'Presidente',
+        'Vocales',
+      ]);
+      expect(
+        actual.categorias[0].candidatos.map((candidato) => ({
+          nombreCompleto: candidato.nombreCompleto,
+          agrupacionPolitica: candidato.agrupacionPolitica,
+          numeroLista: candidato.numeroLista,
+        })),
+      ).toEqual([
+        {
+          nombreCompleto: 'Ana Alvarez',
+          agrupacionPolitica: 'Lista A',
+          numeroLista: 1,
+        },
+        {
+          nombreCompleto: 'Bruno Barrera',
+          agrupacionPolitica: 'Lista B',
+          numeroLista: 2,
+        },
+      ]);
+      expect(
+        repositories.padronVotanteRepository.createQueryBuilder,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('UAT-02: incluye nombreCompleto, fotoUrl y agrupacionPolitica', async () => {
+      const repositories = createRepositories();
+      repositories.listaRepository.find.mockResolvedValue([
+        {
+          idLista: 10,
+          idBoleta: 10,
+          nombre: 'Lista A',
+          sigla: 'A',
+          color: '#0ea5e9',
+          logoUrl: '/uploads/listas/a.png',
+          estado: EstadoLista.OFICIALIZADA,
+          listId: 1,
+          candidatos: [
+            {
+              idCandidato: 100,
+              idCategoria: 1,
+              nombre: 'Ana',
+              apellido: 'Alvarez',
+              orden: 1,
+              fotoUrl: '/uploads/candidatos/ana.jpg',
+            },
+          ],
+        },
+      ]);
+      const service = createService(repositories);
+
+      const actual = await service.obtenerOfertaPublica(1);
+
+      expect(actual.categorias[0].candidatos[0]).toMatchObject({
+        nombreCompleto: 'Ana Alvarez',
+        agrupacionPolitica: 'Lista A',
+        fotoUrl: '/uploads/candidatos/ana.jpg',
+        logoListaUrl: '/uploads/listas/a.png',
+      });
+    });
+
+    it('lanza NotFoundException si la boleta aún no está PUBLICADA', async () => {
+      const repositories = createRepositories();
+      repositories.boletaRepository.findOne.mockResolvedValue({
+        idBoleta: 10,
+        idEleccion: 1,
+        titulo: 'Boleta — Comicio UTN',
+        estado: EstadoBoleta.BORRADOR,
+        categorias: [],
+      });
+      const service = createService(repositories);
+
+      await expect(service.obtenerOfertaPublica(1)).rejects.toThrow(
+        NotFoundException,
+      );
+      await expect(service.obtenerOfertaPublica(1)).rejects.toThrow(
+        'La oferta electoral aún no fue oficializada',
+      );
+    });
+
+    it('permite consultar la oferta con comicio CERRADA', async () => {
+      const repositories = createRepositories();
+      repositories.eleccionRepository.findOne.mockResolvedValue({
+        idEleccion: 1,
+        nombre: 'Comicio UTN',
+        estado: EleccionEstado.CERRADA,
+        tipoVotacion: TipoVotacion.POR_LISTA,
+      });
+      const service = createService(repositories);
+
+      const actual = await service.obtenerOfertaPublica(1);
+
+      expect(actual.estadoEleccion).toBe(EleccionEstado.CERRADA);
+      expect(actual.categorias).toHaveLength(2);
+    });
+
+    it('permite consultar la oferta con comicio ESCRUTADA', async () => {
+      const repositories = createRepositories();
+      repositories.eleccionRepository.findOne.mockResolvedValue({
+        idEleccion: 1,
+        nombre: 'Comicio UTN',
+        estado: EleccionEstado.ESCRUTADA,
+        tipoVotacion: TipoVotacion.POR_LISTA,
+      });
+      const service = createService(repositories);
+
+      const actual = await service.obtenerOfertaPublica(1);
+
+      expect(actual.estadoEleccion).toBe(EleccionEstado.ESCRUTADA);
+    });
+
+    it('lanza NotFoundException si el comicio no existe', async () => {
+      const repositories = createRepositories();
+      repositories.eleccionRepository.findOne.mockResolvedValue(null);
+      const service = createService(repositories);
+
+      await expect(service.obtenerOfertaPublica(99)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+  });
 });
