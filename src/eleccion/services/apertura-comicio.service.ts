@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { Eleccion } from '../entities/eleccion.entity';
 import { EleccionEstado } from '../enums/eleccion-estado.enum';
 import { AbrirEleccionResponseDto } from '../dto/abrir-eleccion-response.dto';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
@@ -29,6 +30,8 @@ export class AperturaComicioService {
     private readonly padronRepository: Repository<PadronElectoral>,
     @InjectRepository(MerkleTree)
     private readonly merkleRepository: Repository<MerkleTree>,
+    @InjectRepository(ConfiguracionComicio)
+    private readonly configuracionRepository: Repository<ConfiguracionComicio>,
     private readonly blockchainService: BlockchainService,
     private readonly auditLoggerService: AuditLoggerService,
     private readonly eleccionGateway: EleccionGateway,
@@ -95,6 +98,26 @@ export class AperturaComicioService {
   }
 
   /**
+   * VOTAR-364: enables live dashboard tallies while the comicio is open.
+   * CierreComicioService sets this back to false (snapshot freeze).
+   */
+  private async habilitarResultadosTiempoReal(
+    idEleccion: number,
+  ): Promise<void> {
+    const config = await this.configuracionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!config) {
+      this.logger.warn(
+        `Configuración no encontrada al habilitar resultados en vivo para comicio ${idEleccion}`,
+      );
+      return;
+    }
+    config.mostrarResultadosTiempoReal = true;
+    await this.configuracionRepository.save(config);
+  }
+
+  /**
    * Apertura manual del comicio por un administrador (UAT-01 VOTAR-320).
    * Valida precondiciones, sincroniza estado on-chain via ElectionStateService,
    * registra auditoría y emite evento WebSocket.
@@ -120,6 +143,8 @@ export class AperturaComicioService {
     // AC 3: Transición de estado con sincronización on-chain (captura evento ElectionStateChanged)
     const eleccionAbierta =
       await this.electionStateService.transitionToAbierta(idEleccion);
+
+    await this.habilitarResultadosTiempoReal(idEleccion);
 
     // Auditoría pública (UAT-01)
     await this.auditLoggerService.logComicioAbierto({
@@ -166,6 +191,8 @@ export class AperturaComicioService {
     // AC 4: Sincronización automática de estado on-chain
     const eleccionAbierta =
       await this.electionStateService.transitionToAbierta(idEleccion);
+
+    await this.habilitarResultadosTiempoReal(idEleccion);
 
     // Auditoría pública (UAT-03)
     await this.auditLoggerService.logComicioAbierto({

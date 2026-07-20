@@ -106,15 +106,17 @@ const ensureDevAdmin = async () => {
   const password = process.env.DEV_ADMIN_PASSWORD?.trim();
 
   if (nick && password) {
+    // La migración inserta el placeholder votar.admin; hay que borrarlo
+    // antes de contar, si no el bootstrap cree que ya hay un admin real.
+    if (nick !== 'votar.admin') {
+      await removePlaceholderAdmin();
+    }
     const adminCount = await countElectionAdmins();
     if (adminCount > 0) {
       console.log('[dev] ✓ Admin ya registrado, omitiendo registro');
       return;
     }
     logStep(`Registrando administrador electoral (${nick}) vía Autogestión...`);
-    if (nick !== 'votar.admin') {
-      await removePlaceholderAdmin();
-    }
     const autoridad = await registerElectionAdmin(nick, password);
     console.log(
       `[dev] ✓ Admin habilitado: ${autoridad.nombre} <${autoridad.email}>`,
