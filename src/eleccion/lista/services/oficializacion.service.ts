@@ -139,9 +139,10 @@ export class OficializacionService {
       where: { idEleccion },
     });
     if (!config) {
-      throw new NotFoundException(
-        `Configuración del comicio ${idEleccion} no encontrada`,
+      this.logger.warn(
+        `Comicio ${idEleccion}: despliegue on-chain omitido — configuración del comicio no encontrada.`,
       );
+      return;
     }
     const revoteConfig = mapConfiguracionToRevoteConfig(config);
     try {

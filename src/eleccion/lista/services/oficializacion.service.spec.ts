@@ -201,6 +201,46 @@ describe('OficializacionService', () => {
     );
   });
 
+  it('omite despliegue on-chain si falta configuracion_comicio', async () => {
+    const eleccion = {
+      idEleccion: 1,
+      estado: EleccionEstado.BORRADOR,
+    };
+    const boleta = {
+      idBoleta: 10,
+      idEleccion: 1,
+      estado: EstadoBoleta.BORRADOR,
+    };
+    const listas = [
+      {
+        idLista: 1,
+        idBoleta: 10,
+        nombre: 'Lista A',
+        sigla: 'LA',
+        estado: EstadoLista.BORRADOR,
+        candidatos: [{ idCandidato: 1, idCategoria: 1 }],
+      },
+    ];
+
+    mockEleccionRepository.findOne.mockResolvedValue(eleccion);
+    mockPadronValido();
+    mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
+      undefined,
+    );
+    mockBoletaService.findBoletaByEleccion.mockResolvedValue(boleta);
+    mockBoletaRepository.findOne.mockResolvedValue(mockBoletaConCategorias);
+    mockListaRepository.find.mockResolvedValue(listas);
+    mockTransactionManager.save.mockImplementation((_entity, data) =>
+      Promise.resolve(data),
+    );
+    mockConfiguracionRepository.findOne.mockResolvedValue(null);
+
+    const result = await service.oficializar(1);
+
+    expect(result.estado).toBe(EleccionEstado.CONFIGURADA);
+    expect(mockBlockchainService.deployElectionStack).not.toHaveBeenCalled();
+  });
+
   it('debe lanzar MinimoCandidatosViolationException si hay listas deficientes', async () => {
     mockEleccionRepository.findOne.mockResolvedValue({
       idEleccion: 1,
