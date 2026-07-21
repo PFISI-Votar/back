@@ -103,6 +103,25 @@ export class VotoService {
     await this.assertVotanteHabilitado(idEleccion, votanteHash);
     const oferta = await this.obtenerOfertaVoto(idEleccion);
 
+    return this.mapOfertaToBoletaDigital(oferta);
+  }
+
+  /**
+   * VOTAR-368: catálogo público de listas y candidatos oficializados.
+   * Sin JWT, sin validación de padrón y disponible tras oficialización
+   * (CONFIGURADA / ABIERTA / CERRADA / ESCRUTADA).
+   */
+  async obtenerOfertaPublica(
+    idEleccion: number,
+  ): Promise<BoletaDigitalResponseDto> {
+    const oferta =
+      await this.ofertaElectoralQueryService.obtenerOfertaPublicada(idEleccion);
+    return this.mapOfertaToBoletaDigital(oferta);
+  }
+
+  private mapOfertaToBoletaDigital(
+    oferta: OfertaElectoral,
+  ): BoletaDigitalResponseDto {
     return {
       idEleccion: oferta.eleccion.idEleccion,
       nombreEleccion: oferta.eleccion.nombre,
