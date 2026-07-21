@@ -2,7 +2,10 @@ import { UnprocessableEntityException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { BlockchainService } from '@/blockchain/blockchain.service';
 import { CategoriasService } from '@/categoria/categoria.service';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
+import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 import { BoletaService } from '@/eleccion/lista/services/boleta.service';
 import { OficializacionService } from '@/eleccion/lista/services/oficializacion.service';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
@@ -21,6 +24,10 @@ describe('OficializacionService', () => {
   const mockEleccionRepository = { findOne: jest.fn() };
   const mockListaRepository = { find: jest.fn() };
   const mockBoletaRepository = { findOne: jest.fn() };
+  const mockConfiguracionRepository = { findOne: jest.fn() };
+  const mockBlockchainService = {
+    deployElectionStack: jest.fn(),
+  };
   const mockBoletaService = {
     findBoletaByEleccion: jest.fn(),
   };
@@ -64,10 +71,15 @@ describe('OficializacionService', () => {
         },
         { provide: getRepositoryToken(Lista), useValue: mockListaRepository },
         { provide: getRepositoryToken(Boleta), useValue: mockBoletaRepository },
+        {
+          provide: getRepositoryToken(ConfiguracionComicio),
+          useValue: mockConfiguracionRepository,
+        },
         { provide: BoletaService, useValue: mockBoletaService },
         { provide: DataSource, useValue: mockDataSource },
         { provide: CategoriasService, useValue: mockCategoriasService },
         { provide: PadronService, useValue: mockPadronService },
+        { provide: BlockchainService, useValue: mockBlockchainService },
       ],
     }).compile();
 
@@ -75,6 +87,24 @@ describe('OficializacionService', () => {
   });
 
   afterEach(() => jest.clearAllMocks());
+
+  const mockConfigRevoto = () => {
+    mockConfiguracionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      permitirVotoMultiple: false,
+      maxVotosPorVotante: 1,
+      minIntervaloSegundos: 0,
+      politicaRevoto: PoliticaRevoto.DISABLED,
+    });
+    mockBlockchainService.deployElectionStack.mockResolvedValue({
+      ballot: '0x' + '1'.repeat(40),
+      voteRegistry: '0x' + '2'.repeat(40),
+      auditView: '0x' + '3'.repeat(40),
+      txHash: '0xabc',
+      blockNumber: 1,
+      alreadyDeployed: false,
+    });
+  };
 
   const mockPadronValido = () => {
     mockPadronService.validarPadronParaOficializar.mockResolvedValue(undefined);
@@ -157,6 +187,7 @@ describe('OficializacionService', () => {
     mockTransactionManager.save.mockImplementation((_entity, data) =>
       Promise.resolve(data),
     );
+    mockConfigRevoto();
 
     const result = await service.oficializar(1);
 
@@ -164,6 +195,10 @@ describe('OficializacionService', () => {
     expect(result.mapeo).toHaveLength(2);
     expect(result.mapeo[0].listId).toBe(1);
     expect(result.mapeo[1].listId).toBe(2);
+    expect(mockBlockchainService.deployElectionStack).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({ enabled: false, maxVotesPerVoter: 1 }),
+    );
   });
 
   it('debe lanzar MinimoCandidatosViolationException si hay listas deficientes', async () => {
