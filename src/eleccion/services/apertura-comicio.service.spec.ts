@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { AperturaComicioService } from './apertura-comicio.service';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
@@ -23,6 +24,7 @@ describe('AperturaComicioService', () => {
   let eleccionRepository: jest.Mocked<Repository<Eleccion>>;
   let padronRepository: jest.Mocked<Repository<PadronElectoral>>;
   let merkleTreeRepository: jest.Mocked<Repository<MerkleTree>>;
+  let configuracionRepository: jest.Mocked<Repository<ConfiguracionComicio>>;
   let electionStateService: jest.Mocked<ElectionStateService>;
   let blockchainService: jest.Mocked<BlockchainService>;
   let auditLoggerService: jest.Mocked<AuditLoggerService>;
@@ -53,6 +55,12 @@ describe('AperturaComicioService', () => {
     totalHojas: 100,
   } as MerkleTree;
 
+  const mockConfig: ConfiguracionComicio = {
+    idConfiguracion: 1,
+    idEleccion: 1,
+    mostrarResultadosTiempoReal: false,
+  } as ConfiguracionComicio;
+
   beforeEach(async () => {
     const mockEleccionRepository = {
       findOne: jest.fn(),
@@ -65,6 +73,11 @@ describe('AperturaComicioService', () => {
 
     const mockMerkleTreeRepository = {
       findOne: jest.fn(),
+    };
+
+    const mockConfiguracionRepository = {
+      findOne: jest.fn(),
+      save: jest.fn(),
     };
 
     const mockElectionStateService = {
@@ -99,6 +112,10 @@ describe('AperturaComicioService', () => {
           useValue: mockMerkleTreeRepository,
         },
         {
+          provide: getRepositoryToken(ConfiguracionComicio),
+          useValue: mockConfiguracionRepository,
+        },
+        {
           provide: ElectionStateService,
           useValue: mockElectionStateService,
         },
@@ -121,6 +138,9 @@ describe('AperturaComicioService', () => {
     eleccionRepository = module.get(getRepositoryToken(Eleccion));
     padronRepository = module.get(getRepositoryToken(PadronElectoral));
     merkleTreeRepository = module.get(getRepositoryToken(MerkleTree));
+    configuracionRepository = module.get(
+      getRepositoryToken(ConfiguracionComicio),
+    );
     electionStateService = module.get(ElectionStateService);
     blockchainService = module.get(BlockchainService);
     auditLoggerService = module.get(AuditLoggerService);
@@ -133,11 +153,14 @@ describe('AperturaComicioService', () => {
 
   describe('abrirManual', () => {
     it('should open election manually when all preconditions are met (UAT-01)', async () => {
-      // Arrange: Setup preconditions
       eleccionRepository.findOne.mockResolvedValue(mockEleccion);
       padronRepository.findOne.mockResolvedValue(mockPadron);
       merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
       blockchainService.verifyMerkleRootOnChain.mockResolvedValue(true);
+      configuracionRepository.findOne.mockResolvedValue({ ...mockConfig });
+      configuracionRepository.save.mockImplementation((entity) =>
+        Promise.resolve(entity),
+      );
 
       const eleccionAbierta = {
         ...mockEleccion,
@@ -148,12 +171,12 @@ describe('AperturaComicioService', () => {
       );
       auditLoggerService.logComicioAbierto.mockResolvedValue(undefined);
 
-      // Act
       const result = await service.abrirManual(1, 'admin-123', '192.168.1.1');
 
-      // Assert
       expect(electionStateService.transitionToAbierta).toHaveBeenCalledWith(1);
-
+      expect(configuracionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ mostrarResultadosTiempoReal: true }),
+      );
       expect(auditLoggerService.logComicioAbierto).toHaveBeenCalledWith({
         idEleccion: 1,
         actorId: 'admin-123',
@@ -250,11 +273,14 @@ describe('AperturaComicioService', () => {
 
   describe('abrirAutomatico', () => {
     it('should open election automatically when preconditions are met (UAT-03)', async () => {
-      // Arrange: Setup preconditions
       eleccionRepository.findOne.mockResolvedValue(mockEleccion);
       padronRepository.findOne.mockResolvedValue(mockPadron);
       merkleTreeRepository.findOne.mockResolvedValue(mockMerkleTree);
       blockchainService.verifyMerkleRootOnChain.mockResolvedValue(true);
+      configuracionRepository.findOne.mockResolvedValue({ ...mockConfig });
+      configuracionRepository.save.mockImplementation((entity) =>
+        Promise.resolve(entity),
+      );
 
       const eleccionAbierta = {
         ...mockEleccion,
@@ -265,12 +291,12 @@ describe('AperturaComicioService', () => {
       );
       auditLoggerService.logComicioAbierto.mockResolvedValue(undefined);
 
-      // Act
       const result = await service.abrirAutomatico(1);
 
-      // Assert
       expect(electionStateService.transitionToAbierta).toHaveBeenCalledWith(1);
-
+      expect(configuracionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ mostrarResultadosTiempoReal: true }),
+      );
       expect(auditLoggerService.logComicioAbierto).toHaveBeenCalledWith({
         idEleccion: 1,
         actorId: 'SYSTEM',

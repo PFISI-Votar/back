@@ -1,15 +1,25 @@
 import { Logger } from '@nestjs/common';
 import {
-  WebSocketGateway,
-  WebSocketServer,
+  ConnectedSocket,
+  MessageBody,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  SubscribeMessage,
+  WebSocketGateway,
+  WebSocketServer,
 } from '@nestjs/websockets';
 import type { Server, Socket } from 'socket.io';
+
+export type ResultadosActualizadosPayload = {
+  idEleccion: number;
+  actualizadoEn: string;
+  totalVotos: number;
+};
 
 /**
  * Gateway WebSocket para eventos de elecciones en tiempo real.
  * Emite eventos cuando una elección cambia de estado (ej: apertura automática).
+ * VOTAR-364: rooms por comicio para push de resultados del Dashboard público.
  */
 @WebSocketGateway({
   cors: {
@@ -34,6 +44,40 @@ export class EleccionGateway
   handleDisconnect(client: Socket): void {
     const clientId = client.id;
     this.logger.log(`Cliente WebSocket desconectado: ${clientId}`);
+  }
+
+  /**
+   * Dashboard público: join room for live tally updates (VOTAR-364).
+   */
+  @SubscribeMessage('dashboard:subscribe')
+  handleDashboardSubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { idEleccion?: number },
+  ): void {
+    const idEleccion = Number(body?.idEleccion);
+    if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
+      return;
+    }
+    const room = this.roomName(idEleccion);
+    void client.join(room);
+    this.logger.debug(`Cliente ${client.id} suscripto a ${room}`);
+  }
+
+  /**
+   * Dashboard público: leave room when navigating away (VOTAR-364).
+   */
+  @SubscribeMessage('dashboard:unsubscribe')
+  handleDashboardUnsubscribe(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() body: { idEleccion?: number },
+  ): void {
+    const idEleccion = Number(body?.idEleccion);
+    if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
+      return;
+    }
+    const room = this.roomName(idEleccion);
+    void client.leave(room);
+    this.logger.debug(`Cliente ${client.id} desuscripto de ${room}`);
   }
 
   /**
@@ -63,5 +107,21 @@ export class EleccionGateway
   emitEleccionCerrada(idEleccion: number): void {
     this.logger.log(`Emitiendo evento de cierre para elección ${idEleccion}`);
     this.server.emit('eleccion:cerrada', { idEleccion });
+  }
+
+  /**
+   * VOTAR-364: push tally update to dashboard subscribers of a comicio.
+   */
+  emitResultadosActualizados(payload: ResultadosActualizadosPayload): void {
+    this.logger.log(
+      `Emitiendo resultados actualizados para elección ${payload.idEleccion} (total=${payload.totalVotos})`,
+    );
+    this.server
+      .to(this.roomName(payload.idEleccion))
+      .emit('resultados:actualizados', payload);
+  }
+
+  private roomName(idEleccion: number): string {
+    return `eleccion:${idEleccion}`;
   }
 }

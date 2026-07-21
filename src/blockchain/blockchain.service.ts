@@ -15,7 +15,10 @@ import {
   Wallet,
   ZeroAddress,
 } from 'ethers';
-import { AUDIT_VIEW_CONTRACT_ABI } from './constants/audit-view-contract.abi';
+import {
+  AUDIT_VIEW_CONTRACT_ABI,
+  ELECTION_FACTORY_GET_ELECTION_ABI,
+} from './constants/audit-view-contract.abi';
 import { BALLOT_CONTRACT_ABI } from './constants/ballot-contract.abi';
 import { ELECTION_FACTORY_CONTRACT_ABI } from './constants/election-factory-contract.abi';
 import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
@@ -44,11 +47,35 @@ export type ParticipationStatsOnChain = {
   nullVotes: number;
 };
 
+export type EscrutinioTalliesOnChain = {
+  participation: ParticipationStatsOnChain;
+  votesByCandidateId: Record<number, number>;
+};
+
 export type VoteCastTimelinePoint = {
   etiqueta: string;
   acumulado: number;
   nuevos: number;
 };
+
+const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+interface AuditViewContract {
+  getParticipationStats(electionId: number): Promise<[bigint, bigint, bigint]>;
+  getVotesByCandidate(
+    electionId: number,
+    candidateId: bigint | number,
+  ): Promise<bigint>;
+}
+
+interface ElectionFactoryContract {
+  getElection(electionId: number): Promise<{
+    ballot: string;
+    voteRegistry: string;
+    auditView: string;
+    exists: boolean;
+  }>;
+}
 
 /**
  * Maps backend EleccionEstado to smart contract ElectionState enum.
@@ -424,6 +451,152 @@ export class BlockchainService {
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
+    };
+  }
+
+  /**
+   * VOTAR-364: resolves AuditView address for an election.
+   * Prefer ElectionFactory.getElection(...).auditView; fallback AUDIT_VIEW_ADDRESS.
+   */
+  async resolveAuditViewAddress(electionId: number): Promise<string> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    if (!rpcUrl) {
+      throw new ServiceUnavailableException(
+        'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
+      );
+    }
+    const factoryAddress = this.configService.get<string>(
+      'ELECTION_FACTORY_ADDRESS',
+    );
+    if (factoryAddress) {
+      try {
+        const provider = new JsonRpcProvider(rpcUrl);
+        const factory = new Contract(
+          factoryAddress,
+          ELECTION_FACTORY_GET_ELECTION_ABI,
+          provider,
+        ) as unknown as ElectionFactoryContract;
+        const deployment = await factory.getElection(electionId);
+        if (
+          deployment.exists &&
+          deployment.auditView &&
+          deployment.auditView.toLowerCase() !== ZERO_ADDRESS
+        ) {
+          return deployment.auditView;
+        }
+      } catch {
+        // Fall through to AUDIT_VIEW_ADDRESS fallback.
+      }
+    }
+    const fallback = this.configService.get<string>('AUDIT_VIEW_ADDRESS');
+    if (fallback && fallback.toLowerCase() !== ZERO_ADDRESS) {
+      return fallback;
+    }
+    throw new ServiceUnavailableException(
+      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni AUDIT_VIEW_ADDRESS).',
+    );
+  }
+
+  /**
+   * VOTAR-364: reads participation aggregates from AuditViewContract.
+   */
+  async fetchParticipationStats(
+    auditViewAddress: string,
+    electionId: number,
+  ): Promise<ParticipationStatsOnChain> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    if (!rpcUrl) {
+      throw new ServiceUnavailableException(
+        'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
+      );
+    }
+    const provider = new JsonRpcProvider(rpcUrl);
+    const contract = new Contract(
+      auditViewAddress,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as AuditViewContract;
+    try {
+      const [totalVotes, blankVotes, nullVotes] =
+        await contract.getParticipationStats(electionId);
+      return {
+        totalVotes: Number(totalVotes),
+        blankVotes: Number(blankVotes),
+        nullVotes: Number(nullVotes),
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudieron leer estadísticas de participación on-chain: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * VOTAR-364: reads running tally for a candidate (or reserved blanco/nulo id).
+   */
+  async fetchVotesByCandidate(
+    auditViewAddress: string,
+    electionId: number,
+    candidateId: number | bigint,
+  ): Promise<number> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    if (!rpcUrl) {
+      throw new ServiceUnavailableException(
+        'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
+      );
+    }
+    const provider = new JsonRpcProvider(rpcUrl);
+    const contract = new Contract(
+      auditViewAddress,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as AuditViewContract;
+    try {
+      const votes = await contract.getVotesByCandidate(
+        electionId,
+        typeof candidateId === 'bigint' ? candidateId : BigInt(candidateId),
+      );
+      return Number(votes);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo leer el tally on-chain del candidato: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * VOTAR-364: fetches participation + per-candidate tallies in one resolution pass.
+   */
+  async fetchEscrutinioTallies(
+    electionId: number,
+    candidateIds: number[],
+  ): Promise<EscrutinioTalliesOnChain> {
+    const auditViewAddress = await this.resolveAuditViewAddress(electionId);
+    const participation = await this.fetchParticipationStats(
+      auditViewAddress,
+      electionId,
+    );
+    const votesByCandidateId: Record<number, number> = {};
+    await Promise.all(
+      candidateIds.map(async (candidateId) => {
+        votesByCandidateId[candidateId] = await this.fetchVotesByCandidate(
+          auditViewAddress,
+          electionId,
+          candidateId,
+        );
+      }),
+    );
+    return {
+      participation,
+      votesByCandidateId,
     };
   }
 
