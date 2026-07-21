@@ -323,9 +323,7 @@ describe('VotoService', () => {
     it('lanza NotFoundException si la boleta aún no está PUBLICADA', async () => {
       const repositories = createRepositories();
       repositories.ofertaElectoralQueryService.obtenerOfertaPublicada.mockRejectedValue(
-        new NotFoundException(
-          'La oferta electoral aún no fue oficializada',
-        ),
+        new NotFoundException('La oferta electoral aún no fue oficializada'),
       );
       const service = createService(repositories);
 
