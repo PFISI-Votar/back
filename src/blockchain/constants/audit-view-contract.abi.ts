@@ -1,5 +1,5 @@
 /**
- * Minimal AuditViewContract ABI for VOTAR-364 public escrutinio reads (VOTAR-350).
+ * Minimal AuditViewContract ABI for VOTAR-364 / VOTAR-365 public reads (VOTAR-350).
  */
 export const AUDIT_VIEW_CONTRACT_ABI = [
   {

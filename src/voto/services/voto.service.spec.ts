@@ -19,6 +19,81 @@ const createQueryBuilderMock = (count = 1) => ({
   getCount: jest.fn().mockResolvedValue(count),
 });
 
+const createOfertaMock = () => ({
+  eleccion: {
+    idEleccion: 1,
+    nombre: 'Comicio UTN',
+    estado: EleccionEstado.ABIERTA,
+    tipoVotacion: TipoVotacion.POR_LISTA,
+  },
+  configuracion: {
+    idEleccion: 1,
+    permitirVotoEnBlanco: false,
+    metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+    mostrarResultadosTiempoReal: false,
+  },
+  boleta: {
+    idBoleta: 10,
+    idEleccion: 1,
+    titulo: 'Boleta — Comicio UTN',
+    estado: EstadoBoleta.PUBLICADA,
+  },
+  categorias: [
+    { idCategoria: 1, nombre: 'Presidente', descripcion: null, orden: 1 },
+    { idCategoria: 2, nombre: 'Vocales', descripcion: null, orden: 2 },
+  ],
+  listas: [
+    {
+      idLista: 10,
+      idBoleta: 10,
+      nombre: 'Lista A',
+      sigla: 'A',
+      color: '#0ea5e9',
+      logoUrl: null,
+      estado: EstadoLista.OFICIALIZADA,
+      listId: 1,
+      candidatos: [
+        {
+          idCandidato: 100,
+          idCategoria: 1,
+          nombre: 'Ana',
+          apellido: 'Alvarez',
+          orden: 1,
+          fotoUrl: null,
+        },
+        {
+          idCandidato: 101,
+          idCategoria: 2,
+          nombre: 'Valeria',
+          apellido: 'Vocal',
+          orden: 1,
+          fotoUrl: null,
+        },
+      ],
+    },
+    {
+      idLista: 20,
+      idBoleta: 10,
+      nombre: 'Lista B',
+      sigla: 'B',
+      color: '#2563eb',
+      logoUrl: null,
+      estado: EstadoLista.OFICIALIZADA,
+      listId: 2,
+      candidatos: [
+        {
+          idCandidato: 200,
+          idCategoria: 1,
+          nombre: 'Bruno',
+          apellido: 'Barrera',
+          orden: 2,
+          fotoUrl: null,
+        },
+      ],
+    },
+  ],
+});
+
 const createRepositories = () => {
   const queryBuilder = createQueryBuilderMock();
   return {
@@ -38,70 +113,11 @@ const createRepositories = () => {
         mostrarResultadosTiempoReal: false,
       }),
     },
-    boletaRepository: {
-      findOne: jest.fn().mockResolvedValue({
-        idBoleta: 10,
-        idEleccion: 1,
-        titulo: 'Boleta — Comicio UTN',
-        estado: EstadoBoleta.PUBLICADA,
-        categorias: [
-          { idCategoria: 2, nombre: 'Vocales', descripcion: null, orden: 2 },
-          { idCategoria: 1, nombre: 'Presidente', descripcion: null, orden: 1 },
-        ],
-      }),
-    },
-    listaRepository: {
-      find: jest.fn().mockResolvedValue([
-        {
-          idLista: 20,
-          idBoleta: 10,
-          nombre: 'Lista B',
-          sigla: 'B',
-          color: '#2563eb',
-          estado: EstadoLista.OFICIALIZADA,
-          listId: 2,
-          candidatos: [
-            {
-              idCandidato: 200,
-              idCategoria: 1,
-              nombre: 'Bruno',
-              apellido: 'Barrera',
-              orden: 2,
-              fotoUrl: null,
-            },
-          ],
-        },
-        {
-          idLista: 10,
-          idBoleta: 10,
-          nombre: 'Lista A',
-          sigla: 'A',
-          color: '#0ea5e9',
-          estado: EstadoLista.OFICIALIZADA,
-          listId: 1,
-          candidatos: [
-            {
-              idCandidato: 100,
-              idCategoria: 1,
-              nombre: 'Ana',
-              apellido: 'Alvarez',
-              orden: 1,
-              fotoUrl: null,
-            },
-            {
-              idCandidato: 101,
-              idCategoria: 2,
-              nombre: 'Valeria',
-              apellido: 'Vocal',
-              orden: 1,
-              fotoUrl: null,
-            },
-          ],
-        },
-      ]),
-    },
     padronVotanteRepository: {
       createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+    },
+    ofertaElectoralQueryService: {
+      obtenerOfertaPublicada: jest.fn().mockResolvedValue(createOfertaMock()),
     },
     queryBuilder,
   };
@@ -114,9 +130,8 @@ const createService = (
   new VotoService(
     repositories.eleccionRepository as never,
     repositories.configuracionRepository as never,
-    repositories.boletaRepository as never,
-    repositories.listaRepository as never,
     repositories.padronVotanteRepository as never,
+    repositories.ofertaElectoralQueryService as never,
     auditLogger as never,
   );
 
@@ -266,28 +281,33 @@ describe('VotoService', () => {
 
     it('UAT-02: incluye nombreCompleto, fotoUrl y agrupacionPolitica', async () => {
       const repositories = createRepositories();
-      repositories.listaRepository.find.mockResolvedValue([
+      repositories.ofertaElectoralQueryService.obtenerOfertaPublicada.mockResolvedValue(
         {
-          idLista: 10,
-          idBoleta: 10,
-          nombre: 'Lista A',
-          sigla: 'A',
-          color: '#0ea5e9',
-          logoUrl: '/uploads/listas/a.png',
-          estado: EstadoLista.OFICIALIZADA,
-          listId: 1,
-          candidatos: [
+          ...createOfertaMock(),
+          listas: [
             {
-              idCandidato: 100,
-              idCategoria: 1,
-              nombre: 'Ana',
-              apellido: 'Alvarez',
-              orden: 1,
-              fotoUrl: '/uploads/candidatos/ana.jpg',
+              idLista: 10,
+              idBoleta: 10,
+              nombre: 'Lista A',
+              sigla: 'A',
+              color: '#0ea5e9',
+              logoUrl: '/uploads/listas/a.png',
+              estado: EstadoLista.OFICIALIZADA,
+              listId: 1,
+              candidatos: [
+                {
+                  idCandidato: 100,
+                  idCategoria: 1,
+                  nombre: 'Ana',
+                  apellido: 'Alvarez',
+                  orden: 1,
+                  fotoUrl: '/uploads/candidatos/ana.jpg',
+                },
+              ],
             },
           ],
         },
-      ]);
+      );
       const service = createService(repositories);
 
       const actual = await service.obtenerOfertaPublica(1);
@@ -302,13 +322,9 @@ describe('VotoService', () => {
 
     it('lanza NotFoundException si la boleta aún no está PUBLICADA', async () => {
       const repositories = createRepositories();
-      repositories.boletaRepository.findOne.mockResolvedValue({
-        idBoleta: 10,
-        idEleccion: 1,
-        titulo: 'Boleta — Comicio UTN',
-        estado: EstadoBoleta.BORRADOR,
-        categorias: [],
-      });
+      repositories.ofertaElectoralQueryService.obtenerOfertaPublicada.mockRejectedValue(
+        new NotFoundException('La oferta electoral aún no fue oficializada'),
+      );
       const service = createService(repositories);
 
       await expect(service.obtenerOfertaPublica(1)).rejects.toThrow(
@@ -321,12 +337,15 @@ describe('VotoService', () => {
 
     it('permite consultar la oferta con comicio CERRADA', async () => {
       const repositories = createRepositories();
-      repositories.eleccionRepository.findOne.mockResolvedValue({
-        idEleccion: 1,
-        nombre: 'Comicio UTN',
-        estado: EleccionEstado.CERRADA,
-        tipoVotacion: TipoVotacion.POR_LISTA,
-      });
+      repositories.ofertaElectoralQueryService.obtenerOfertaPublicada.mockResolvedValue(
+        {
+          ...createOfertaMock(),
+          eleccion: {
+            ...createOfertaMock().eleccion,
+            estado: EleccionEstado.CERRADA,
+          },
+        },
+      );
       const service = createService(repositories);
 
       const actual = await service.obtenerOfertaPublica(1);
@@ -337,12 +356,15 @@ describe('VotoService', () => {
 
     it('permite consultar la oferta con comicio ESCRUTADA', async () => {
       const repositories = createRepositories();
-      repositories.eleccionRepository.findOne.mockResolvedValue({
-        idEleccion: 1,
-        nombre: 'Comicio UTN',
-        estado: EleccionEstado.ESCRUTADA,
-        tipoVotacion: TipoVotacion.POR_LISTA,
-      });
+      repositories.ofertaElectoralQueryService.obtenerOfertaPublicada.mockResolvedValue(
+        {
+          ...createOfertaMock(),
+          eleccion: {
+            ...createOfertaMock().eleccion,
+            estado: EleccionEstado.ESCRUTADA,
+          },
+        },
+      );
       const service = createService(repositories);
 
       const actual = await service.obtenerOfertaPublica(1);
@@ -352,7 +374,9 @@ describe('VotoService', () => {
 
     it('lanza NotFoundException si el comicio no existe', async () => {
       const repositories = createRepositories();
-      repositories.eleccionRepository.findOne.mockResolvedValue(null);
+      repositories.ofertaElectoralQueryService.obtenerOfertaPublicada.mockRejectedValue(
+        new NotFoundException('Elección 99 no encontrada'),
+      );
       const service = createService(repositories);
 
       await expect(service.obtenerOfertaPublica(99)).rejects.toThrow(

@@ -12,6 +12,7 @@ import { EscrutinioModule } from '@/escrutinio/escrutinio.module';
 import { PadronModule } from '@/padron/padron.module';
 import { AuthModule } from '@/auth/auth.module';
 import { VotoModule } from '@/voto/voto.module';
+import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { VotoModule } from '@/voto/voto.module';
     EscrutinioModule,
     PadronModule,
     VotoModule,
+    DashboardPublicoModule,
     CategoriasModule,
   ],
   controllers: [AppController],
