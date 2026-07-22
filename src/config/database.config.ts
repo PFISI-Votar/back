@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { AuditLogImmutabilitySubscriber } from '@/audit/subscribers/audit-log-immutability.subscriber';
 
 /**
  * Builds TypeORM configuration from environment variables.
@@ -16,4 +17,5 @@ export const getDatabaseConfig = (
   autoLoadEntities: true,
   synchronize: false,
   logging: false,
+  subscribers: [AuditLogImmutabilitySubscriber],
 });
