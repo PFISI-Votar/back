@@ -21,7 +21,7 @@ import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { EscrutinioPublicController } from '@/escrutinio/controllers/escrutinio-public.controller';
-import { EscrutinioPublicRateLimitGuard } from '@/escrutinio/guards/escrutinio-public-rate-limit.guard';
+import { CommonRateLimitModule } from '@/common/rate-limit/common-rate-limit.module';
 import { EscrutinioCacheService } from '@/escrutinio/services/escrutinio-cache.service';
 import { EscrutinioService } from '@/escrutinio/services/escrutinio.service';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
@@ -75,12 +75,12 @@ describe('Escrutinio público (e2e) — VOTAR-364', () => {
           },
         }),
         TypeOrmModule.forFeature(entities),
+        CommonRateLimitModule,
       ],
       controllers: [EscrutinioPublicController],
       providers: [
         EscrutinioService,
         EscrutinioCacheService,
-        EscrutinioPublicRateLimitGuard,
         { provide: BlockchainService, useValue: mockBlockchain },
         {
           provide: EleccionGateway,

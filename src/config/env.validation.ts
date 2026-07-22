@@ -5,6 +5,17 @@ export const envValidationSchema = Joi.object({
   REQUIRE_HTTPS: Joi.boolean().truthy('true').falsy('false').default(false),
   PORT: Joi.number().port().default(3000),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
+  /** VOTAR-380 — whitelist CORS (comma-separated). Falls back to FRONTEND_URL when empty. */
+  CORS_ALLOWED_ORIGINS: Joi.string().allow('').optional(),
+  /** VOTAR-380 — rate limit tiers (in-memory, per IP). */
+  RATE_LIMIT_AUTH_MAX: Joi.number().integer().min(1).default(10),
+  RATE_LIMIT_AUTH_WINDOW_MS: Joi.number().integer().min(100).default(1000),
+  RATE_LIMIT_VOTE_MAX: Joi.number().integer().min(1).default(5),
+  RATE_LIMIT_VOTE_WINDOW_MS: Joi.number().integer().min(1000).default(60_000),
+  RATE_LIMIT_PUBLIC_MAX: Joi.number().integer().min(1).default(60),
+  RATE_LIMIT_PUBLIC_WINDOW_MS: Joi.number().integer().min(1000).default(60_000),
+  RATE_LIMIT_GLOBAL_MAX: Joi.number().integer().min(1).default(120),
+  RATE_LIMIT_GLOBAL_WINDOW_MS: Joi.number().integer().min(1000).default(60_000),
   DB_HOST: Joi.string().hostname().required(),
   DB_PORT: Joi.number().port().default(5432),
   DB_USERNAME: Joi.string().required(),
