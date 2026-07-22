@@ -36,7 +36,18 @@ export class AuditLog {
   @Column({ name: 'hash_registro', type: 'varchar', nullable: true })
   hashRegistro: string | null;
 
-  /** Nullable: eventos de sufragio (VOTO_EMITIDO) no deben almacenar IP (VOTAR-379). */
+  /**
+   * Firma criptográfica del bloque de auditoría anterior (encadenamiento VOTAR-370).
+   * Null sólo si aún no se migró; el génesis usa AUDIT_GENESIS_HASH.
+   */
+  @Column({ name: 'hash_anterior', type: 'varchar', nullable: true })
+  hashAnterior: string | null;
+
+  /**
+   * Identificador de terminal criptográfico (hash de IP), nunca IP en texto plano
+   * en capas de visualización pública (VOTAR-370).
+   * Nullable: eventos de sufragio (VOTO_EMITIDO) no deben almacenar terminal (VOTAR-379).
+   */
   @Column({ name: 'ip_origen', type: 'varchar', nullable: true })
   ipOrigen: string | null;
 

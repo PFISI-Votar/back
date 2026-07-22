@@ -1,7 +1,11 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { ServiceUnavailableException } from '@nestjs/common';
+import {
+  ServiceUnavailableException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
 import { BlockchainService } from './blockchain.service';
+import { ContratoBlockchainService } from './services/contrato-blockchain.service';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 const mockPublishRoot = jest.fn();
@@ -10,15 +14,47 @@ const mockWait = jest.fn();
 const mockGetBlock = jest.fn();
 const mockGetTransactionReceipt = jest.fn();
 const mockParseLog = jest.fn();
+const mockGetParticipationStats = jest.fn();
+const mockGetVotesByCandidate = jest.fn();
+const mockGetElection = jest.fn();
+const mockQueryFilter = jest.fn();
+const mockVoteCastFilter = jest.fn();
 
 jest.mock('ethers', () => {
   const actual = jest.requireActual<typeof import('ethers')>('ethers');
   return {
     ...actual,
-    Contract: jest.fn().mockImplementation(() => ({
-      publishRoot: mockPublishRoot,
-      setElectionState: mockSetElectionState,
-    })),
+    Contract: jest.fn().mockImplementation((_address: string, abi: unknown) => {
+      const abiList = Array.isArray(abi) ? abi : [];
+      const hasVoteCast = abiList.some(
+        (item: { name?: string }) => item.name === 'VoteCast',
+      );
+      const hasGetParticipation = abiList.some(
+        (item: { name?: string }) => item.name === 'getParticipationStats',
+      );
+      const hasGetElection = abiList.some(
+        (item: { name?: string }) => item.name === 'getElection',
+      );
+      if (hasVoteCast) {
+        return {
+          filters: { VoteCast: mockVoteCastFilter },
+          queryFilter: mockQueryFilter,
+        };
+      }
+      if (hasGetParticipation) {
+        return {
+          getParticipationStats: mockGetParticipationStats,
+          getVotesByCandidate: mockGetVotesByCandidate,
+        };
+      }
+      if (hasGetElection) {
+        return { getElection: mockGetElection };
+      }
+      return {
+        publishRoot: mockPublishRoot,
+        setElectionState: mockSetElectionState,
+      };
+    }),
     Wallet: jest.fn().mockImplementation(() => ({})),
     JsonRpcProvider: jest.fn().mockImplementation(() => ({
       getBlock: mockGetBlock,
@@ -37,6 +73,10 @@ describe('BlockchainService', () => {
     get: jest.fn(),
   };
 
+  const mockContratoBlockchain = {
+    getElectionFactory: jest.fn(),
+  };
+
   beforeEach(async () => {
     jest.clearAllMocks();
     mockConfig.get.mockImplementation((key: string) => {
@@ -46,6 +86,10 @@ describe('BlockchainService', () => {
         MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
         ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
         BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+        AUDIT_VIEW_CONTRACT_ADDRESS:
+          '0x1111111111111111111111111111111111111111',
+        VOTE_REGISTRY_CONTRACT_ADDRESS:
+          '0x2222222222222222222222222222222222222222',
         ETHERSCAN_BASE_URL: 'https://sepolia.etherscan.io',
       };
       return values[key];
@@ -62,11 +106,19 @@ describe('BlockchainService', () => {
       name: 'RootPublished',
       args: [42, '0x' + 'a'.repeat(64), 1700000000n],
     });
+    mockGetParticipationStats.mockResolvedValue([25n, 0n, 0n]);
+    mockGetVotesByCandidate.mockResolvedValue(10n);
+    mockVoteCastFilter.mockReturnValue({});
+    mockQueryFilter.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         BlockchainService,
         { provide: ConfigService, useValue: mockConfig },
+        {
+          provide: ContratoBlockchainService,
+          useValue: mockContratoBlockchain,
+        },
       ],
     }).compile();
 
@@ -221,6 +273,114 @@ describe('BlockchainService', () => {
       await expect(
         service.syncElectionState(42, EleccionEstado.ABIERTA),
       ).rejects.toThrow(/No se pudo sincronizar el estado on-chain/);
+    });
+  });
+
+  describe('participation queries — VOTAR-365', () => {
+    it('getParticipationStats returns aggregate tallies without nullifiers', async () => {
+      const actual = await service.getParticipationStats(7);
+
+      expect(actual).toEqual({
+        totalVotes: 25,
+        blankVotes: 0,
+        nullVotes: 0,
+      });
+      expect(actual).not.toHaveProperty('voterHash');
+      expect(actual).not.toHaveProperty('nullifier');
+      expect(mockGetParticipationStats).toHaveBeenCalledWith(7);
+    });
+
+    it('getVotesByCandidate returns on-chain tally', async () => {
+      const actual = await service.getVotesByCandidate(7, 101);
+      expect(actual).toBe(10);
+      expect(mockGetVotesByCandidate).toHaveBeenCalledWith(7, 101);
+    });
+
+    it('getVoteCastTimeline builds hourly buckets from first votes only', async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      mockQueryFilter.mockResolvedValue([
+        {
+          args: {
+            voterHash: '0xaaa',
+            isOverwrite: false,
+          },
+          blockNumber: 1,
+        },
+        {
+          args: {
+            voterHash: '0xaaa',
+            isOverwrite: true,
+          },
+          blockNumber: 2,
+        },
+        {
+          args: {
+            voterHash: '0xbbb',
+            isOverwrite: false,
+          },
+          blockNumber: 3,
+        },
+      ]);
+      mockGetBlock.mockResolvedValue({ timestamp: nowSec - 1800 });
+
+      const actual = await service.getVoteCastTimeline(7, 2);
+
+      expect(actual).toHaveLength(2);
+      expect(actual[1].acumulado).toBe(2);
+      expect(actual.reduce((sum, point) => sum + point.nuevos, 0)).toBe(2);
+      const serialized = JSON.stringify(actual);
+      expect(serialized).not.toMatch(/0xaaa|0xbbb/);
+    });
+
+    it('resolveElectionContracts falls back to factory when env addresses missing', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        const values: Record<string, string> = {
+          SEPOLIA_RPC_URL: 'https://sepolia.example.com',
+          MERKLE_ROOT_STORE_ADDRESS:
+            '0x55d1d115309872C16B9646362C82fFa246F3F652',
+          MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
+          ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
+          BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+          ETHERSCAN_BASE_URL: 'https://sepolia.etherscan.io',
+        };
+        return values[key];
+      });
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+      mockGetElection.mockResolvedValue({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        exists: true,
+      });
+
+      const actual = await service.resolveElectionContracts(9);
+
+      expect(actual.auditView).toBe(
+        '0x6666666666666666666666666666666666666666',
+      );
+      expect(mockGetElection).toHaveBeenCalledWith(9);
+    });
+
+    it('resolveElectionContracts throws 422 when factory has no deployment', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        if (key === 'SEPOLIA_RPC_URL') return 'https://sepolia.example.com';
+        return undefined;
+      });
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+      mockGetElection.mockResolvedValue({
+        ballot: '0x0000000000000000000000000000000000000000',
+        voteRegistry: '0x0000000000000000000000000000000000000000',
+        auditView: '0x0000000000000000000000000000000000000000',
+        exists: false,
+      });
+
+      await expect(service.resolveElectionContracts(9)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
   });
 });

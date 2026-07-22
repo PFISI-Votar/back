@@ -52,10 +52,13 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   async login(
     @Body() dto: LoginDto,
+    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponseDto> {
     const { response: authResponse, refreshToken } =
-      await this.authService.login(dto);
+      await this.authService.login(dto, {
+        ipOrigen: this.resolveClientIp(request),
+      });
     this.attachSessionCookies(response, authResponse.accessToken, refreshToken);
     return { user: authResponse.user };
   }
@@ -154,5 +157,13 @@ export class AuthController {
 
   private isProduction(): boolean {
     return this.configService.get<boolean>('DEVELOPMENT') === false;
+  }
+
+  private resolveClientIp(request: Request): string {
+    const forwarded = request.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+      return forwarded.split(',')[0]?.trim() ?? 'unknown';
+    }
+    return request.ip ?? 'unknown';
   }
 }

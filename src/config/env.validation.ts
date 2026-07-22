@@ -48,6 +48,8 @@ export const envValidationSchema = Joi.object({
   ELECTION_ADMIN_PRIVATE_KEY: Joi.string().optional(),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
   ELECTION_FACTORY_ADDRESS: Joi.string().optional(),
+  /** Fallback AuditView when ElectionFactory has no deployment for the comicio (VOTAR-364). */
+  AUDIT_VIEW_ADDRESS: Joi.string().optional(),
   RECIBO_SIGNING_PRIVATE_KEY: Joi.string().optional(),
   CHAIN_ID: Joi.number().default(11155111),
   ETHERSCAN_BASE_URL: Joi.string()
@@ -56,4 +58,14 @@ export const envValidationSchema = Joi.object({
     .default('https://sepolia.etherscan.io'),
   ELECTION_FACTORY_ARTIFACT_PATH: Joi.string().optional(),
   ELECTION_FACTORY_NETWORK: Joi.string().optional(),
+  /**
+   * VOTAR-370 — sal de ofuscación del audit log institucional.
+   * Obligatoria en producción (DEVELOPMENT=false) para no hacer predecible
+   * el hash de actor/terminal.
+   */
+  AUDIT_OBFUSCATION_SALT: Joi.when('DEVELOPMENT', {
+    is: false,
+    then: Joi.string().min(16).required(),
+    otherwise: Joi.string().min(8).optional(),
+  }),
 });

@@ -8,9 +8,11 @@ import { CategoriasModule } from '@/categoria/categoria.module';
 import { getDatabaseConfig } from '@/config/database.config';
 import { envValidationSchema } from '@/config/env.validation';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
+import { EscrutinioModule } from '@/escrutinio/escrutinio.module';
 import { PadronModule } from '@/padron/padron.module';
 import { AuthModule } from '@/auth/auth.module';
 import { VotoModule } from '@/voto/voto.module';
+import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.module';
 
 @Module({
   imports: [
@@ -28,8 +30,10 @@ import { VotoModule } from '@/voto/voto.module';
     AuthModule,
     BlockchainModule,
     EleccionesModule,
+    EscrutinioModule,
     PadronModule,
     VotoModule,
+    DashboardPublicoModule,
     CategoriasModule,
   ],
   controllers: [AppController],

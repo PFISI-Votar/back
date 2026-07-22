@@ -1,0 +1,151 @@
+{
+  "contractName": "AuditViewContract",
+  "abiHash": "0x32da9785e81f7915fed8dde51f11501ea3f41bef6464e9e8081e3cc195bdf665",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "address",
+          "name": "merkleRootStoreAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "voteRegistryAddress",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "nonpayable",
+      "type": "constructor"
+    },
+    {
+      "inputs": [],
+      "name": "MerkleRootStoreIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "VoteRegistryIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getElectionState",
+      "outputs": [
+        {
+          "internalType": "enum MerkleRootStore.ElectionState",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getParticipationStats",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "totalVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "blankVotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "nullVotes",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "candidateId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getVotesByCandidate",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "merkleRootStore",
+      "outputs": [
+        {
+          "internalType": "contract MerkleRootStore",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "bytes32",
+          "name": "receiptHash",
+          "type": "bytes32"
+        }
+      ],
+      "name": "verifyReceipt",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "voteRegistry",
+      "outputs": [
+        {
+          "internalType": "contract VoteRegistry",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    }
+  ],
+  "exportedAt": "2026-07-17T15:01:42.472Z",
+  "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
+}

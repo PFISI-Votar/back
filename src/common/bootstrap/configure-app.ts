@@ -70,6 +70,7 @@ export const configureApp = (app: NestExpressApplication): void => {
     .setVersion('1.0.0')
     .addTag('padron', 'Importación y gestión del padrón electoral (US 330)')
     .addTag('listas', 'Gestión de listas y candidatos (US 318)')
+    .addTag('escrutinio', 'Resultados públicos del Dashboard (VOTAR-364)')
     .addBearerAuth()
     .build();
 

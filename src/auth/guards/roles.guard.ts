@@ -17,7 +17,7 @@ export class RolesGuard implements CanActivate {
     private readonly auditLogger: AuditLoggerService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const requiredRoles = this.reflector.getAllAndOverride<JwtRole[]>(
       ROLES_KEY,
       [context.getHandler(), context.getClass()],
@@ -32,28 +32,30 @@ export class RolesGuard implements CanActivate {
     }
     const hasRole = requiredRoles.includes(user.role);
     if (!hasRole) {
-      this.logAccesoDenegado(request, user.sub, user.role);
+      await this.logAccesoDenegado(request, user.sub, user.role);
       throw new ForbiddenException('Acceso denegado');
     }
     return true;
   }
 
-  private logAccesoDenegado(
+  private async logAccesoDenegado(
     request: AuthenticatedRequest,
     actorId: string,
     role: JwtRole,
-  ): void {
+  ): Promise<void> {
     const endpoint = `${request.method} ${request.path}`;
     const ipOrigen = this.resolveClientIp(request);
-    void this.auditLogger
-      .logAccesoDenegado({
+    try {
+      await this.auditLogger.logAccesoDenegado({
         actorId,
         ipOrigen,
         endpoint,
         timestamp: new Date(),
         datosAdicionales: { role },
-      })
-      .catch(() => undefined);
+      });
+    } catch {
+      // No bloquear la respuesta 403 si falla la auditoría
+    }
   }
 
   private resolveClientIp(request: AuthenticatedRequest): string {

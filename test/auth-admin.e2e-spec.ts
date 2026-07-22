@@ -8,6 +8,7 @@ import request from 'supertest';
 import { App } from 'supertest/types';
 import { newDb } from 'pg-mem';
 import { DataSource, Repository } from 'typeorm';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import { AuthModule } from '@/auth/auth.module';
@@ -51,6 +52,7 @@ describe('AuthAdmin (e2e) — US-313', () => {
   let dataSource: DataSource;
   let jwtService: JwtService;
   let auditLogRepository: Repository<AuditLog>;
+  let auditLogger: AuditLoggerService;
   let adminToken: string;
   let voterToken: string;
 
@@ -130,6 +132,7 @@ describe('AuthAdmin (e2e) — US-313', () => {
     });
 
     auditLogRepository = dataSource.getRepository(AuditLog);
+    auditLogger = app.get(AuditLoggerService);
   }, 30000);
 
   afterAll(async () => {
@@ -172,9 +175,11 @@ describe('AuthAdmin (e2e) — US-313', () => {
 
     expect(logs.length).toBeGreaterThan(countBefore);
     const latest = logs[0];
-    expect(latest.actor).toBe('15079');
+    // VOTAR-370: actor ofuscado (no sub SSO en claro)
+    expect(latest.actor).toBe(auditLogger.ofuscarOperador('15079'));
     expect(latest.endpoint).toBe('GET /elecciones');
     expect(latest.ipOrigen).toBeDefined();
+    expect(latest.ipOrigen).not.toMatch(/^\d{1,3}(?:\.\d{1,3}){3}$/);
     expect(latest.timestamp).toBeDefined();
   });
 

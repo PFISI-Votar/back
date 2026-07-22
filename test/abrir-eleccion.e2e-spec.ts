@@ -359,9 +359,23 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       });
 
       expect(auditLogs).toHaveLength(1);
-      expect(auditLogs[0].actor).toBe('14988');
+      // VOTAR-370: actor ofuscado (no sub SSO en claro) + terminal criptográfico
+      expect(auditLogs[0].actor).not.toBe('14988');
+      expect(auditLogs[0].actor).toMatch(/^[0-9a-f]{64}$/);
+      expect(auditLogs[0].descripcion).toMatch(
+        /Usuario Administrador con ID Ofuscado/,
+      );
+      expect(auditLogs[0].descripcion).toContain(
+        `apertura del comicio ${eleccion.idEleccion}`,
+      );
+      expect(auditLogs[0].hashAnterior).toBeTruthy();
+      expect(auditLogs[0].hashRegistro).toMatch(/^[0-9a-f]{64}$/);
       expect(auditLogs[0].datosAdicionales).toMatchObject({ modo: 'MANUAL' });
       expect(auditLogs[0].ipOrigen).not.toBe('SYSTEM');
+      // Sin IP en texto plano en la descripción pública
+      expect(auditLogs[0].descripcion).not.toMatch(
+        /\b\d{1,3}(?:\.\d{1,3}){3}\b/,
+      );
     });
 
     it('debe llamar a syncElectionWindow y syncElectionState', async () => {

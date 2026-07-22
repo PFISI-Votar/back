@@ -5,6 +5,7 @@ import { BlockchainModule } from '@/blockchain/blockchain.module';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
+import { ListaModule } from '@/eleccion/lista/lista.module';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
@@ -26,6 +27,7 @@ import { VotoService } from '@/voto/services/voto.service';
     AuditModule,
     BlockchainModule,
     PadronModule,
+    ListaModule,
     TypeOrmModule.forFeature([
       Eleccion,
       ConfiguracionComicio,

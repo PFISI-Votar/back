@@ -2,11 +2,13 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
   Inject,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import { AuditLoggerService } from '../audit/audit-logger.service';
 import { EleccionEstado } from '../eleccion/enums/eleccion-estado.enum';
 import { EleccionGateway } from '../eleccion/gateways/eleccion.gateway';
 import { ImportarPadronResponseDto } from './dto/importar-padron-response.dto';
@@ -20,7 +22,10 @@ import { PublicarMerkleResponseDto } from './dto/publicar-merkle-response.dto';
 import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
 import { TipoNovedad } from './enums/tipo-novedad.enum';
 import { MerkleTreeEstado } from './enums/merkle-tree-estado.enum';
-import { IPadronService } from './interfaces/padron.service.interface';
+import {
+  IPadronService,
+  PadronAuditContext,
+} from './interfaces/padron.service.interface';
 import { PADRON_REPOSITORY } from './interfaces/padron.repository.interface';
 import type { IPadronRepository } from './interfaces/padron.repository.interface';
 import { MerkleBuilderService } from './services/merkle-builder.service';
@@ -50,11 +55,35 @@ export class PadronService implements IPadronService {
     private readonly merkleBuilderService: MerkleBuilderService,
     private readonly blockchainService: BlockchainService,
     private readonly eleccionGateway: EleccionGateway,
+    private readonly auditLoggerService: AuditLoggerService,
   ) {}
 
   async importarPadron(
     idEleccion: number,
     archivo: Express.Multer.File,
+    auditContext?: PadronAuditContext,
+  ): Promise<ImportarPadronResponseDto> {
+    try {
+      return await this.ejecutarImportacion(idEleccion, archivo, auditContext);
+    } catch (error) {
+      // VOTAR-370 UAT-03: registrar fallo de integridad sin romper la cadena
+      if (auditContext && this.esFalloIntegridadPadron(error)) {
+        await this.auditLoggerService.logPadronCargaFallida({
+          idEleccion,
+          actorId: auditContext.actorId,
+          nombreArchivo: archivo?.originalname ?? 'desconocido',
+          razon: this.extraerMensajeError(error),
+          ipOrigen: auditContext.ipOrigen,
+        });
+      }
+      throw error;
+    }
+  }
+
+  private async ejecutarImportacion(
+    idEleccion: number,
+    archivo: Express.Multer.File,
+    auditContext?: PadronAuditContext,
   ): Promise<ImportarPadronResponseDto> {
     this.validarArchivo(archivo);
 
@@ -113,12 +142,57 @@ export class PadronService implements IPadronService {
       novedades,
     });
 
+    // VOTAR-370 UAT-02: registro enriquecido de carga exitosa
+    if (auditContext) {
+      const duplicadosExcluidos = novedades.filter(
+        (n) => n.tipo === TipoNovedad.DUPLICADO,
+      ).length;
+      await this.auditLoggerService.logPadronCargado({
+        idEleccion,
+        actorId: auditContext.actorId,
+        nombreArchivo: archivo.originalname,
+        totalProcesados,
+        totalImportados: hashesHoja.length,
+        duplicadosExcluidos,
+        merkleRoot: merkleResult.merkleRootCompact,
+        ipOrigen: auditContext.ipOrigen,
+      });
+    }
+
     return {
       ...base,
       idPadron: padron.idPadron,
       estado: padron.estado,
       fechaGeneracion: padron.fechaGeneracion,
     };
+  }
+
+  private esFalloIntegridadPadron(error: unknown): boolean {
+    return (
+      error instanceof BadRequestException ||
+      (error instanceof HttpException && error.getStatus() === 400)
+    );
+  }
+
+  private extraerMensajeError(error: unknown): string {
+    if (error instanceof HttpException) {
+      const response = error.getResponse();
+      if (typeof response === 'string') {
+        return response;
+      }
+      if (
+        typeof response === 'object' &&
+        response !== null &&
+        'message' in response
+      ) {
+        const message = (response as { message: string | string[] }).message;
+        return Array.isArray(message) ? message.join('; ') : String(message);
+      }
+    }
+    if (error instanceof Error) {
+      return error.message;
+    }
+    return 'Fallo de integridad desconocido';
   }
 
   async obtenerResumen(idEleccion: number): Promise<PadronResumenResponseDto> {

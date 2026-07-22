@@ -32,7 +32,8 @@
     "db:reset": "ts-node -r tsconfig-paths/register scripts/reset-db.ts && npm run seed",
     "admin:register": "node scripts/register-election-admin.mjs",
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs",
-    "sync:election-factory": "ts-node -r tsconfig-paths/register scripts/sync-election-factory.ts"
+    "sync:election-factory": "ts-node -r tsconfig-paths/register scripts/sync-election-factory.ts",
+    "validate:exported-abis": "ts-node -r tsconfig-paths/register scripts/validate-exported-abis.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
