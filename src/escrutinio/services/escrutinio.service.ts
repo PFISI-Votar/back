@@ -130,6 +130,9 @@ export class EscrutinioService {
     });
     const totalVotantesHabilitados = padron?.totalVotantesHabilitados ?? 0;
     const totalVotos = tallies.participation.totalVotes;
+    const votosBlanco = tallies.participation.blankVotes;
+    const votosNulo = tallies.participation.nullVotes;
+    const baseVotosValidos = Math.max(0, totalVotos - votosNulo);
     const porcentajeParticipacion =
       totalVotantesHabilitados > 0
         ? Math.round((totalVotos / totalVotantesHabilitados) * 1000) / 10
@@ -138,7 +141,9 @@ export class EscrutinioService {
       (candidato) => {
         const votos = tallies.votesByCandidateId[candidato.idCandidato] ?? 0;
         const porcentaje =
-          totalVotos > 0 ? Math.round((votos / totalVotos) * 1000) / 10 : 0;
+          baseVotosValidos > 0
+            ? Math.round((votos / baseVotosValidos) * 1000) / 10
+            : 0;
         return {
           idCandidato: candidato.idCandidato,
           nombre: candidato.nombre,
@@ -167,13 +172,14 @@ export class EscrutinioService {
       idEleccion: eleccion.idEleccion,
       nombre: eleccion.nombre,
       estado: eleccion.estado,
+      tipoVotacion: eleccion.tipoVotacion,
       congelado,
       fuente: 'ON_CHAIN',
       actualizadoEn: new Date().toISOString(),
       participacion: {
         totalVotos,
-        votosBlanco: tallies.participation.blankVotes,
-        votosNulo: tallies.participation.nullVotes,
+        votosBlanco,
+        votosNulo,
         totalVotantesHabilitados,
         porcentajeParticipacion,
       },

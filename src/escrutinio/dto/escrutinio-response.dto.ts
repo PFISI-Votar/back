@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import { CandidatoEscrutinioDto } from './candidato-escrutinio.dto';
 import { ParticipacionEscrutinioDto } from './participacion-escrutinio.dto';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 
 export class EscrutinioResponseDto {
   @ApiProperty({ example: 1 })
@@ -12,6 +13,9 @@ export class EscrutinioResponseDto {
 
   @ApiProperty({ enum: EleccionEstado })
   estado: EleccionEstado;
+
+  @ApiProperty({ enum: TipoVotacion, example: TipoVotacion.POR_LISTA })
+  tipoVotacion: TipoVotacion;
 
   @ApiProperty({
     example: false,

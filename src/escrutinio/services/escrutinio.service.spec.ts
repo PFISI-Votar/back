@@ -35,6 +35,7 @@ describe('EscrutinioService — VOTAR-364', () => {
     idEleccion: 7,
     nombre: 'Comicio Test',
     estado: EleccionEstado.ABIERTA,
+    tipoVotacion: 'POR_LISTA',
   } as Eleccion;
 
   const mockConfig = {
@@ -151,6 +152,25 @@ describe('EscrutinioService — VOTAR-364', () => {
       votos: 9,
       porcentaje: 90,
     });
+    expect(actual.tipoVotacion).toBe('POR_LISTA');
+  });
+
+  it('calculates percentages excluding null votes and treating blank as valid base', async () => {
+    arrangeHappyPath();
+    blockchainService.fetchEscrutinioTallies.mockResolvedValue({
+      participation: { totalVotes: 3, blankVotes: 1, nullVotes: 1 },
+      votesByCandidateId: { 10: 1 },
+    });
+
+    const actual = await service.obtenerResultados(7);
+
+    expect(actual.participacion).toMatchObject({
+      totalVotos: 3,
+      votosBlanco: 1,
+      votosNulo: 1,
+    });
+    expect(actual.candidatos[0].votos).toBe(1);
+    expect(actual.candidatos[0].porcentaje).toBe(50);
   });
 
   it('counts blank and null separately from partisan tallies', async () => {
