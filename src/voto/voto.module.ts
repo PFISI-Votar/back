@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditModule } from '@/audit/audit.module';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
+import { CommonRateLimitModule } from '@/common/rate-limit/common-rate-limit.module';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -15,9 +16,6 @@ import { BudPublicController } from '@/voto/controllers/bud-public.controller';
 import { ReciboPublicController } from '@/voto/controllers/recibo-public.controller';
 import { VotoController } from '@/voto/controllers/voto.controller';
 import { RegistroIntentoSufragio } from '@/voto/entities/registro-intento-sufragio.entity';
-import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
-import { ReciboPublicRateLimitGuard } from '@/voto/guards/recibo-public-rate-limit.guard';
-import { VotoEmitidoAnonimoRateLimitGuard } from '@/voto/guards/voto-emitido-anonimo-rate-limit.guard';
 import { ReciboService } from '@/voto/services/recibo.service';
 import { RevotePolicyService } from '@/voto/services/revote-policy.service';
 import { VotoService } from '@/voto/services/voto.service';
@@ -26,6 +24,7 @@ import { VotoService } from '@/voto/services/voto.service';
   imports: [
     AuditModule,
     BlockchainModule,
+    CommonRateLimitModule,
     PadronModule,
     ListaModule,
     TypeOrmModule.forFeature([
@@ -40,13 +39,6 @@ import { VotoService } from '@/voto/services/voto.service';
     ]),
   ],
   controllers: [BudPublicController, VotoController, ReciboPublicController],
-  providers: [
-    VotoService,
-    ReciboService,
-    RevotePolicyService,
-    MerkleProofRateLimitGuard,
-    VotoEmitidoAnonimoRateLimitGuard,
-    ReciboPublicRateLimitGuard,
-  ],
+  providers: [VotoService, ReciboService, RevotePolicyService],
 })
 export class VotoModule {}

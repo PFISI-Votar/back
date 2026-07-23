@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditModule } from '@/audit/audit.module';
+import { CommonRateLimitModule } from '@/common/rate-limit/common-rate-limit.module';
 import { AuthController } from '@/auth/auth.controller';
 import { JwksController } from '@/auth/controllers/jwks.controller';
 import { VotanteAuthController } from '@/auth/controllers/votante-auth.controller';
@@ -75,6 +76,7 @@ import { PadronModule } from '@/padron/padron.module';
       },
     }),
     AuditModule,
+    CommonRateLimitModule,
   ],
   controllers: [AuthController, VotanteAuthController, JwksController],
   providers: [

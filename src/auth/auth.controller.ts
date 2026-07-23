@@ -14,8 +14,8 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { REFRESH_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
-import { AuthResponseDto, AuthUserDto } from '@/auth/dto/auth-response.dto';
 import { LoginDto } from '@/auth/dto/login.dto';
+import { AuthResponseDto, AuthUserDto } from '@/auth/dto/auth-response.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { AuthService } from '@/auth/services/auth.service';
@@ -27,6 +27,10 @@ import {
   setRefreshTokenCookie,
 } from '@/auth/utils/auth-cookie.util';
 import { parseDurationToSeconds } from '@/auth/utils/parse-duration.util';
+import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
+import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
+import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
+import { resolveClientIp } from '@/common/utils/resolve-client-ip.util';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -39,6 +43,8 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(IpRateLimitGuard)
+  @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-login' })
   @ApiOperation({
     summary: 'Iniciar sesión con credenciales de Autogestión UTN',
   })
@@ -50,6 +56,7 @@ export class AuthController {
     type: AuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
+  @ApiResponse({ status: 429, description: 'Rate limit excedido' })
   async login(
     @Body() dto: LoginDto,
     @Req() request: Request,
@@ -65,6 +72,8 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(IpRateLimitGuard)
+  @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-refresh' })
   @ApiOperation({
     summary: 'Renovar sesión usando la cookie de refresh HttpOnly',
   })
@@ -74,6 +83,7 @@ export class AuthController {
     type: AuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Sesión de refresco inválida' })
+  @ApiResponse({ status: 429, description: 'Rate limit excedido' })
   async refresh(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
@@ -160,10 +170,6 @@ export class AuthController {
   }
 
   private resolveClientIp(request: Request): string {
-    const forwarded = request.headers['x-forwarded-for'];
-    if (typeof forwarded === 'string' && forwarded.length > 0) {
-      return forwarded.split(',')[0]?.trim() ?? 'unknown';
-    }
-    return request.ip ?? 'unknown';
+    return resolveClientIp(request);
   }
 }

@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from '@/app.controller';
 import { AppService } from '@/app.service';
+import { CommonRateLimitModule } from '@/common/rate-limit/common-rate-limit.module';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
 import { CategoriasModule } from '@/categoria/categoria.module';
 import { getDatabaseConfig } from '@/config/database.config';
@@ -22,6 +23,7 @@ import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.mo
       validationSchema: envValidationSchema,
       validationOptions: { allowUnknown: true, abortEarly: true },
     }),
+    CommonRateLimitModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

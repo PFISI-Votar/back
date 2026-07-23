@@ -5,6 +5,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
+import { buildCorsOptions } from '@/config/cors.config';
 import {
   applySecurityHeaders,
   resolveIsProduction,
@@ -26,12 +27,7 @@ export const configureApp = (app: NestExpressApplication): void => {
     app.use(requireHttpsMiddleware);
   }
 
-  const frontendUrl =
-    configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';
-  app.enableCors({
-    origin: frontendUrl,
-    credentials: true,
-  });
+  app.enableCors(buildCorsOptions(configService));
 
   app.useGlobalPipes(
     new ValidationPipe({
