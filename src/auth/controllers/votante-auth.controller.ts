@@ -25,6 +25,9 @@ import {
   clearVoterAccessCookie,
   setVoterAccessTokenCookie,
 } from '@/auth/utils/auth-cookie.util';
+import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
+import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
+import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
 
 @ApiTags('auth-votante')
 @Controller('auth/votante')
@@ -36,6 +39,8 @@ export class VotanteAuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(IpRateLimitGuard)
+  @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-votante-login' })
   @ApiOperation({
     summary: 'Iniciar sesión de votante con credenciales institucionales',
   })
@@ -47,6 +52,7 @@ export class VotanteAuthController {
     type: VotanteAuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
+  @ApiResponse({ status: 429, description: 'Rate limit excedido' })
   async login(
     @Body() dto: VotanteLoginDto,
     @Res({ passthrough: true }) response: Response,

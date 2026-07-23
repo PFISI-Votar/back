@@ -1,12 +1,14 @@
 import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
+import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
+import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
 import {
   ClavePublicaReciboResponseDto,
   FirmarReciboDto,
   FirmarReciboResponseDto,
 } from '@/voto/dto/firmar-recibo.dto';
 import { VerificarReciboResponseDto } from '@/voto/dto/verificar-recibo-response.dto';
-import { ReciboPublicRateLimitGuard } from '@/voto/guards/recibo-public-rate-limit.guard';
 import { ReciboService } from '@/voto/services/recibo.service';
 
 /**
@@ -15,7 +17,15 @@ import { ReciboService } from '@/voto/services/recibo.service';
  */
 @ApiTags('recibos')
 @Controller('recibos')
-@UseGuards(ReciboPublicRateLimitGuard)
+@UseGuards(IpRateLimitGuard)
+@RateLimit({
+  tier: RateLimitTier.PUBLIC,
+  bucket: 'recibo-public',
+  maxAttempts: 20,
+  windowMs: 60_000,
+  message:
+    'Demasiadas verificaciones de recibo. Intente nuevamente en un minuto.',
+})
 export class ReciboPublicController {
   constructor(private readonly reciboService: ReciboService) {}
 
