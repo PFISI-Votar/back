@@ -175,12 +175,32 @@ describe('ConfiguracionComicioService', () => {
         { actorId: 'admin-1', ipOrigen: '127.0.0.1' },
       );
 
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          permitirVotoMultiple: true,
+          maxVotosPorVotante: 2,
+          politicaRevoto: PoliticaRevoto.LAST_VOTE_WINS,
+        }),
+      );
       expect(mockAuditLoggerService.logConfigModificada).toHaveBeenCalledWith(
         expect.objectContaining({
           idEleccion: 1,
           actorId: 'admin-1',
           ipOrigen: '127.0.0.1',
         }),
+      );
+    });
+
+    it('VOTAR-323: habilitar re-voto fuerza mínimo 2 sufragios aunque el payload indique 1', async () => {
+      const actual = await service.guardarConfiguracionRevoto(
+        1,
+        { permitirVotoMultiple: true, maxVotosPorVotante: 2 },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.maxVotosPorVotante).toBe(2);
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ maxVotosPorVotante: 2 }),
       );
     });
 

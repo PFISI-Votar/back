@@ -137,7 +137,7 @@ const main = async () => {
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permitirVotoMultiple: true, maxVotosPorVotante: 1 }),
+      body: JSON.stringify({ permitirVotoMultiple: true, maxVotosPorVotante: 2 }),
     },
     cookies,
   );
@@ -145,25 +145,8 @@ const main = async () => {
     fail(`config revoto ${revote.status}: ${JSON.stringify(revote.body)}`);
   }
   log(
-    `   permitirVotoMultiple=${revote.body.permitirVotoMultiple} politica=${revote.body.politicaRevoto}`,
+    `   permitirVotoMultiple=${revote.body.permitirVotoMultiple} maxVotos=${revote.body.maxVotosPorVotante} politica=${revote.body.politicaRevoto}`,
   );
-
-  log('4b) Dev UAT: max_votos_por_votante=2 en BD (VOTAR-324 ampliará la API)');
-  const { Client } = await import('pg');
-  const pg = new Client({
-    host: process.env.DB_HOST ?? 'localhost',
-    port: Number(process.env.DB_PORT ?? 5432),
-    user: process.env.DB_USERNAME ?? 'admin',
-    password: process.env.DB_PASSWORD ?? 'admin',
-    database: process.env.DB_NAME ?? 'votar',
-  });
-  await pg.connect();
-  await pg.query(
-    'UPDATE configuracion_comicio SET max_votos_por_votante = $1 WHERE id_eleccion = $2',
-    [2, idEleccion],
-  );
-  await pg.end();
-  log('   maxVotosPorVotante=2 (solo local — API sigue cap en 1 hasta VOTAR-324)');
 
   log('5) Oferta electoral (categoría + 2 listas)');
   const cat = await api(

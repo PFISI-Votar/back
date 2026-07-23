@@ -19,6 +19,9 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { CrearEleccionValidationException } from '@/eleccion/exceptions/crear-eleccion-validation.exception';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
 
+/** VOTAR-323: re-voto requiere al menos voto inicial + una modificación. */
+const MIN_SUFRAGIOS_CON_REVOTO = 2;
+
 @Injectable()
 export class ConfiguracionComicioService {
   constructor(
@@ -127,7 +130,10 @@ export class ConfiguracionComicioService {
     }
     config.permitirVotoMultiple = true;
     config.politicaRevoto = PoliticaRevoto.LAST_VOTE_WINS;
-    config.maxVotosPorVotante = Math.max(1, dto.maxVotosPorVotante ?? 1);
+    config.maxVotosPorVotante = Math.max(
+      MIN_SUFRAGIOS_CON_REVOTO,
+      dto.maxVotosPorVotante ?? MIN_SUFRAGIOS_CON_REVOTO,
+    );
   }
 
   private toRevotoResponse(

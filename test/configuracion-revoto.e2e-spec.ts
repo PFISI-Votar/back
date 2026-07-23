@@ -151,6 +151,15 @@ describe('ConfiguracionRevoto (e2e) — VOTAR-323', () => {
       .send({ permitirVotoMultiple: true })
       .expect(200);
 
+    const getEnabled = await req
+      .get(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .expect(200);
+    expect(getEnabled.body).toMatchObject({
+      permitirVotoMultiple: true,
+      maxVotosPorVotante: 2,
+      politicaRevoto: PoliticaRevoto.LAST_VOTE_WINS,
+    });
+
     const response = await req
       .put(`/elecciones/${idEleccion}/configuracion-revoto`)
       .send({ permitirVotoMultiple: false })

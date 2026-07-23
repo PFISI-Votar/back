@@ -33,4 +33,14 @@ describe('mapConfiguracionToRevoteConfig (VOTAR-323)', () => {
     expect(actual.maxVotesPerVoter).toBe(3);
     expect(actual.minIntervalSeconds).toBe(60);
   });
+
+  it('VOTAR-323: con re-voto habilitado y max=1 en BD mapea mínimo 2 on-chain', () => {
+    const config = baseConfig();
+    config.permitirVotoMultiple = true;
+    config.politicaRevoto = PoliticaRevoto.LAST_VOTE_WINS;
+    config.maxVotosPorVotante = 1;
+    const actual = mapConfiguracionToRevoteConfig(config);
+    expect(actual.enabled).toBe(true);
+    expect(actual.maxVotesPerVoter).toBe(2);
+  });
 });

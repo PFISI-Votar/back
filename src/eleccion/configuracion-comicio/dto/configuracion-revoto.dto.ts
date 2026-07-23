@@ -21,17 +21,17 @@ export class GuardarConfiguracionRevotoDto {
 
   @ApiPropertyOptional({
     description:
-      'Máximo de sufragios por votante. Solo editable cuando re-voto está habilitado (VOTAR-324 ampliará el rango)',
-    example: 1,
-    minimum: 1,
-    maximum: 1,
+      'Máximo de sufragios por votante. Mínimo 2 con re-voto habilitado (voto inicial + modificación). VOTAR-324 ampliará el rango superior.',
+    example: 2,
+    minimum: 2,
+    maximum: 2,
   })
   @IsOptional()
   @ValidateIf((dto: GuardarConfiguracionRevotoDto) => dto.permitirVotoMultiple)
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  @Max(1)
+  @Min(2)
+  @Max(2)
   maxVotosPorVotante?: number;
 }
 
