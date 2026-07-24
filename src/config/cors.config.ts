@@ -43,7 +43,7 @@ export const buildCorsOptions = (configService: ConfigService): CorsOptions => {
       }
       callback(null, false);
     },
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
       'Content-Type',
       'Authorization',
