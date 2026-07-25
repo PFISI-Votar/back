@@ -13,6 +13,8 @@ import { EstadoRevotoResponseDto } from '@/voto/dto/estado-revoto-response.dto';
 import { RegistroIntentoSufragio } from '@/voto/entities/registro-intento-sufragio.entity';
 
 const ESTADOS_APTOS_VOTO = [EleccionEstado.ABIERTA];
+/** VOTAR-323: re-voto requiere al menos voto inicial + una modificación. */
+const MIN_SUFRAGIOS_CON_REVOTO = 2;
 
 @Injectable()
 export class RevotePolicyService {
@@ -102,7 +104,7 @@ export class RevotePolicyService {
     if (!revoteHabilitado) {
       return 1;
     }
-    return Math.max(1, config.maxVotosPorVotante);
+    return Math.max(MIN_SUFRAGIOS_CON_REVOTO, config.maxVotosPorVotante);
   }
 
   private buildEstado(

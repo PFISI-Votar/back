@@ -1,5 +1,6 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { BlockchainModule } from '@/blockchain/blockchain.module';
 import { CategoriasModule } from '@/categoria/categoria.module';
 import { PadronModule } from '@/padron/padron.module';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
@@ -26,6 +27,7 @@ import { ElectoralImageService } from '@/common/images/electoral-image.service';
     ]),
     RulesEngineModule,
     CategoriasModule,
+    BlockchainModule,
     forwardRef(() => PadronModule),
   ],
   controllers: [ListaController],
