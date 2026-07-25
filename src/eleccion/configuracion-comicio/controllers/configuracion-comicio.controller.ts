@@ -54,7 +54,7 @@ export class ConfiguracionComicioController {
   @ApiResponse({
     status: 422,
     description:
-      'Unprocessable Entity — payload inconsistente (p. ej. maxVotos > 1 con re-voto off)',
+      'Unprocessable Entity — payload inconsistente (p. ej. maxVotos > 1 con re-voto off, o fuera del rango [1, 10])',
   })
   async guardarConfiguracionRevoto(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,

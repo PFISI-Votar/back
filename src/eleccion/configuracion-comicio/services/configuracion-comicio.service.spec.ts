@@ -153,6 +153,41 @@ describe('ConfiguracionComicioService', () => {
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
     });
 
+    it('VOTAR-324: acepta maxVotosPorVotante=10 (tope superior) con re-voto activo', async () => {
+      const actual = await service.guardarConfiguracionRevoto(
+        1,
+        { permitirVotoMultiple: true, maxVotosPorVotante: 10 },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.maxVotosPorVotante).toBe(10);
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ maxVotosPorVotante: 10 }),
+      );
+    });
+
+    it('UAT-02: rechaza maxVotosPorVotante=15 (fuera de [1,10]) con 422 y no persiste', async () => {
+      await expect(
+        service.guardarConfiguracionRevoto(
+          1,
+          { permitirVotoMultiple: true, maxVotosPorVotante: 15 },
+          { actorId: 'admin-1' },
+        ),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(mockConfigRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('VOTAR-324: rechaza maxVotosPorVotante=0 con 422', async () => {
+      await expect(
+        service.guardarConfiguracionRevoto(
+          1,
+          { permitirVotoMultiple: true, maxVotosPorVotante: 0 },
+          { actorId: 'admin-1' },
+        ),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(mockConfigRepository.save).not.toHaveBeenCalled();
+    });
+
     it('lanza 409 si el comicio no está en BORRADOR', async () => {
       mockEleccionRepository.findOne.mockResolvedValue({
         ...baseEleccion,

@@ -1,13 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import {
-  IsBoolean,
-  IsInt,
-  IsOptional,
-  Max,
-  Min,
-  ValidateIf,
-} from 'class-validator';
+import { IsBoolean, IsInt, IsOptional } from 'class-validator';
+import { MAX_SUFRAGIOS_POR_VOTANTE } from '@/eleccion/configuracion-comicio/constants/revoto.constants';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 
 export class GuardarConfiguracionRevotoDto {
@@ -21,17 +15,14 @@ export class GuardarConfiguracionRevotoDto {
 
   @ApiPropertyOptional({
     description:
-      'Máximo de sufragios por votante. Mínimo 2 con re-voto habilitado (voto inicial + modificación). VOTAR-324 ampliará el rango superior.',
+      'Máximo de sufragios por votante. Mínimo 2 con re-voto habilitado (voto inicial + modificación), máximo 10. El rango se valida en el service (HTTP 422), no acá, para no degradar a 400.',
     example: 2,
-    minimum: 2,
-    maximum: 2,
+    minimum: 1,
+    maximum: MAX_SUFRAGIOS_POR_VOTANTE,
   })
   @IsOptional()
-  @ValidateIf((dto: GuardarConfiguracionRevotoDto) => dto.permitirVotoMultiple)
   @Type(() => Number)
   @IsInt()
-  @Min(2)
-  @Max(2)
   maxVotosPorVotante?: number;
 }
 
