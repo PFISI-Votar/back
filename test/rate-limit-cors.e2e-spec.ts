@@ -148,14 +148,14 @@ describe('Rate limiting and CORS (e2e) — VOTAR-380', () => {
       expect([404, 405]).toContain(response.status);
     });
 
-    it('does not allow DELETE in CORS preflight', async () => {
+    it('allows DELETE in CORS preflight (VOTAR-429)', async () => {
       const response = await request(app.getHttpServer())
         .options('/auth/login')
         .set('Origin', allowedOrigin)
         .set('Access-Control-Request-Method', 'DELETE');
       const allowedMethods =
         response.headers['access-control-allow-methods'] ?? '';
-      expect(String(allowedMethods).toUpperCase()).not.toContain('DELETE');
+      expect(String(allowedMethods).toUpperCase()).toContain('DELETE');
     });
   });
 
