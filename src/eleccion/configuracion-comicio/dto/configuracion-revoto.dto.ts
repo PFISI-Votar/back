@@ -1,7 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { IsBoolean, IsInt, IsOptional } from 'class-validator';
-import { MAX_SUFRAGIOS_POR_VOTANTE } from '@/eleccion/configuracion-comicio/constants/revoto.constants';
+import {
+  MAX_INTERVALO_SEGUNDOS,
+  MAX_SUFRAGIOS_POR_VOTANTE,
+} from '@/eleccion/configuracion-comicio/constants/revoto.constants';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 
 export class GuardarConfiguracionRevotoDto {
@@ -24,6 +27,18 @@ export class GuardarConfiguracionRevotoDto {
   @Type(() => Number)
   @IsInt()
   maxVotosPorVotante?: number;
+
+  @ApiPropertyOptional({
+    description:
+      'Intervalo mínimo en segundos entre sufragios de un mismo votante (mitigación de "voto en cadena"). 0 deshabilita el cooldown, máximo 3600. El rango se valida en el service (HTTP 422), no acá, para no degradar a 400.',
+    example: 300,
+    minimum: 0,
+    maximum: MAX_INTERVALO_SEGUNDOS,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  minIntervaloSegundos?: number;
 }
 
 export class ConfiguracionRevotoResponseDto {
@@ -35,6 +50,9 @@ export class ConfiguracionRevotoResponseDto {
 
   @ApiProperty({ example: 1 })
   maxVotosPorVotante: number;
+
+  @ApiProperty({ example: 0 })
+  minIntervaloSegundos: number;
 
   @ApiProperty({ enum: PoliticaRevoto, example: PoliticaRevoto.DISABLED })
   politicaRevoto: PoliticaRevoto;

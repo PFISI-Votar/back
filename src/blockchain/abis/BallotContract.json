@@ -1,6 +1,6 @@
 {
   "contractName": "BallotContract",
-  "abiHash": "0xa21060bfde8d42cba2add6a5e7913966be307be3ac512e834abf62f60d1f6059",
+  "abiHash": "0xa7c849eb4accc6e95fdb86a5ad65d120c208488d30459120520a7b1509e6b2c1",
   "abi": [
     {
       "inputs": [
@@ -23,6 +23,11 @@
           "internalType": "uint16",
           "name": "maxVotesPerVoter_",
           "type": "uint16"
+        },
+        {
+          "internalType": "uint32",
+          "name": "minIntervalSeconds_",
+          "type": "uint32"
         }
       ],
       "stateMutability": "nonpayable",
@@ -52,6 +57,22 @@
     {
       "inputs": [],
       "name": "AdminIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "remainingSeconds",
+          "type": "uint256"
+        }
+      ],
+      "name": "CooldownActive",
       "type": "error"
     },
     {
@@ -532,6 +553,45 @@
     {
       "inputs": [
         {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "nullifier",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getVoterState",
+      "outputs": [
+        {
+          "internalType": "uint16",
+          "name": "votesUsed",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint64",
+          "name": "lastVoteAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint256",
+          "name": "cooldownRemaining",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "blockTimestamp",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "bytes32",
           "name": "role",
           "type": "bytes32"
@@ -647,6 +707,19 @@
     },
     {
       "inputs": [],
+      "name": "minIntervalSeconds",
+      "outputs": [
+        {
+          "internalType": "uint32",
+          "name": "",
+          "type": "uint32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "pause",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -741,6 +814,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-25T22:52:01.381Z",
+  "exportedAt": "2026-07-26T22:28:49.434Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

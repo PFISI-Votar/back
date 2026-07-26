@@ -1,5 +1,7 @@
 import {
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -68,6 +70,22 @@ export class RevotePolicyService {
       });
     }
 
+    // VOTAR-325 — gate off-chain: fuerza la sincronización con el tiempo real de
+    // la red aunque el cliente manipule su reloj local (UAT-02).
+    const proximoReintentoEnSegundos = this.calcularSegundosRestantes(
+      config,
+      registro,
+    );
+    if (proximoReintentoEnSegundos > 0) {
+      throw new HttpException(
+        {
+          message: 'Debe esperar antes de volver a sufragar.',
+          proximoReintentoEnSegundos,
+        },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+
     if (registro.votosConsumidos < maxVotos) {
       registro.votosConsumidos += 1;
       registro.ultimoIntentoAt = new Date();
@@ -106,6 +124,23 @@ export class RevotePolicyService {
     return Math.max(MIN_SUFRAGIOS_CON_REVOTO, config.maxVotosPorVotante);
   }
 
+  /**
+   * VOTAR-325 — segundos restantes de cooldown según `minIntervaloSegundos` y el
+   * último intento registrado. 0 si no hay cooldown activo. Único punto de cálculo,
+   * reutilizado por {buildEstado} (advisory) y {registrarConsumo} (gate 429).
+   */
+  private calcularSegundosRestantes(
+    config: ConfiguracionComicio,
+    registro: RegistroIntentoSufragio | null,
+  ): number {
+    if (!registro?.ultimoIntentoAt || config.minIntervaloSegundos <= 0) {
+      return 0;
+    }
+    const elapsedMs = Date.now() - registro.ultimoIntentoAt.getTime();
+    const remainingMs = config.minIntervaloSegundos * 1000 - elapsedMs;
+    return remainingMs > 0 ? Math.ceil(remainingMs / 1000) : 0;
+  }
+
   private buildEstado(
     config: ConfiguracionComicio,
     registro: RegistroIntentoSufragio | null,
@@ -117,18 +152,12 @@ export class RevotePolicyService {
     const votosConsumidos = registro?.votosConsumidos ?? 0;
     const intentosRestantes = Math.max(0, maxVotosPorVotante - votosConsumidos);
 
-    let proximoReintentoEnSegundos: number | undefined;
-    if (
-      registro?.ultimoIntentoAt &&
-      config.minIntervaloSegundos > 0 &&
+    const segundosRestantes =
       intentosRestantes > 0
-    ) {
-      const elapsedMs = Date.now() - registro.ultimoIntentoAt.getTime();
-      const remainingMs = config.minIntervaloSegundos * 1000 - elapsedMs;
-      if (remainingMs > 0) {
-        proximoReintentoEnSegundos = Math.ceil(remainingMs / 1000);
-      }
-    }
+        ? this.calcularSegundosRestantes(config, registro)
+        : 0;
+    const proximoReintentoEnSegundos =
+      segundosRestantes > 0 ? segundosRestantes : undefined;
 
     const intervaloBloquea =
       typeof proximoReintentoEnSegundos === 'number' &&

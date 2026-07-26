@@ -112,6 +112,7 @@ describe('ConfiguracionComicioService', () => {
         idEleccion: 1,
         permitirVotoMultiple: false,
         maxVotosPorVotante: 1,
+        minIntervaloSegundos: 0,
         politicaRevoto: PoliticaRevoto.DISABLED,
         editable: true,
       });
@@ -186,6 +187,71 @@ describe('ConfiguracionComicioService', () => {
         ),
       ).rejects.toBeInstanceOf(UnprocessableEntityException);
       expect(mockConfigRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('VOTAR-325: acepta minIntervaloSegundos=3600 (tope superior) con re-voto activo', async () => {
+      const actual = await service.guardarConfiguracionRevoto(
+        1,
+        {
+          permitirVotoMultiple: true,
+          maxVotosPorVotante: 2,
+          minIntervaloSegundos: 3600,
+        },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.minIntervaloSegundos).toBe(3600);
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ minIntervaloSegundos: 3600 }),
+      );
+    });
+
+    it('UAT-01: rechaza minIntervaloSegundos=3601 (fuera de [0,3600]) con 422 y no persiste', async () => {
+      await expect(
+        service.guardarConfiguracionRevoto(
+          1,
+          {
+            permitirVotoMultiple: true,
+            maxVotosPorVotante: 2,
+            minIntervaloSegundos: 3601,
+          },
+          { actorId: 'admin-1' },
+        ),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(mockConfigRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('rechaza minIntervaloSegundos > 0 cuando re-voto está inactivo', async () => {
+      await expect(
+        service.guardarConfiguracionRevoto(
+          1,
+          { permitirVotoMultiple: false, minIntervaloSegundos: 60 },
+          { actorId: 'admin-1' },
+        ),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(mockConfigRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('deshabilitar re-voto resetea minIntervaloSegundos a 0', async () => {
+      const config = {
+        ...baseConfig,
+        permitirVotoMultiple: true,
+        maxVotosPorVotante: 3,
+        minIntervaloSegundos: 300,
+        politicaRevoto: PoliticaRevoto.LAST_VOTE_WINS,
+      };
+      mockConfigRepository.findOne.mockResolvedValue(config);
+
+      const actual = await service.guardarConfiguracionRevoto(
+        1,
+        { permitirVotoMultiple: false },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.minIntervaloSegundos).toBe(0);
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ minIntervaloSegundos: 0 }),
+      );
     });
 
     it('lanza 409 si el comicio no está en BORRADOR', async () => {
