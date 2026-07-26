@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { MIN_SUFRAGIOS_CON_REVOTO } from '@/eleccion/configuracion-comicio/constants/revoto.constants';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -13,8 +14,6 @@ import { EstadoRevotoResponseDto } from '@/voto/dto/estado-revoto-response.dto';
 import { RegistroIntentoSufragio } from '@/voto/entities/registro-intento-sufragio.entity';
 
 const ESTADOS_APTOS_VOTO = [EleccionEstado.ABIERTA];
-/** VOTAR-323: re-voto requiere al menos voto inicial + una modificación. */
-const MIN_SUFRAGIOS_CON_REVOTO = 2;
 
 @Injectable()
 export class RevotePolicyService {

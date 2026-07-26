@@ -7,6 +7,10 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import {
+  MAX_SUFRAGIOS_POR_VOTANTE,
+  MIN_SUFRAGIOS_CON_REVOTO,
+} from '@/eleccion/configuracion-comicio/constants/revoto.constants';
+import {
   ConfiguracionRevotoResponseDto,
   GuardarConfiguracionRevotoDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-revoto.dto';
@@ -18,9 +22,6 @@ import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { CrearEleccionValidationException } from '@/eleccion/exceptions/crear-eleccion-validation.exception';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
-
-/** VOTAR-323: re-voto requiere al menos voto inicial + una modificación. */
-const MIN_SUFRAGIOS_CON_REVOTO = 2;
 
 @Injectable()
 export class ConfiguracionComicioService {
@@ -107,6 +108,21 @@ export class ConfiguracionComicioService {
   }
 
   private validarDtoRevoto(dto: GuardarConfiguracionRevotoDto): void {
+    if (
+      dto.maxVotosPorVotante !== undefined &&
+      (dto.maxVotosPorVotante < 1 ||
+        dto.maxVotosPorVotante > MAX_SUFRAGIOS_POR_VOTANTE)
+    ) {
+      throw new UnprocessableEntityException({
+        message: 'Configuración de re-voto inválida.',
+        errors: [
+          {
+            field: 'maxVotosPorVotante',
+            message: `Debe estar entre 1 y ${MAX_SUFRAGIOS_POR_VOTANTE}.`,
+          },
+        ],
+      });
+    }
     if (
       !dto.permitirVotoMultiple &&
       dto.maxVotosPorVotante !== undefined &&

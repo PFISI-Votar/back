@@ -92,7 +92,11 @@ describe('ConfiguracionRevoto (e2e) — VOTAR-323', () => {
 
     app = moduleFixture.createNestApplication();
     app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
     );
     await app.init();
 
@@ -183,6 +187,45 @@ describe('ConfiguracionRevoto (e2e) — VOTAR-323', () => {
       .put(`/elecciones/${idEleccion}/configuracion-revoto`)
       .send({ permitirVotoMultiple: false, maxVotosPorVotante: 5 })
       .expect(422);
+  });
+
+  it('VOTAR-324: PUT con maxVotosPorVotante=10 (tope superior) retorna 200', async () => {
+    const response = await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({ permitirVotoMultiple: true, maxVotosPorVotante: 10 })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      permitirVotoMultiple: true,
+      maxVotosPorVotante: 10,
+      politicaRevoto: PoliticaRevoto.LAST_VOTE_WINS,
+    });
+
+    // vuelve a un estado conocido para no afectar los tests siguientes
+    await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({ permitirVotoMultiple: false })
+      .expect(200);
+  });
+
+  it('UAT-02: intrusión con maxVotosPorVotante=15 retorna 422 y no persiste cambios', async () => {
+    const before = await dataSource
+      .getRepository(ConfiguracionComicio)
+      .findOne({
+        where: { idEleccion },
+      });
+
+    await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({ permitirVotoMultiple: true, maxVotosPorVotante: 15 })
+      .expect(422);
+
+    const after = await dataSource.getRepository(ConfiguracionComicio).findOne({
+      where: { idEleccion },
+    });
+    expect(after?.permitirVotoMultiple).toBe(before?.permitirVotoMultiple);
+    expect(after?.maxVotosPorVotante).toBe(before?.maxVotosPorVotante);
+    expect(after?.politicaRevoto).toBe(before?.politicaRevoto);
   });
 
   it('PUT en comicio CONFIGURADA retorna 409', async () => {
