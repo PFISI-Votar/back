@@ -19,6 +19,7 @@ import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
+import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 import type { CampoCandidatoDefinicion } from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
 import { mapDefinicionToEntity } from '@/eleccion/candidato/mappers/campo-datos-candidato.mapper';
 import { AuditLog } from '@/audit/entities/audit-log.entity';
@@ -226,6 +227,20 @@ describe('ListaCandidato (e2e)', () => {
     );
     idEleccion = eleccion.idEleccion;
     await seedConfig(idEleccion);
+
+    const configComicioRepo = dataSource.getRepository(ConfiguracionComicio);
+    await configComicioRepo.save(
+      configComicioRepo.create({
+        idEleccion,
+        metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+        permitirVotoEnBlanco: false,
+        permitirVotoMultiple: false,
+        maxVotosPorVotante: 1,
+        minIntervaloSegundos: 0,
+        mostrarResultadosTiempoReal: false,
+        politicaRevoto: PoliticaRevoto.DISABLED,
+      }),
+    );
 
     const listaRes = await req
       .post(`/elecciones/${idEleccion}/listas`)

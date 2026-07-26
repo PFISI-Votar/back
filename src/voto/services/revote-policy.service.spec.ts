@@ -141,6 +141,31 @@ describe('RevotePolicyService (VOTAR-328)', () => {
     expect(estado.puedeVotar).toBe(true);
   });
 
+  it('VOTAR-323: con re-voto habilitado y maxVotos=1 en BD expone mínimo 2 sufragios', async () => {
+    const { service } = createService({
+      config: { maxVotosPorVotante: 1 },
+      registro: null,
+    });
+
+    const estado = await service.obtenerEstado(1, VOTANTE_HASH);
+
+    expect(estado.maxVotosPorVotante).toBe(2);
+    expect(estado.intentosRestantes).toBe(2);
+    expect(estado.puedeVotar).toBe(true);
+  });
+
+  it('VOTAR-323: tras el primer voto con re-voto (max=2) queda 1 intento para modificar', async () => {
+    const { service } = createService({
+      config: { maxVotosPorVotante: 2 },
+      registro: { votosConsumidos: 1, ultimoIntentoAt: new Date() },
+    });
+
+    const estado = await service.obtenerEstado(1, VOTANTE_HASH);
+
+    expect(estado.intentosRestantes).toBe(1);
+    expect(estado.puedeVotar).toBe(true);
+  });
+
   it('bloquea puedeVotar mientras corre el intervalo mínimo', async () => {
     const { service } = createService({
       config: { minIntervaloSegundos: 120 },

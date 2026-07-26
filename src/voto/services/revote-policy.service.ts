@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { MIN_SUFRAGIOS_CON_REVOTO } from '@/eleccion/configuracion-comicio/constants/revoto.constants';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -102,7 +103,7 @@ export class RevotePolicyService {
     if (!revoteHabilitado) {
       return 1;
     }
-    return Math.max(1, config.maxVotosPorVotante);
+    return Math.max(MIN_SUFRAGIOS_CON_REVOTO, config.maxVotosPorVotante);
   }
 
   private buildEstado(

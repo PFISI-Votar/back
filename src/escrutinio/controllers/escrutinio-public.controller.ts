@@ -7,13 +7,21 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
+import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
+import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
 import { EscrutinioResponseDto } from '@/escrutinio/dto/escrutinio-response.dto';
-import { EscrutinioPublicRateLimitGuard } from '@/escrutinio/guards/escrutinio-public-rate-limit.guard';
 import { EscrutinioService } from '@/escrutinio/services/escrutinio.service';
 
 @ApiTags('escrutinio')
 @Controller('elecciones/:idEleccion')
-@UseGuards(EscrutinioPublicRateLimitGuard)
+@UseGuards(IpRateLimitGuard)
+@RateLimit({
+  tier: RateLimitTier.PUBLIC,
+  bucket: 'escrutinio-public',
+  message:
+    'Demasiadas consultas de resultados. Intente nuevamente en un minuto.',
+})
 export class EscrutinioPublicController {
   constructor(private readonly escrutinioService: EscrutinioService) {}
 

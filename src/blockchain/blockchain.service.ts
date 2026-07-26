@@ -26,6 +26,7 @@ import { VOTE_REGISTRY_CONTRACT_ABI } from './constants/vote-registry-contract.a
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
 import { ContratoBlockchainService } from './services/contrato-blockchain.service';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import type { RevoteConfigOnChain } from '@/eleccion/configuracion-comicio/mappers/revote-config.mapper';
 
 export type VoteParticipationOnChain = {
   txHash: string;
@@ -39,6 +40,12 @@ export type ElectionContractAddresses = {
   ballot: string;
   voteRegistry: string;
   auditView: string;
+};
+
+export type DeployElectionStackResult = ElectionContractAddresses & {
+  txHash: string;
+  blockNumber: number;
+  alreadyDeployed: boolean;
 };
 
 export type ParticipationStatsOnChain = {
@@ -451,6 +458,144 @@ export class BlockchainService {
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
+    };
+  }
+
+  /**
+   * VOTAR-323: deploys per-election stack via ElectionFactory.createElection,
+   * sealing RevoteConfig.enabled for the comicio lifecycle.
+   */
+  async deployElectionStack(
+    idEleccion: number,
+    revoteConfig: RevoteConfigOnChain,
+  ): Promise<DeployElectionStackResult> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const privateKey = this.configService.get<string>(
+      'ELECTION_ADMIN_PRIVATE_KEY',
+    );
+
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'El despliegue on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+      );
+    }
+
+    let factoryAddress: string;
+    try {
+      const factoryPayload =
+        await this.contratoBlockchainService.getElectionFactory();
+      factoryAddress = factoryPayload.direccionContrato;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new ServiceUnavailableException(
+          'ElectionFactory no registrada en PostgreSQL. Ejecutá sync:election-factory tras el deploy.',
+        );
+      }
+      throw error;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const readFactory = new Contract(
+      factoryAddress,
+      ELECTION_FACTORY_CONTRACT_ABI,
+      provider,
+    ) as unknown as ElectionFactoryContract;
+
+    let existing: Awaited<ReturnType<ElectionFactoryContract['getElection']>>;
+    try {
+      existing = await readFactory.getElection(idEleccion);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar el deployment del comicio on-chain: ${message}`,
+      );
+    }
+
+    if (
+      existing.exists &&
+      existing.ballot &&
+      existing.ballot !== ZeroAddress &&
+      existing.voteRegistry &&
+      existing.voteRegistry !== ZeroAddress
+    ) {
+      return {
+        ballot: existing.ballot,
+        voteRegistry: existing.voteRegistry,
+        auditView: existing.auditView,
+        txHash: '',
+        blockNumber: 0,
+        alreadyDeployed: true,
+      };
+    }
+
+    const wallet = new Wallet(privateKey, provider);
+    const writeFactory = new Contract(
+      factoryAddress,
+      ELECTION_FACTORY_CONTRACT_ABI,
+      wallet,
+    ) as unknown as {
+      createElection: (
+        electionId: number,
+        config: RevoteConfigOnChain,
+      ) => Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await writeFactory.createElection(idEleccion, revoteConfig);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      if (
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee DEFAULT_ADMIN_ROLE en ElectionFactory.',
+        );
+      }
+      if (message.includes('ElectionAlreadyExists')) {
+        const redeployed = await readFactory.getElection(idEleccion);
+        return {
+          ballot: redeployed.ballot,
+          voteRegistry: redeployed.voteRegistry,
+          auditView: redeployed.auditView,
+          txHash: '',
+          blockNumber: 0,
+          alreadyDeployed: true,
+        };
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo desplegar el stack electoral on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'La transacción createElection no devolvió recibo de confirmación.',
+      );
+    }
+
+    const deployed = await readFactory.getElection(idEleccion);
+    if (!deployed.exists) {
+      throw new ServiceUnavailableException(
+        'createElection se confirmó pero getElection indica que el comicio no existe.',
+      );
+    }
+
+    return {
+      ballot: deployed.ballot,
+      voteRegistry: deployed.voteRegistry,
+      auditView: deployed.auditView,
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      alreadyDeployed: false,
     };
   }
 

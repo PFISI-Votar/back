@@ -9,10 +9,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
+import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
+import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
 import { BoletaDigitalResponseDto } from '@/voto/dto/boleta-digital-response.dto';
 import { BudConfigResponseDto } from '@/voto/dto/bud-config-response.dto';
 import { VotoEmitidoAnonimoResponseDto } from '@/voto/dto/voto-emitido-anonimo-response.dto';
-import { VotoEmitidoAnonimoRateLimitGuard } from '@/voto/guards/voto-emitido-anonimo-rate-limit.guard';
 import { VotoService } from '@/voto/services/voto.service';
 
 @ApiTags('voto')
@@ -55,7 +57,15 @@ export class BudPublicController {
 
   @Post('votos/emitido-anonimo')
   @HttpCode(HttpStatus.CREATED)
-  @UseGuards(VotoEmitidoAnonimoRateLimitGuard)
+  @UseGuards(IpRateLimitGuard)
+  @RateLimit({
+    tier: RateLimitTier.VOTE,
+    bucket: 'voto-emitido-anonimo',
+    maxAttempts: 30,
+    windowMs: 60_000,
+    message:
+      'Demasiados registros anónimos de voto. Intente nuevamente en un minuto.',
+  })
   @ApiOperation({
     summary:
       'Registrar evento anónimo VOTO_EMITIDO tras cast on-chain (VOTAR-379 UAT-05)',

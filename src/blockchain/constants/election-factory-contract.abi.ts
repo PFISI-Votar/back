@@ -30,4 +30,27 @@ export const ELECTION_FACTORY_CONTRACT_ABI = [
       },
     ],
   },
+  {
+    type: 'function',
+    name: 'createElection',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'electionId', type: 'uint256' },
+      {
+        name: 'revoteConfig',
+        type: 'tuple',
+        components: [
+          { name: 'enabled', type: 'bool' },
+          { name: 'maxVotesPerVoter', type: 'uint16' },
+          { name: 'minIntervalSeconds', type: 'uint32' },
+          { name: 'policy', type: 'uint8' },
+        ],
+      },
+    ],
+    outputs: [
+      { name: 'ballot', type: 'address' },
+      { name: 'voteRegistry', type: 'address' },
+      { name: 'auditView', type: 'address' },
+    ],
+  },
 ] as const;
