@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0x7f068fc35f6a42292df7770ae3e1a6806d5f8be3e1c827b2f853a1e3b4a7c2b8",
+  "abiHash": "0xf538f9b00ac1bbc1c791e4f7657c1663ca04b5bc7bcc8983dc228ca3900bb066",
   "abi": [
     {
       "inputs": [
@@ -8,6 +8,11 @@
           "internalType": "address",
           "name": "admin",
           "type": "address"
+        },
+        {
+          "internalType": "bool",
+          "name": "revoteEnabled_",
+          "type": "bool"
         }
       ],
       "stateMutability": "nonpayable",
@@ -47,6 +52,11 @@
     {
       "inputs": [],
       "name": "ExpectedPause",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "RevoteDisabled",
       "type": "error"
     },
     {
@@ -519,6 +529,19 @@
       "type": "function"
     },
     {
+      "inputs": [],
+      "name": "revoteEnabled",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [
         {
           "internalType": "bytes4",
@@ -564,6 +587,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-17T15:01:42.471Z",
+  "exportedAt": "2026-07-26T22:28:49.434Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

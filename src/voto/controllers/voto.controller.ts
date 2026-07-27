@@ -22,11 +22,13 @@ import { RolesGuard } from '@/auth/guards/roles.guard';
 import { VoterElectionGuard } from '@/auth/guards/voter-election.guard';
 import { VoterJwtAuthGuard } from '@/auth/guards/voter-jwt-auth.guard';
 import type { VoterAuthenticatedRequest } from '@/auth/interfaces/voter-authenticated-request.interface';
+import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
+import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
+import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
 import { PadronService } from '@/padron/padron.service';
 import { BoletaDigitalResponseDto } from '@/voto/dto/boleta-digital-response.dto';
 import { EstadoRevotoResponseDto } from '@/voto/dto/estado-revoto-response.dto';
 import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
-import { MerkleProofRateLimitGuard } from '@/voto/guards/merkle-proof-rate-limit.guard';
 import { RevotePolicyService } from '@/voto/services/revote-policy.service';
 import { VotoService } from '@/voto/services/voto.service';
 
@@ -60,7 +62,13 @@ export class VotoController {
   }
 
   @Get('merkle-proof')
-  @UseGuards(MerkleProofRateLimitGuard)
+  @UseGuards(IpRateLimitGuard)
+  @RateLimit({
+    tier: RateLimitTier.VOTE,
+    bucket: 'merkle-proof',
+    message:
+      'Demasiadas solicitudes de prueba Merkle. Intente nuevamente en un minuto.',
+  })
   @ApiOperation({
     summary: 'Solicitar Merkle Proof autenticada del padrón (VOTAR-354)',
   })
@@ -111,6 +119,11 @@ export class VotoController {
   @ApiResponse({ status: 401, description: 'Sesión de votante inválida' })
   @ApiResponse({ status: 403, description: 'Comicio no apto' })
   @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 429,
+    description:
+      'VOTAR-325 — cooldown activo (min_intervalo_segundos). Body incluye proximoReintentoEnSegundos calculado con el reloj del servidor, inmune a la manipulación del reloj del cliente.',
+  })
   registrarConsumoIntento(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
     @Req() request: VoterAuthenticatedRequest,

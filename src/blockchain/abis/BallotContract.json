@@ -1,6 +1,6 @@
 {
   "contractName": "BallotContract",
-  "abiHash": "0xc138582a4389bad41fca440e3ade211f59933a8c89e56b86081a66385511c3fd",
+  "abiHash": "0xa7c849eb4accc6e95fdb86a5ad65d120c208488d30459120520a7b1509e6b2c1",
   "abi": [
     {
       "inputs": [
@@ -18,6 +18,16 @@
           "internalType": "address",
           "name": "voteRegistryAddress",
           "type": "address"
+        },
+        {
+          "internalType": "uint16",
+          "name": "maxVotesPerVoter_",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint32",
+          "name": "minIntervalSeconds_",
+          "type": "uint32"
         }
       ],
       "stateMutability": "nonpayable",
@@ -47,6 +57,22 @@
     {
       "inputs": [],
       "name": "AdminIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "remainingSeconds",
+          "type": "uint256"
+        }
+      ],
+      "name": "CooldownActive",
       "type": "error"
     },
     {
@@ -99,6 +125,11 @@
     },
     {
       "inputs": [],
+      "name": "InvalidMaxVotesPerVoter",
+      "type": "error"
+    },
+    {
+      "inputs": [],
       "name": "InvalidMerkleProof",
       "type": "error"
     },
@@ -118,6 +149,22 @@
           "internalType": "uint256",
           "name": "electionId",
           "type": "uint256"
+        },
+        {
+          "internalType": "uint16",
+          "name": "maxVotes",
+          "type": "uint16"
+        }
+      ],
+      "name": "MaxVotesReached",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
         }
       ],
       "name": "MerkleRootNotPublished",
@@ -129,14 +176,8 @@
       "type": "error"
     },
     {
-      "inputs": [
-        {
-          "internalType": "bytes32",
-          "name": "nullifier",
-          "type": "bytes32"
-        }
-      ],
-      "name": "NullifierAlreadyUsed",
+      "inputs": [],
+      "name": "RevoteDisabled",
       "type": "error"
     },
     {
@@ -512,6 +553,45 @@
     {
       "inputs": [
         {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "nullifier",
+          "type": "bytes32"
+        }
+      ],
+      "name": "getVoterState",
+      "outputs": [
+        {
+          "internalType": "uint16",
+          "name": "votesUsed",
+          "type": "uint16"
+        },
+        {
+          "internalType": "uint64",
+          "name": "lastVoteAt",
+          "type": "uint64"
+        },
+        {
+          "internalType": "uint256",
+          "name": "cooldownRemaining",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "blockTimestamp",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "bytes32",
           "name": "role",
           "type": "bytes32"
@@ -601,12 +681,38 @@
     },
     {
       "inputs": [],
+      "name": "maxVotesPerVoter",
+      "outputs": [
+        {
+          "internalType": "uint16",
+          "name": "",
+          "type": "uint16"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "merkleRootStore",
       "outputs": [
         {
           "internalType": "contract MerkleRootStore",
           "name": "",
           "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "minIntervalSeconds",
+      "outputs": [
+        {
+          "internalType": "uint32",
+          "name": "",
+          "type": "uint32"
         }
       ],
       "stateMutability": "view",
@@ -708,6 +814,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-17T15:01:42.472Z",
+  "exportedAt": "2026-07-26T22:28:49.434Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
