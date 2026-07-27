@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0xf538f9b00ac1bbc1c791e4f7657c1663ca04b5bc7bcc8983dc228ca3900bb066",
+  "abiHash": "0xfcff74e71eaea3008dbe6368773a05ad6a979a002780cd35e946f2c61f14dc14",
   "abi": [
     {
       "inputs": [
@@ -57,6 +57,22 @@
     {
       "inputs": [],
       "name": "RevoteDisabled",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "candidateId",
+          "type": "uint256"
+        }
+      ],
+      "name": "TallyUnderflow",
       "type": "error"
     },
     {
@@ -192,6 +208,37 @@
       "type": "event"
     },
     {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "indexed": true,
+          "internalType": "bytes32",
+          "name": "voterNullifier",
+          "type": "bytes32"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "oldCandidate",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "newCandidate",
+          "type": "uint256"
+        }
+      ],
+      "name": "VoteUpdated",
+      "type": "event"
+    },
+    {
       "inputs": [],
       "name": "BALLOT_ROLE",
       "outputs": [
@@ -251,6 +298,19 @@
           "internalType": "bytes32",
           "name": "",
           "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "SIN_VOTO_PREVIO",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -587,6 +647,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-26T22:28:49.434Z",
+  "exportedAt": "2026-07-27T00:44:15.837Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

@@ -1,6 +1,6 @@
 {
   "contractName": "BallotContract",
-  "abiHash": "0xa7c849eb4accc6e95fdb86a5ad65d120c208488d30459120520a7b1509e6b2c1",
+  "abiHash": "0xf2941f1873bf3ccac89bc4bb204dfe842b77eddc617211eeb1ba78c818fcd40f",
   "abi": [
     {
       "inputs": [
@@ -28,6 +28,11 @@
           "internalType": "uint32",
           "name": "minIntervalSeconds_",
           "type": "uint32"
+        },
+        {
+          "internalType": "enum TallyPolicy",
+          "name": "tallyPolicy_",
+          "type": "uint8"
         }
       ],
       "stateMutability": "nonpayable",
@@ -144,6 +149,11 @@
       "type": "error"
     },
     {
+      "inputs": [],
+      "name": "InvalidTallyPolicy",
+      "type": "error"
+    },
+    {
       "inputs": [
         {
           "internalType": "uint256",
@@ -173,6 +183,11 @@
     {
       "inputs": [],
       "name": "MerkleRootStoreIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "NullifierHasNotVoted",
       "type": "error"
     },
     {
@@ -680,6 +695,30 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "bytes32",
+          "name": "nullifier",
+          "type": "bytes32"
+        }
+      ],
+      "name": "lastVoteIndex",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "maxVotesPerVoter",
       "outputs": [
@@ -795,6 +834,19 @@
     },
     {
       "inputs": [],
+      "name": "tallyPolicy",
+      "outputs": [
+        {
+          "internalType": "enum TallyPolicy",
+          "name": "",
+          "type": "uint8"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "unpause",
       "outputs": [],
       "stateMutability": "nonpayable",
@@ -814,6 +866,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-26T22:28:49.434Z",
+  "exportedAt": "2026-07-27T00:44:15.838Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

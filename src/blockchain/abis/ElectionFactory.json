@@ -1,6 +1,6 @@
 {
   "contractName": "ElectionFactory",
-  "abiHash": "0x81c8407b0b36e9587f421bec10337aba99bce1d4641541da132f7e246017575a",
+  "abiHash": "0xd12374873034c50168b0b37cc8b9260792fd6ba56fb0af061b365df80f92f6b0",
   "abi": [
     {
       "inputs": [
@@ -115,7 +115,7 @@
               "type": "uint32"
             },
             {
-              "internalType": "enum ElectionFactory.TallyPolicy",
+              "internalType": "enum TallyPolicy",
               "name": "policy",
               "type": "uint8"
             }
@@ -333,7 +333,7 @@
               "type": "uint32"
             },
             {
-              "internalType": "enum ElectionFactory.TallyPolicy",
+              "internalType": "enum TallyPolicy",
               "name": "policy",
               "type": "uint8"
             }
@@ -441,7 +441,7 @@
                   "type": "uint32"
                 },
                 {
-                  "internalType": "enum ElectionFactory.TallyPolicy",
+                  "internalType": "enum TallyPolicy",
                   "name": "policy",
                   "type": "uint8"
                 }
@@ -621,6 +621,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-26T22:28:49.436Z",
+  "exportedAt": "2026-07-27T00:56:01.532Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
