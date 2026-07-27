@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
@@ -109,6 +110,8 @@ interface MerkleRootStoreContract {
 
 @Injectable()
 export class BlockchainService {
+  private readonly logger = new Logger(BlockchainService.name);
+
   constructor(
     private readonly configService: ConfigService,
     private readonly contratoBlockchainService: ContratoBlockchainService,
@@ -833,6 +836,103 @@ export class BlockchainService {
   }
 
   /**
+   * VOTAR-345: seals the votable candidate set on VoteRegistry before an
+   * election opens. One-shot on-chain — a second call for the same election
+   * is treated as idempotent (the set is already sealed, not an error) so
+   * retrying `transitionToAbierta` never fails on this step alone.
+   */
+  async registerCandidates(
+    idEleccion: number,
+    candidateIds: number[],
+  ): Promise<{ txHash: string; blockNumber: number; alreadySealed: boolean }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const privateKey = this.configService.get<string>(
+      'ELECTION_ADMIN_PRIVATE_KEY',
+    );
+
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'El sellado del set de candidatos on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+      );
+    }
+
+    const { voteRegistry: voteRegistryAddress } =
+      await this.resolveElectionContracts(idEleccion);
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    const contract = new Contract(
+      voteRegistryAddress,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      wallet,
+    ) as unknown as {
+      registerCandidates(
+        electionId: number,
+        ids: number[],
+      ): Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.registerCandidates(idEleccion, candidateIds);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      // ethers only decodes custom-error names via the contract ABI on
+      // staticCall/call — send()'s internal estimateGas failure (the path
+      // hit here) never populates error.message with the error name, only
+      // the raw revert data. Decode that data ourselves so the string
+      // fallbacks below aren't the only signal.
+      const decodedName = this.decodeVoteRegistryErrorName(error);
+
+      if (
+        decodedName === 'CandidateSetSealed' ||
+        message.includes('CandidateSetSealed')
+      ) {
+        this.logger.warn(
+          `El set de candidatos del comicio ${idEleccion} ya estaba sellado on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', blockNumber: 0, alreadySealed: true };
+      }
+      if (
+        decodedName === 'ReservedCandidateId' ||
+        message.includes('ReservedCandidateId')
+      ) {
+        throw new UnprocessableEntityException(
+          `Uno de los candidatos del comicio ${idEleccion} colisiona con un id reservado (blanco/nulo).`,
+        );
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee ELECTION_ADMIN_ROLE en el VoteRegistry.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo sellar el set de candidatos on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'El sellado del set de candidatos no devolvió recibo de confirmación.',
+      );
+    }
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      alreadySealed: false,
+    };
+  }
+
+  /**
    * VOTAR-365: resolves AuditView + VoteRegistry addresses for an election.
    * Prefers ElectionFactory.getElection; falls back to env vars for local/dev.
    */
@@ -1098,6 +1198,29 @@ export class BlockchainService {
         nuevos: bucket.nuevos,
       };
     });
+  }
+
+  /**
+   * VOTAR-345 — decodes a VoteRegistry custom error name from the raw revert
+   * data on an ethers error. Needed because ethers only auto-decodes custom
+   * errors via the contract ABI on staticCall/call; a real send() (the path
+   * every write in this service takes) surfaces estimateGas failures as
+   * "unknown custom error" in .message, with only the raw hex in .data.
+   */
+  private decodeVoteRegistryErrorName(error: unknown): string | undefined {
+    const err = error as {
+      data?: unknown;
+      info?: { error?: { data?: unknown } };
+    };
+    const data = err?.data ?? err?.info?.error?.data;
+    if (typeof data !== 'string' || !data.startsWith('0x')) {
+      return undefined;
+    }
+    try {
+      return new Interface(VOTE_REGISTRY_CONTRACT_ABI).parseError(data)?.name;
+    } catch {
+      return undefined;
+    }
   }
 
   private requireRpcUrl(): string {

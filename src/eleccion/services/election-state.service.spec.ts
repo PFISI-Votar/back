@@ -10,12 +10,14 @@ import { Repository } from 'typeorm';
 import { ElectionStateService } from './election-state.service';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { OfertaElectoralQueryService } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 
 describe('ElectionStateService', () => {
   let service: ElectionStateService;
   let eleccionRepository: jest.Mocked<Repository<Eleccion>>;
   let blockchainService: jest.Mocked<BlockchainService>;
+  let ofertaElectoralQueryService: jest.Mocked<OfertaElectoralQueryService>;
 
   const mockEleccion: Eleccion = {
     idEleccion: 1,
@@ -37,6 +39,16 @@ describe('ElectionStateService', () => {
     const mockBlockchainService = {
       syncElectionState: jest.fn(),
       syncElectionWindow: jest.fn(),
+      registerCandidates: jest.fn(),
+    };
+
+    const mockOfertaElectoralQueryService = {
+      obtenerOfertaPublicada: jest.fn().mockResolvedValue({
+        listas: [
+          { candidatos: [{ idCandidato: 101 }, { idCandidato: 102 }] },
+          { candidatos: [{ idCandidato: 103 }] },
+        ],
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -50,12 +62,17 @@ describe('ElectionStateService', () => {
           provide: BlockchainService,
           useValue: mockBlockchainService,
         },
+        {
+          provide: OfertaElectoralQueryService,
+          useValue: mockOfertaElectoralQueryService,
+        },
       ],
     }).compile();
 
     service = module.get<ElectionStateService>(ElectionStateService);
     eleccionRepository = module.get(getRepositoryToken(Eleccion));
     blockchainService = module.get(BlockchainService);
+    ofertaElectoralQueryService = module.get(OfertaElectoralQueryService);
   });
 
   afterEach(() => {
@@ -69,6 +86,11 @@ describe('ElectionStateService', () => {
       eleccionRepository.save.mockResolvedValue({
         ...eleccion,
         estado: EleccionEstado.ABIERTA,
+      });
+      blockchainService.registerCandidates.mockResolvedValue({
+        txHash: '0xcand',
+        blockNumber: 12343,
+        alreadySealed: false,
       });
       blockchainService.syncElectionWindow.mockResolvedValue({
         txHash: '0xwin',
@@ -84,6 +106,13 @@ describe('ElectionStateService', () => {
       expect(eleccionRepository.findOne).toHaveBeenCalledWith({
         where: { idEleccion: 1 },
       });
+      expect(
+        ofertaElectoralQueryService.obtenerOfertaPublicada,
+      ).toHaveBeenCalledWith(1);
+      expect(blockchainService.registerCandidates).toHaveBeenCalledWith(
+        1,
+        [101, 102, 103],
+      );
       expect(blockchainService.syncElectionWindow).toHaveBeenCalledWith(
         1,
         eleccion.fechaInicio,
@@ -97,9 +126,14 @@ describe('ElectionStateService', () => {
         ...eleccion,
         estado: EleccionEstado.ABIERTA,
       });
+      const registerOrder =
+        blockchainService.registerCandidates.mock.invocationCallOrder[0];
+      const windowOrder =
+        blockchainService.syncElectionWindow.mock.invocationCallOrder[0];
       const syncOrder =
         blockchainService.syncElectionState.mock.invocationCallOrder[0];
       const saveOrder = eleccionRepository.save.mock.invocationCallOrder[0];
+      expect(registerOrder).toBeLessThan(windowOrder);
       expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.ABIERTA);
     });
@@ -130,6 +164,11 @@ describe('ElectionStateService', () => {
     it('should not persist DB state when blockchain sync fails', async () => {
       const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
       eleccionRepository.findOne.mockResolvedValue(eleccion);
+      blockchainService.registerCandidates.mockResolvedValue({
+        txHash: '0xcand',
+        blockNumber: 1,
+        alreadySealed: false,
+      });
       blockchainService.syncElectionWindow.mockResolvedValue({
         txHash: '0xwin',
         blockNumber: 1,
@@ -146,6 +185,22 @@ describe('ElectionStateService', () => {
         1,
         EleccionEstado.ABIERTA,
       );
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should not sync window/state when registerCandidates fails (VOTAR-345)', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      blockchainService.registerCandidates.mockRejectedValue(
+        new ServiceUnavailableException('Blockchain error'),
+      );
+
+      await expect(service.transitionToAbierta(1)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+
+      expect(blockchainService.syncElectionWindow).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
       expect(eleccionRepository.save).not.toHaveBeenCalled();
     });
   });

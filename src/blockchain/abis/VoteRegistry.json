@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0xfcff74e71eaea3008dbe6368773a05ad6a979a002780cd35e946f2c61f14dc14",
+  "abiHash": "0x921ad2f7ff680f24ed6760b690774be43c97f61e430169518848278671197433",
   "abi": [
     {
       "inputs": [
@@ -45,6 +45,33 @@
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "CandidateSetNotRegistered",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "CandidateSetSealed",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EmptyCandidateSet",
+      "type": "error"
+    },
+    {
       "inputs": [],
       "name": "EnforcedPause",
       "type": "error"
@@ -52,6 +79,33 @@
     {
       "inputs": [],
       "name": "ExpectedPause",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "candidateId",
+          "type": "uint256"
+        }
+      ],
+      "name": "InvalidCandidateId",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "candidateId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ReservedCandidateId",
       "type": "error"
     },
     {
@@ -74,6 +128,25 @@
       ],
       "name": "TallyUnderflow",
       "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "indexed": false,
+          "internalType": "uint256",
+          "name": "candidateCount",
+          "type": "uint256"
+        }
+      ],
+      "name": "CandidateSetRegistered",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -510,6 +583,49 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "isCandidateSetSealed",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "candidateId",
+          "type": "uint256"
+        }
+      ],
+      "name": "isVotableCandidate",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -548,6 +664,24 @@
         }
       ],
       "name": "recordVote",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256[]",
+          "name": "ids",
+          "type": "uint256[]"
+        }
+      ],
+      "name": "registerCandidates",
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
@@ -647,6 +781,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-27T00:44:15.837Z",
+  "exportedAt": "2026-07-27T12:24:26.041Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

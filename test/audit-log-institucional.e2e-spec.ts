@@ -28,6 +28,8 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
+import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
+import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
@@ -115,6 +117,11 @@ describe('Audit Log institucional (e2e) — VOTAR-370', () => {
       buildExplorerUrl: jest.fn(
         (hash: string) => `https://sepolia.etherscan.io/tx/${hash}`,
       ),
+      registerCandidates: jest.fn().mockResolvedValue({
+        txHash: '0xcandidates',
+        blockNumber: 1,
+        alreadySealed: false,
+      }),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -228,6 +235,43 @@ describe('Audit Log institucional (e2e) — VOTAR-370', () => {
     await eleccionRepo.update(
       { idEleccion },
       { estado: EleccionEstado.CONFIGURADA },
+    );
+
+    // VOTAR-345 — transitionToAbierta now resolves candidateIds from the
+    // published oferta electoral before sealing them on VoteRegistry.
+    const boletaRepo = dataSource.getRepository(Boleta);
+    const boleta = await boletaRepo.findOneByOrFail({ idEleccion });
+    await boletaRepo.update(
+      { idBoleta: boleta.idBoleta },
+      { estado: EstadoBoleta.PUBLICADA },
+    );
+
+    const categoria = await dataSource.getRepository(Categoria).save(
+      dataSource.getRepository(Categoria).create({
+        idBoleta: boleta.idBoleta,
+        nombre: 'Presidente',
+        orden: 1,
+      }),
+    );
+
+    const lista = await dataSource.getRepository(Lista).save(
+      dataSource.getRepository(Lista).create({
+        idBoleta: boleta.idBoleta,
+        nombre: 'Lista A',
+        sigla: 'A',
+        estado: EstadoLista.OFICIALIZADA,
+        listId: 1,
+      }),
+    );
+
+    await dataSource.getRepository(Candidato).save(
+      dataSource.getRepository(Candidato).create({
+        idLista: lista.idLista,
+        idCategoria: categoria.idCategoria,
+        nombre: 'Candidata',
+        apellido: 'Uno',
+        datosAdicionales: {},
+      }),
     );
 
     return idEleccion;

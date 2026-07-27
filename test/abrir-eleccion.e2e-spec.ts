@@ -21,7 +21,10 @@ import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { ConfiguracionDatosCandidato } from '@/eleccion/candidato/entities/configuracion-datos-candidato.entity';
 import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
+import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
+import { EstadoLista } from '@/eleccion/lista/enums/estado-lista.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
@@ -83,6 +86,11 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       syncElectionWindow: jest.fn(),
       publishMerkleRoot: jest.fn(),
       buildExplorerUrl: jest.fn(),
+      registerCandidates: jest.fn().mockResolvedValue({
+        txHash: '0xcandidates',
+        blockNumber: 1,
+        alreadySealed: false,
+      }),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({
@@ -186,6 +194,51 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
       treeDump,
     });
     await dataSource.getRepository(MerkleTree).save(merkle);
+
+    // VOTAR-345 — transitionToAbierta now resolves candidateIds from the
+    // published oferta electoral before sealing them on VoteRegistry.
+    await dataSource.getRepository(ConfiguracionComicio).save(
+      dataSource.getRepository(ConfiguracionComicio).create({
+        idEleccion: eleccion.idEleccion,
+        metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+      }),
+    );
+
+    const boleta = await dataSource.getRepository(Boleta).save(
+      dataSource.getRepository(Boleta).create({
+        idEleccion: eleccion.idEleccion,
+        titulo: `Boleta — ${eleccion.nombre}`,
+        estado: EstadoBoleta.PUBLICADA,
+      }),
+    );
+
+    const categoria = await dataSource.getRepository(Categoria).save(
+      dataSource.getRepository(Categoria).create({
+        idBoleta: boleta.idBoleta,
+        nombre: 'Presidente',
+        orden: 1,
+      }),
+    );
+
+    const lista = await dataSource.getRepository(Lista).save(
+      dataSource.getRepository(Lista).create({
+        idBoleta: boleta.idBoleta,
+        nombre: 'Lista A',
+        sigla: 'A',
+        estado: EstadoLista.OFICIALIZADA,
+        listId: 1,
+      }),
+    );
+
+    await dataSource.getRepository(Candidato).save(
+      dataSource.getRepository(Candidato).create({
+        idLista: lista.idLista,
+        idCategoria: categoria.idCategoria,
+        nombre: 'Candidata',
+        apellido: 'Uno',
+        datosAdicionales: {},
+      }),
+    );
 
     return { eleccion, padron, merkle };
   };
