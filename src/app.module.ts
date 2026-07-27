@@ -14,6 +14,7 @@ import { PadronModule } from '@/padron/padron.module';
 import { AuthModule } from '@/auth/auth.module';
 import { VotoModule } from '@/voto/voto.module';
 import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.module';
+import { AuditModule } from '@/audit/audit.module';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.mo
     VotoModule,
     DashboardPublicoModule,
     CategoriasModule,
+    AuditModule,
   ],
   controllers: [AppController],
   providers: [AppService],
