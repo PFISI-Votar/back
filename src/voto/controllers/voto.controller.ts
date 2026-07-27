@@ -119,6 +119,11 @@ export class VotoController {
   @ApiResponse({ status: 401, description: 'Sesión de votante inválida' })
   @ApiResponse({ status: 403, description: 'Comicio no apto' })
   @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 429,
+    description:
+      'VOTAR-325 — cooldown activo (min_intervalo_segundos). Body incluye proximoReintentoEnSegundos calculado con el reloj del servidor, inmune a la manipulación del reloj del cliente.',
+  })
   registrarConsumoIntento(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
     @Req() request: VoterAuthenticatedRequest,

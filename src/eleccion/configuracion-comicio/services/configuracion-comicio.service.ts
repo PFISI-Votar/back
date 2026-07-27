@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import {
+  MAX_INTERVALO_SEGUNDOS,
   MAX_SUFRAGIOS_POR_VOTANTE,
   MIN_SUFRAGIOS_CON_REVOTO,
 } from '@/eleccion/configuracion-comicio/constants/revoto.constants';
@@ -83,6 +84,7 @@ export class ConfiguracionComicioService {
     const antes = {
       permitirVotoMultiple: config.permitirVotoMultiple,
       maxVotosPorVotante: config.maxVotosPorVotante,
+      minIntervaloSegundos: config.minIntervaloSegundos,
       politicaRevoto: config.politicaRevoto,
     };
     this.aplicarPoliticaRevoto(config, dto);
@@ -90,11 +92,13 @@ export class ConfiguracionComicioService {
     const despues = {
       permitirVotoMultiple: guardada.permitirVotoMultiple,
       maxVotosPorVotante: guardada.maxVotosPorVotante,
+      minIntervaloSegundos: guardada.minIntervaloSegundos,
       politicaRevoto: guardada.politicaRevoto,
     };
     if (
       antes.permitirVotoMultiple !== despues.permitirVotoMultiple ||
       antes.maxVotosPorVotante !== despues.maxVotosPorVotante ||
+      antes.minIntervaloSegundos !== despues.minIntervaloSegundos ||
       antes.politicaRevoto !== despues.politicaRevoto
     ) {
       await this.auditLoggerService.logConfigModificada({
@@ -132,6 +136,30 @@ export class ConfiguracionComicioService {
         'No se puede establecer maxVotosPorVotante mayor a 1 cuando el re-voto está deshabilitado.',
       );
     }
+    if (
+      dto.minIntervaloSegundos !== undefined &&
+      (dto.minIntervaloSegundos < 0 ||
+        dto.minIntervaloSegundos > MAX_INTERVALO_SEGUNDOS)
+    ) {
+      throw new UnprocessableEntityException({
+        message: 'Configuración de re-voto inválida.',
+        errors: [
+          {
+            field: 'minIntervaloSegundos',
+            message: `Debe estar entre 0 y ${MAX_INTERVALO_SEGUNDOS}.`,
+          },
+        ],
+      });
+    }
+    if (
+      !dto.permitirVotoMultiple &&
+      dto.minIntervaloSegundos !== undefined &&
+      dto.minIntervaloSegundos > 0
+    ) {
+      throw new UnprocessableEntityException(
+        'No se puede establecer minIntervaloSegundos mayor a 0 cuando el re-voto está deshabilitado.',
+      );
+    }
   }
 
   private aplicarPoliticaRevoto(
@@ -141,6 +169,7 @@ export class ConfiguracionComicioService {
     if (!dto.permitirVotoMultiple) {
       config.permitirVotoMultiple = false;
       config.maxVotosPorVotante = 1;
+      config.minIntervaloSegundos = 0;
       config.politicaRevoto = PoliticaRevoto.DISABLED;
       return;
     }
@@ -150,6 +179,7 @@ export class ConfiguracionComicioService {
       MIN_SUFRAGIOS_CON_REVOTO,
       dto.maxVotosPorVotante ?? MIN_SUFRAGIOS_CON_REVOTO,
     );
+    config.minIntervaloSegundos = dto.minIntervaloSegundos ?? 0;
   }
 
   private toRevotoResponse(
@@ -160,6 +190,7 @@ export class ConfiguracionComicioService {
       idEleccion: config.idEleccion,
       permitirVotoMultiple: config.permitirVotoMultiple,
       maxVotosPorVotante: config.maxVotosPorVotante,
+      minIntervaloSegundos: config.minIntervaloSegundos,
       politicaRevoto: config.politicaRevoto,
       editable: estado === EleccionEstado.BORRADOR,
     };

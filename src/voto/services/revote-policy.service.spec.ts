@@ -1,4 +1,8 @@
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  HttpException,
+  NotFoundException,
+} from '@nestjs/common';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { RevotePolicyService } from '@/voto/services/revote-policy.service';
@@ -181,6 +185,46 @@ describe('RevotePolicyService (VOTAR-328)', () => {
     expect(estado.puedeVotar).toBe(false);
     expect(estado.proximoReintentoEnSegundos).toBeGreaterThan(0);
     expect(estado.proximoReintentoEnSegundos).toBeLessThanOrEqual(120);
+  });
+
+  it('VOTAR-325 UAT-01: registrarConsumo lanza 429 con proximoReintentoEnSegundos mientras corre el cooldown', async () => {
+    const { service, saved } = createService({
+      config: { minIntervaloSegundos: 120 },
+      registro: {
+        votosConsumidos: 1,
+        ultimoIntentoAt: new Date(Date.now() - 30_000),
+      },
+    });
+
+    try {
+      await service.registrarConsumo(1, VOTANTE_HASH);
+      throw new Error('expected registrarConsumo to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(HttpException);
+      const httpError = error as HttpException;
+      expect(httpError.getStatus()).toBe(429);
+      expect(
+        httpError.getResponse() as { proximoReintentoEnSegundos: number },
+      ).toMatchObject({
+        proximoReintentoEnSegundos: expect.any(Number) as number,
+      });
+    }
+    expect(saved).toHaveLength(0);
+  });
+
+  it('VOTAR-325: registrarConsumo incrementa normalmente cuando el cooldown ya venció', async () => {
+    const { service, saved } = createService({
+      config: { minIntervaloSegundos: 60 },
+      registro: {
+        votosConsumidos: 1,
+        ultimoIntentoAt: new Date(Date.now() - 61_000),
+      },
+    });
+
+    const estado = await service.registrarConsumo(1, VOTANTE_HASH);
+
+    expect(saved[0].votosConsumidos).toBe(2);
+    expect(estado.votosConsumidos).toBe(2);
   });
 
   it('no incrementa consumos por encima del máximo', async () => {

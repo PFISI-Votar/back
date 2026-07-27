@@ -208,6 +208,62 @@ describe('ConfiguracionRevoto (e2e) — VOTAR-323', () => {
       .expect(200);
   });
 
+  it('VOTAR-325 UAT-01: PUT con minIntervaloSegundos=300 persiste y expone el campo', async () => {
+    const response = await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({
+        permitirVotoMultiple: true,
+        maxVotosPorVotante: 3,
+        minIntervaloSegundos: 300,
+      })
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      permitirVotoMultiple: true,
+      maxVotosPorVotante: 3,
+      minIntervaloSegundos: 300,
+      politicaRevoto: PoliticaRevoto.LAST_VOTE_WINS,
+    });
+
+    const row = await dataSource.getRepository(ConfiguracionComicio).findOne({
+      where: { idEleccion },
+    });
+    expect(row?.minIntervaloSegundos).toBe(300);
+
+    // vuelve a un estado conocido para no afectar los tests siguientes
+    await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({ permitirVotoMultiple: false })
+      .expect(200);
+  });
+
+  it('VOTAR-325 UAT-01: PUT con minIntervaloSegundos=3601 (fuera de [0,3600]) retorna 422 y no persiste', async () => {
+    const before = await dataSource
+      .getRepository(ConfiguracionComicio)
+      .findOne({ where: { idEleccion } });
+
+    await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({
+        permitirVotoMultiple: true,
+        maxVotosPorVotante: 3,
+        minIntervaloSegundos: 3601,
+      })
+      .expect(422);
+
+    const after = await dataSource.getRepository(ConfiguracionComicio).findOne({
+      where: { idEleccion },
+    });
+    expect(after?.minIntervaloSegundos).toBe(before?.minIntervaloSegundos);
+  });
+
+  it('VOTAR-325: PUT con minIntervaloSegundos>0 y re-voto off retorna 422', async () => {
+    await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({ permitirVotoMultiple: false, minIntervaloSegundos: 60 })
+      .expect(422);
+  });
+
   it('UAT-02: intrusión con maxVotosPorVotante=15 retorna 422 y no persiste cambios', async () => {
     const before = await dataSource
       .getRepository(ConfiguracionComicio)
