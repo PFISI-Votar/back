@@ -9,6 +9,10 @@ import {
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 
+/**
+ * Bitácora institucional append-only (VOTAR-370 encadenamiento, VOTAR-372 inmutabilidad PG).
+ * Solo INSERT vía {@link AuditLoggerService}; UPDATE/DELETE/TRUNCATE bloqueados por triggers.
+ */
 @Entity('audit_log')
 export class AuditLog {
   @PrimaryGeneratedColumn({ name: 'id_log' })
