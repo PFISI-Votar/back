@@ -200,4 +200,28 @@ describe('AuditLogQueryService', () => {
       qb.andWhere.mock.calls.some(([arg]) => arg instanceof Brackets),
     ).toBe(true);
   });
+
+  it('filters by nivel using datos_adicionales column name', async () => {
+    const query = new AuditLogSearchQueryDto();
+    query.nivel = 'ERROR';
+
+    await service.consultarAuditLog(query);
+
+    expect(qb.andWhere.mock.calls).toContainEqual([
+      "log.datos_adicionales->>'nivel' = :nivel",
+      { nivel: 'ERROR' },
+    ]);
+  });
+
+  it('filters by resultado using datos_adicionales column name', async () => {
+    const query = new AuditLogSearchQueryDto();
+    query.resultado = 'RECHAZADO';
+
+    await service.consultarAuditLog(query);
+
+    expect(qb.andWhere.mock.calls).toContainEqual([
+      "log.datos_adicionales->>'resultado' = :resultado",
+      { resultado: 'RECHAZADO' },
+    ]);
+  });
 });

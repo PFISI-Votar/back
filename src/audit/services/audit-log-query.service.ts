@@ -85,12 +85,12 @@ export class AuditLogQueryService {
       qb.andWhere('log.timestamp <= :hasta', { hasta: query.hasta });
     }
     if (query.nivel != null) {
-      qb.andWhere("log.datosAdicionales->>'nivel' = :nivel", {
+      qb.andWhere("log.datos_adicionales->>'nivel' = :nivel", {
         nivel: query.nivel,
       });
     }
     if (query.resultado != null) {
-      qb.andWhere("log.datosAdicionales->>'resultado' = :resultado", {
+      qb.andWhere("log.datos_adicionales->>'resultado' = :resultado", {
         resultado: query.resultado,
       });
     }
