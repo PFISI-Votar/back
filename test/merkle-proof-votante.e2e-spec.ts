@@ -11,6 +11,7 @@ import { App } from 'supertest/types';
 import { DataSource } from 'typeorm';
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { AuthModule } from '@/auth/auth.module';
+import { BlockchainService } from '@/blockchain/blockchain.service';
 import { VOTER_ACCESS_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
@@ -72,6 +73,17 @@ const buildEleccionPayload = () => ({
   fechaFin: new Date(Date.now() + 172800000).toISOString(),
   tipoVotacion: TipoVotacion.POR_LISTA,
   metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+});
+
+const MOCK_BALLOT_CONTRACT_ADDRESS =
+  '0x0000000000000000000000000000000000000001';
+
+const buildBlockchainServiceMock = () => ({
+  resolveElectionContracts: jest.fn().mockResolvedValue({
+    ballot: MOCK_BALLOT_CONTRACT_ADDRESS,
+    voteRegistry: '0x0000000000000000000000000000000000000002',
+    auditView: '0x0000000000000000000000000000000000000003',
+  }),
 });
 
 const buildAutogestionMock = () => ({
@@ -145,6 +157,8 @@ describe('MerkleProofVotante (e2e) — VOTAR-354', () => {
     })
       .overrideProvider(AutogestionService)
       .useValue(buildAutogestionMock())
+      .overrideProvider(BlockchainService)
+      .useValue(buildBlockchainServiceMock())
       .compile();
 
     app = moduleFixture.createNestApplication();
@@ -208,16 +222,19 @@ describe('MerkleProofVotante (e2e) — VOTAR-354', () => {
       .set('Cookie', voterCookie)
       .expect(200);
 
-    const { hashHoja, merkleProof, root } = response.body as {
-      hashHoja: string;
-      merkleProof: string[];
-      root: string;
-    };
+    const { hashHoja, merkleProof, root, ballotContractAddress } =
+      response.body as {
+        hashHoja: string;
+        merkleProof: string[];
+        root: string;
+        ballotContractAddress: string;
+      };
 
     expect(hashHoja).toBe(VOTER_HASH);
     expect(Array.isArray(merkleProof)).toBe(true);
     expect(merkleProof.length).toBeGreaterThan(0);
     expect(root).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(ballotContractAddress).toBe(MOCK_BALLOT_CONTRACT_ADDRESS);
 
     const isValid = StandardMerkleTree.verify(
       root,
@@ -327,6 +344,8 @@ describe('MerkleProofVotante rate limit (e2e) — VOTAR-354', () => {
     })
       .overrideProvider(AutogestionService)
       .useValue(buildAutogestionMock())
+      .overrideProvider(BlockchainService)
+      .useValue(buildBlockchainServiceMock())
       .compile();
 
     app = moduleFixture.createNestApplication();

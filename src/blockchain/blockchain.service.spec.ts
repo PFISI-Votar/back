@@ -19,6 +19,7 @@ const mockGetVotesByCandidate = jest.fn();
 const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
 const mockVoteCastFilter = jest.fn();
+const mockRegisterCandidates = jest.fn();
 
 jest.mock('ethers', () => {
   const actual = jest.requireActual<typeof import('ethers')>('ethers');
@@ -26,6 +27,9 @@ jest.mock('ethers', () => {
     ...actual,
     Contract: jest.fn().mockImplementation((_address: string, abi: unknown) => {
       const abiList = Array.isArray(abi) ? abi : [];
+      const hasRegisterCandidates = abiList.some(
+        (item: { name?: string }) => item.name === 'registerCandidates',
+      );
       const hasVoteCast = abiList.some(
         (item: { name?: string }) => item.name === 'VoteCast',
       );
@@ -35,8 +39,12 @@ jest.mock('ethers', () => {
       const hasGetElection = abiList.some(
         (item: { name?: string }) => item.name === 'getElection',
       );
-      if (hasVoteCast) {
+      // VOTE_REGISTRY_CONTRACT_ABI carries both the VoteCast/VoteUpdated events
+      // and the registerCandidates function fragment in one array (VOTAR-345),
+      // so a real Contract built from it supports both — merge, don't branch.
+      if (hasRegisterCandidates || hasVoteCast) {
         return {
+          registerCandidates: mockRegisterCandidates,
           filters: { VoteCast: mockVoteCastFilter },
           queryFilter: mockQueryFilter,
         };
@@ -60,8 +68,12 @@ jest.mock('ethers', () => {
       getBlock: mockGetBlock,
       getTransactionReceipt: mockGetTransactionReceipt,
     })),
-    Interface: jest.fn().mockImplementation(() => ({
+    Interface: jest.fn().mockImplementation((abi: unknown) => ({
       parseLog: mockParseLog,
+      // Delegate to the real ethers Interface so decodeVoteRegistryErrorName's
+      // custom-error decoding is exercised faithfully in tests, not stubbed.
+      parseError: (data: string) =>
+        new actual.Interface(abi as never).parseError(data),
     })),
   };
 });
@@ -96,6 +108,7 @@ describe('BlockchainService', () => {
     });
     mockPublishRoot.mockResolvedValue({ wait: mockWait });
     mockSetElectionState.mockResolvedValue({ wait: mockWait });
+    mockRegisterCandidates.mockResolvedValue({ wait: mockWait });
     mockWait.mockResolvedValue({
       hash: '0xabc',
       blockNumber: 100,
@@ -273,6 +286,95 @@ describe('BlockchainService', () => {
       await expect(
         service.syncElectionState(42, EleccionEstado.ABIERTA),
       ).rejects.toThrow(/No se pudo sincronizar el estado on-chain/);
+    });
+  });
+
+  describe('registerCandidates — VOTAR-345', () => {
+    it('seals the candidate set and returns tx metadata on success', async () => {
+      const actual = await service.registerCandidates(42, [101, 202]);
+
+      expect(actual).toEqual({
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadySealed: false,
+      });
+      expect(mockRegisterCandidates).toHaveBeenCalledWith(42, [101, 202]);
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(service.registerCandidates(42, [101])).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('treats CandidateSetSealed as idempotent, not an error', async () => {
+      mockRegisterCandidates.mockRejectedValue(
+        new Error('execution reverted: CandidateSetSealed(42)'),
+      );
+
+      const actual = await service.registerCandidates(42, [101]);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadySealed: true,
+      });
+    });
+
+    it('maps ReservedCandidateId to a 422 with a helpful message', async () => {
+      mockRegisterCandidates.mockRejectedValue(
+        new Error('execution reverted: ReservedCandidateId(101)'),
+      );
+
+      await expect(service.registerCandidates(42, [101])).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('maps AccessControl revert to a helpful role message', async () => {
+      mockRegisterCandidates.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(service.registerCandidates(42, [101])).rejects.toThrow(
+        /ELECTION_ADMIN_ROLE/,
+      );
+    });
+
+    it('treats CandidateSetSealed as idempotent when only raw revert .data is present (real send() shape)', async () => {
+      // ethers never populates .message with the decoded error name for a
+      // real send() estimateGas failure — only .data carries the selector.
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xa71d1be20000000000000000000000000000000000000000000000000000000000000010',
+        },
+      );
+      mockRegisterCandidates.mockRejectedValue(rawError);
+
+      const actual = await service.registerCandidates(42, [101]);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadySealed: true,
+      });
+    });
+
+    it('maps ReservedCandidateId from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0x1452bb320000000000000000000000000000000000000000000000000000000000000065',
+        },
+      );
+      mockRegisterCandidates.mockRejectedValue(rawError);
+
+      await expect(service.registerCandidates(42, [101])).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
   });
 

@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { OfertaElectoralQueryService } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 
 /**
@@ -22,12 +23,15 @@ export class ElectionStateService {
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
     private readonly blockchainService: BlockchainService,
+    private readonly ofertaElectoralQueryService: OfertaElectoralQueryService,
   ) {}
 
   /**
    * Transitions an election to the ABIERTA (OPEN) state and syncs with blockchain.
    * This activates the hermetic seal (RootLocked) on-chain before enabling voting off-chain.
-   * Also publishes the voting window so BallotContract can close by `block.timestamp` (VOTAR-321).
+   * Also publishes the voting window so BallotContract can close by `block.timestamp` (VOTAR-321),
+   * and seals the candidate set on VoteRegistry (VOTAR-345) so recordVote only accepts ids from
+   * the published boleta plus VOTO_BLANCO/VOTO_NULO.
    */
   async transitionToAbierta(idEleccion: number): Promise<Eleccion> {
     const eleccion = await this.findEleccionOrFail(idEleccion);
@@ -36,6 +40,8 @@ export class ElectionStateService {
         `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
       );
     }
+    const candidateIds = await this.resolveCandidateIds(idEleccion);
+    await this.blockchainService.registerCandidates(idEleccion, candidateIds);
     await this.blockchainService.syncElectionWindow(
       eleccion.idEleccion,
       eleccion.fechaInicio,
@@ -68,6 +74,18 @@ export class ElectionStateService {
       );
     }
     return this.syncOnChainThenPersist(eleccion, EleccionEstado.ESCRUTADA);
+  }
+
+  private async resolveCandidateIds(idEleccion: number): Promise<number[]> {
+    const oferta =
+      await this.ofertaElectoralQueryService.obtenerOfertaPublicada(idEleccion);
+    return [
+      ...new Set(
+        oferta.listas.flatMap((lista) =>
+          (lista.candidatos ?? []).map((candidato) => candidato.idCandidato),
+        ),
+      ),
+    ];
   }
 
   private async findEleccionOrFail(idEleccion: number): Promise<Eleccion> {

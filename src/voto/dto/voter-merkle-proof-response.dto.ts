@@ -24,4 +24,11 @@ export class VoterMerkleProofResponseDto {
     description: 'Raíz Merkle del comicio (bytes32 con prefijo 0x)',
   })
   root: string;
+
+  @ApiProperty({
+    example: '0x9BBDaC872c5781532ec32A9b14B906751d5B8C61',
+    description:
+      'Address del BallotContract desplegado por ElectionFactory para este comicio (VOTAR-337). El cliente debe firmar y enviar castSignedVote contra esta dirección, no una fija por build.',
+  })
+  ballotContractAddress: string;
 }

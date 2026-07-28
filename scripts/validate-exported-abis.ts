@@ -17,8 +17,7 @@ const REQUIRED_EXPORTS: Array<{
 }> = [
   {
     file: 'MerkleRootStore.json',
-    encode: (iface) =>
-      iface.encodeFunctionData('publishRoot', [1n, ZeroHash]),
+    encode: (iface) => iface.encodeFunctionData('publishRoot', [1n, ZeroHash]),
   },
   {
     file: 'ElectionFactory.json',
@@ -32,6 +31,12 @@ const REQUIRED_EXPORTS: Array<{
           policy: 0,
         },
       ]),
+  },
+  {
+    // VOTAR-345 — registerCandidates is the write BlockchainService.registerCandidates uses.
+    file: 'VoteRegistry.json',
+    encode: (iface) =>
+      iface.encodeFunctionData('registerCandidates', [1n, [101n, 202n]]),
   },
 ];
 
@@ -87,7 +92,9 @@ function main() {
     );
   }
 
-  console.log('[validate:exported-abis] All exported ABIs are usable from NestJS');
+  console.log(
+    '[validate:exported-abis] All exported ABIs are usable from NestJS',
+  );
 }
 
 main();

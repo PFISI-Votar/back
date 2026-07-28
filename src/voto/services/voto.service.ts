@@ -17,6 +17,7 @@ import {
   OfertaElectoralQueryService,
 } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
+import { BlockchainService } from '@/blockchain/blockchain.service';
 import { BudConfigResponseDto } from '@/voto/dto/bud-config-response.dto';
 import {
   BoletaDigitalResponseDto,
@@ -43,6 +44,7 @@ export class VotoService {
     private readonly padronVotanteRepository: Repository<PadronVotante>,
     private readonly ofertaElectoralQueryService: OfertaElectoralQueryService,
     private readonly auditLogger: AuditLoggerService,
+    private readonly blockchainService: BlockchainService,
   ) {}
 
   async obtenerConfiguracionBud(
@@ -102,8 +104,13 @@ export class VotoService {
   ): Promise<BoletaDigitalResponseDto> {
     await this.assertVotanteHabilitado(idEleccion, votanteHash);
     const oferta = await this.obtenerOfertaVoto(idEleccion);
+    const { ballot } =
+      await this.blockchainService.resolveElectionContracts(idEleccion);
 
-    return this.mapOfertaToBoletaDigital(oferta);
+    return {
+      ...this.mapOfertaToBoletaDigital(oferta),
+      ballotContractAddress: ballot,
+    };
   }
 
   /**
