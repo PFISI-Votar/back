@@ -1,0 +1,5 @@
+export enum EstadoLista {
+  BORRADOR = 'BORRADOR',
+  OFICIALIZADA = 'OFICIALIZADA',
+  INHABILITADA = 'INHABILITADA',
+}

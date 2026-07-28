@@ -1,98 +1,127 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# VOTAR — Backend (NestJS)
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+API off-chain del proyecto **VOTAR** (UTN FRVM, Equipo 09): autenticación de autoridad electoral, padrón, cómputo Merkle, publicación on-chain y login de votante.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+- Swagger: `http://localhost:3000/api/docs`
 
-## Description
+## Estado del proyecto — v1.0.0 (MVP)
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+**Versión 1 — MVP: Elecciones en Blockchain Funcionales** (finales de julio de 2026).
 
-## Project setup
+Objetivo: elección funcional extremo a extremo. Alcance cubierto en esta versión:
 
-```bash
-$ npm install
-```
+- **Gestión electoral:** login de autoridad electoral, creación de comicio, categorías, listas y candidatos, importación de padrón CSV con validación de duplicados, apertura y cierre del comicio
+- **Seguridad básica:** control de acceso por roles, login del votante, validación criptográfica de electores, voto en blanco
+- **Votación:** firma criptográfica y transmisión segura del voto
+- **Blockchain y auditoría mínima:** control de unicidad del sufragio (nullifier), eventos on-chain, dashboard público sin login
+- **Verificabilidad:** recibo criptográfico de participación y verificador de voto E2E
+- **Resultados:** visualización, exportación y métricas de participación
 
-## Compile and run the project
+Además de lo planificado, esta versión incorpora funcionalidades adicionales no previstas originalmente para v1, como auditoría (audit log inmutable) y re-voto (política de último voto cuenta), entre otras.
+
+## Requisitos
+
+- Node.js 24+
+- PostgreSQL 16 local en ejecución
+- Repo [`blockchain`](../blockchain) clonado como hermano de `back/` (para publicación Merkle on-chain)
+- Credenciales UTN (Autogestión) para registrar tu usuario como administrador
+
+## Setup inicial
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+cd back
+npm install
+cp .env.example .env
 ```
 
-## Run tests
+Completá en `.env` tus credenciales de DB local y admin UTN:
+
+```env
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=postgres
+DB_PASSWORD=postgres
+DB_NAME=votar
+DEV_ADMIN_NICK=tuLegajo
+DEV_ADMIN_PASSWORD=tuPasswordUTN
+JWT_ISSUER=https://votar.local/idp
+JWT_AUDIENCE=votar-api
+# JWT_JWKS_URI vacío = modo BFF interino (RS256 local + /auth/.well-known/jwks.json)
+```
+
+No hace falta configurar variables de blockchain en local: el repo `blockchain/` las genera en `.env.blockchain.local` (gitignored).
+
+## Desarrollo local
+
+### 1. Blockchain (terminal 1)
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+cd ../blockchain
+npm install
+npm run dev
 ```
 
-## Deployment
+Levanta Hardhat node, despliega contratos, asigna roles y escribe `back/.env.blockchain.local` automáticamente.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
-
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### 2. API (terminal 2)
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+cd back
+npm run dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Esto ejecuta:
 
-## Resources
+1. Espera a PostgreSQL local
+2. Migraciones TypeORM
+3. Registro de tu usuario como `ELECTION_ADMIN` vía Autogestión (solo si no hay admins en la DB y configuraste `DEV_ADMIN_*`)
+4. API NestJS en modo watch (`http://localhost:3000`)
 
-Check out a few resources that may come in handy when working with NestJS:
+### 3. Frontend (terminal 3)
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+```bash
+cd ../front
+npm install
+cp .env.example .env
+npm run dev
+```
 
-## Support
+Panel de gestión: `http://localhost:5173` — login con el mismo nick/password UTN del `.env`.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Variables de entorno de desarrollo
 
-## Stay in touch
+| Variable | Descripción |
+|----------|-------------|
+| `DEV_ADMIN_NICK` | Usuario UTN para registrarte como admin al bootstrap |
+| `DEV_ADMIN_PASSWORD` | Contraseña UTN |
+| `DEV_SEED_DEMO=true` | Carga elecciones demo tras migrar |
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### Comandos útiles
 
-## License
+```bash
+npm run dev:bootstrap   # Solo migrate + admin (sin API)
+npm run dev:api         # Solo NestJS watch (asume infra ya lista)
+npm run admin:register  # Registrar admin manualmente (interactivo)
+```
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+### Verificación E2E blockchain (local)
+
+Con Hardhat (`npm run dev` en `blockchain/`) y la API en marcha (`npm run dev` en `back/`), podés validar el flujo completo de publicación Merkle on-chain:
+
+```bash
+node scripts/test-blockchain-flow.mjs
+```
+
+El script es autocontenido: crea un comicio, importa un padrón CSV de prueba embebido, publica el Merkle root y verifica `isPublished` / `getMerkleRoot` en el contrato local. Requiere `DEV_ADMIN_NICK` y `DEV_ADMIN_PASSWORD` en `.env` (y `.env.blockchain.local` generado por el repo blockchain). Debe terminar con código de salida 0.
+
+## Tests
+
+```bash
+npm run test
+npm run test:e2e
+npm run lint
+```
+
+## Producción / Sepolia
+
+Para testnet, configurá manualmente en `.env` las variables `SEPOLIA_RPC_URL`, `MERKLE_ROOT_STORE_ADDRESS` y `MERKLE_UPDATER_PRIVATE_KEY`. Ver `docs/US-335-sepolia-uat.md`.

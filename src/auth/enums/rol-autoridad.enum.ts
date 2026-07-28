@@ -1,0 +1,5 @@
+export enum RolAutoridad {
+  ELECTION_ADMIN = 'ELECTION_ADMIN',
+  PAUSER = 'PAUSER',
+  MERKLE_UPDATER = 'MERKLE_UPDATER',
+}

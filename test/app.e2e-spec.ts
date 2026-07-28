@@ -1,8 +1,10 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
+import { Test, TestingModule } from '@nestjs/testing';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { App } from 'supertest/types';
-import { AppModule } from './../src/app.module';
+import { AppModule } from '@/app.module';
+import { configureApp } from '@/common/bootstrap/configure-app';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
@@ -12,7 +14,8 @@ describe('AppController (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    configureApp(app);
     await app.init();
   });
 
