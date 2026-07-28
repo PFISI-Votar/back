@@ -440,10 +440,13 @@ export class PadronService implements IPadronService {
       merkle.treeDump,
       votante.indiceHoja,
     );
+    const { ballot } =
+      await this.blockchainService.resolveElectionContracts(idEleccion);
     return {
       hashHoja: votante.hashHoja,
       merkleProof,
       root: merkle.merkleRoot,
+      ballotContractAddress: ballot,
     };
   }
 

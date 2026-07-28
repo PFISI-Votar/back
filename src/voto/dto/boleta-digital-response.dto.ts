@@ -84,4 +84,10 @@ export class BoletaDigitalResponseDto {
 
   @ApiProperty({ type: [CategoriaBoletaDigitalDto] })
   categorias: CategoriaBoletaDigitalDto[];
+
+  @ApiPropertyOptional({
+    description:
+      'Address del BallotContract desplegado por ElectionFactory para este comicio (VOTAR-337). Solo presente en la boleta autenticada del votante — la vista pública no lo expone.',
+  })
+  ballotContractAddress?: string;
 }

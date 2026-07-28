@@ -119,6 +119,13 @@ const createRepositories = () => {
     ofertaElectoralQueryService: {
       obtenerOfertaPublicada: jest.fn().mockResolvedValue(createOfertaMock()),
     },
+    blockchainService: {
+      resolveElectionContracts: jest.fn().mockResolvedValue({
+        ballot: '0x9BBDaC872c5781532ec32A9b14B906751d5B8C61',
+        voteRegistry: '0xa4b0c8f557d40DDDF6E150C31335a77f9c41Bb4F',
+        auditView: '0xe5563E37a547C21f47eDe5A132200246245a16E5',
+      }),
+    },
     queryBuilder,
   };
 };
@@ -133,6 +140,7 @@ const createService = (
     repositories.padronVotanteRepository as never,
     repositories.ofertaElectoralQueryService as never,
     auditLogger as never,
+    repositories.blockchainService as never,
   );
 
 describe('VotoService', () => {
