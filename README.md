@@ -4,6 +4,21 @@ API off-chain del proyecto **VOTAR** (UTN FRVM, Equipo 09): autenticación de au
 
 - Swagger: `http://localhost:3000/api/docs`
 
+## Estado del proyecto — v1.0.0 (MVP)
+
+**Versión 1 — MVP: Elecciones en Blockchain Funcionales** (finales de julio de 2026).
+
+Objetivo: elección funcional extremo a extremo. Alcance cubierto en esta versión:
+
+- **Gestión electoral:** login de autoridad electoral, creación de comicio, categorías, listas y candidatos, importación de padrón CSV con validación de duplicados, apertura y cierre del comicio
+- **Seguridad básica:** control de acceso por roles, login del votante, validación criptográfica de electores, voto en blanco
+- **Votación:** firma criptográfica y transmisión segura del voto
+- **Blockchain y auditoría mínima:** control de unicidad del sufragio (nullifier), eventos on-chain, dashboard público sin login
+- **Verificabilidad:** recibo criptográfico de participación y verificador de voto E2E
+- **Resultados:** visualización, exportación y métricas de participación
+
+Además de lo planificado, esta versión incorpora funcionalidades adicionales no previstas originalmente para v1, como auditoría (audit log inmutable) y re-voto (política de último voto cuenta), entre otras.
+
 ## Requisitos
 
 - Node.js 24+
