@@ -185,7 +185,7 @@ describe('BlockchainService', () => {
         status: 1,
         to: ballot,
         blockNumber: 4582193,
-        logs: [{ topics: ['0x1'], data: '0x' }],
+        logs: [{ address: ballot, topics: ['0x1'], data: '0x' }],
       });
       mockParseLog.mockReturnValue({
         name: 'SignedVoteCast',
@@ -217,6 +217,61 @@ describe('BlockchainService', () => {
 
     it('throws when SignedVoteCast is absent (VOTAR-366 UAT-02)', async () => {
       mockParseLog.mockReturnValue(null);
+      await expect(
+        service.getVoteParticipationByTxHash(txHash),
+      ).rejects.toThrow(/registro de sufragio no pudo ser encontrado/i);
+    });
+
+    it('VOTAR-439: resolves the vote when the election Ballot differs from the legacy global BALLOT_CONTRACT_ADDRESS', async () => {
+      // No env fallback available — forces resolution via ElectionFactory.getElection.
+      mockConfig.get.mockImplementation((key: string) => {
+        const values: Record<string, string> = {
+          SEPOLIA_RPC_URL: 'https://sepolia.example.com',
+        };
+        return values[key];
+      });
+      const perElectionBallot = '0x7777777777777777777777777777777777777777';
+      mockGetTransactionReceipt.mockResolvedValue({
+        hash: txHash,
+        status: 1,
+        to: perElectionBallot,
+        blockNumber: 4582193,
+        logs: [{ address: perElectionBallot, topics: ['0x1'], data: '0x' }],
+      });
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+      mockGetElection.mockResolvedValue({
+        ballot: perElectionBallot,
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        exists: true,
+      });
+
+      const actual = await service.getVoteParticipationByTxHash(txHash);
+
+      expect(actual.idEleccion).toBe(7);
+      expect(actual.contractAddress).toBe(perElectionBallot);
+      expect(mockGetElection).toHaveBeenCalledWith(7);
+    });
+
+    it('VOTAR-439: throws NotFound when the tx targets a different election Ballot than the one resolved for the decoded idEleccion', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        const values: Record<string, string> = {
+          SEPOLIA_RPC_URL: 'https://sepolia.example.com',
+        };
+        return values[key];
+      });
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+      mockGetElection.mockResolvedValue({
+        ballot: '0x8888888888888888888888888888888888888888',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        exists: true,
+      });
+
       await expect(
         service.getVoteParticipationByTxHash(txHash),
       ).rejects.toThrow(/registro de sufragio no pudo ser encontrado/i);
