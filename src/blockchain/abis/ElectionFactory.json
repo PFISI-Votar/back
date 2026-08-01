@@ -621,6 +621,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-31T04:27:48.366Z",
+  "exportedAt": "2026-08-01T16:39:26.307Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
