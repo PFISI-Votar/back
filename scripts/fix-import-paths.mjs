@@ -20,24 +20,48 @@ const replacements = [
   ['@/eleccion/repositories/enums/', '@/eleccion/enums/'],
   ['@/eleccion/common/utils/', '@/common/utils/'],
   ['@/eleccion/utils/', '@/eleccion/mappers/'],
-  ['@/eleccion/controllers/candidato.service', '@/eleccion/services/candidato.service'],
+  [
+    '@/eleccion/controllers/candidato.service',
+    '@/eleccion/services/candidato.service',
+  ],
   [
     '@/eleccion/controllers/configuracion-datos-candidato.service',
     '@/eleccion/services/configuracion-datos-candidato.service',
   ],
   ['@/eleccion/controllers/lista.service', '@/eleccion/services/lista.service'],
-  ['@/eleccion/controllers/oficializacion.service', '@/eleccion/services/oficializacion.service'],
-  ['@/eleccion/controllers/eleccion.service', '@/eleccion/services/eleccion.service'],
-  ['@/eleccion/candidato-datos-validator.service', '@/eleccion/services/candidato-datos-validator.service'],
-  ['@/eleccion/configuracion-datos-candidato.service', '@/eleccion/services/configuracion-datos-candidato.service'],
+  [
+    '@/eleccion/controllers/oficializacion.service',
+    '@/eleccion/services/oficializacion.service',
+  ],
+  [
+    '@/eleccion/controllers/eleccion.service',
+    '@/eleccion/services/eleccion.service',
+  ],
+  [
+    '@/eleccion/candidato-datos-validator.service',
+    '@/eleccion/services/candidato-datos-validator.service',
+  ],
+  [
+    '@/eleccion/configuracion-datos-candidato.service',
+    '@/eleccion/services/configuracion-datos-candidato.service',
+  ],
   ['@/eleccion/candidato.service', '@/eleccion/services/candidato.service'],
   ['@/eleccion/boleta.service', '@/eleccion/services/boleta.service'],
   ['@/eleccion/eleccion.service', '@/eleccion/services/eleccion.service'],
   ['@/eleccion/lista.service', '@/eleccion/services/lista.service'],
-  ['@/eleccion/oficializacion.service', '@/eleccion/services/oficializacion.service'],
-  ['@/eleccion/eleccion.controller', '@/eleccion/controllers/eleccion.controller'],
+  [
+    '@/eleccion/oficializacion.service',
+    '@/eleccion/services/oficializacion.service',
+  ],
+  [
+    '@/eleccion/eleccion.controller',
+    '@/eleccion/controllers/eleccion.controller',
+  ],
   ['@/eleccion/lista.controller', '@/eleccion/controllers/lista.controller'],
-  ['@/eleccion/eleccion.repository', '@/eleccion/repositories/eleccion.repository'],
+  [
+    '@/eleccion/eleccion.repository',
+    '@/eleccion/repositories/eleccion.repository',
+  ],
 ];
 
 const files = execSync('find src test -name "*.ts" -type f', { cwd: root })

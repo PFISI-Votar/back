@@ -96,7 +96,9 @@ const fetchAutogestionPersona = async () => {
   if (!loginData.hashActual) {
     fail('Autogestión no devolvió hashActual');
   }
-  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString('base64');
+  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString(
+    'base64',
+  );
   const userRes = await fetch(`${AUTOGESTION_BASE}/usuarios`, {
     headers: {
       Accept: '*/*',
@@ -123,7 +125,9 @@ const fetchAutogestionPersona = async () => {
 const main = async () => {
   log('0/7 Resolver identidad real desde Autogestión');
   const { dni, email, legajo, nombre } = await fetchAutogestionPersona();
-  console.log(`[merkle-flow] ✓ ${nombre ?? legajo} — dni=${dni}, email=${email}`);
+  console.log(
+    `[merkle-flow] ✓ ${nombre ?? legajo} — dni=${dni}, email=${email}`,
+  );
 
   log('1/7 Login admin electoral');
   const adminLogin = await api('/auth/login', {
@@ -132,7 +136,9 @@ const main = async () => {
     body: JSON.stringify({ nick: NICK, password: PASSWORD }),
   });
   if (!adminLogin.response.ok) {
-    fail(`admin login ${adminLogin.status} — ${JSON.stringify(adminLogin.body)}`);
+    fail(
+      `admin login ${adminLogin.status} — ${JSON.stringify(adminLogin.body)}`,
+    );
   }
   const adminCookies = getCookieHeader(adminLogin.response);
   if (!adminCookies) {
@@ -175,7 +181,9 @@ const main = async () => {
     adminCookies,
   );
   if (!imported.response.ok) {
-    fail(`importar padrón ${imported.status} — ${JSON.stringify(imported.body)}`);
+    fail(
+      `importar padrón ${imported.status} — ${JSON.stringify(imported.body)}`,
+    );
   }
   console.log(
     `[merkle-flow] ✓ procesados=${imported.body.totalProcesados ?? imported.body.totalVotantes ?? '?'}`,
@@ -207,13 +215,17 @@ const main = async () => {
     }),
   });
   if (!voterLogin.response.ok) {
-    fail(`votante login ${voterLogin.status} — ${JSON.stringify(voterLogin.body)}`);
+    fail(
+      `votante login ${voterLogin.status} — ${JSON.stringify(voterLogin.body)}`,
+    );
   }
   const voterCookies = getCookieHeader(voterLogin.response);
   if (!voterCookies) {
     fail('votante login sin cookies');
   }
-  console.log(`[merkle-flow] ✓ votante autenticado (${voterLogin.body.user?.sub})`);
+  console.log(
+    `[merkle-flow] ✓ votante autenticado (${voterLogin.body.user?.sub})`,
+  );
 
   log('6/7 GET /elecciones/:id/merkle-proof (VOTAR-354)');
   const proofRes = await api(
@@ -236,7 +248,9 @@ const main = async () => {
   if (root.toLowerCase() !== adminRoot.toLowerCase()) {
     fail(`root votante ${root} != root admin ${adminRoot}`);
   }
-  console.log(`[merkle-flow] ✓ proof con ${merkleProof.length} hermanos, root coincide`);
+  console.log(
+    `[merkle-flow] ✓ proof con ${merkleProof.length} hermanos, root coincide`,
+  );
 
   log('7/7 Verificación criptográfica (StandardMerkleTree)');
   const dniNorm = dni.trim().replace(/\D/g, '');
@@ -268,7 +282,9 @@ const main = async () => {
     { cwd: backRoot, encoding: 'utf-8' },
   );
   if (verifyScript.status !== 0) {
-    fail(`verify-merkle-proof.mjs falló:\n${verifyScript.stdout}\n${verifyScript.stderr}`);
+    fail(
+      `verify-merkle-proof.mjs falló:\n${verifyScript.stdout}\n${verifyScript.stderr}`,
+    );
   }
   console.log(`[merkle-flow] ✓ ${verifyScript.stdout.trim()}`);
 

@@ -23,14 +23,17 @@ export const envValidationSchema = Joi.object({
   DB_NAME: Joi.string().required(),
   UPLOADS_DIR: Joi.string().default('uploads'),
 
-  LOAD_BLOCKCHAIN_LOCAL: Joi.boolean().truthy('true').falsy('false').default(false),
-  
+  LOAD_BLOCKCHAIN_LOCAL: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+
   /**
    * @deprecated Usar RS256 + JWKS (VOTAR-314).
    * Los access tokens ya no se firman ni verifican con este secret.
    * Mantenido como opcional para no romper entornos que aún lo tengan seteado.
    * Remover en cuanto se confirme que ningún deploy activo lo referencia.
-   * 
+   *
    * Legacy / opcional. Los access tokens usan RS256 + JWKS (VOTAR-314);
    * ya no se firma ni verifica con JWT_SECRET.
    */

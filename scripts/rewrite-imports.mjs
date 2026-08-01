@@ -17,7 +17,9 @@ const toAlias = (importPath, filePath) => {
   }
   const absoluteFile = path.join(root, filePath);
   const absoluteImport = path.resolve(path.dirname(absoluteFile), importPath);
-  const relativeToSrc = path.relative(srcRoot, absoluteImport).replace(/\\/g, '/');
+  const relativeToSrc = path
+    .relative(srcRoot, absoluteImport)
+    .replace(/\\/g, '/');
   if (!relativeToSrc.startsWith('..')) {
     return `@/${relativeToSrc}`;
   }

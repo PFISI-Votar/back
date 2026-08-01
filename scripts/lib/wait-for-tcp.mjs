@@ -9,11 +9,7 @@ export const waitForTcp = (host, port, timeoutMs = 60_000) =>
 
     const tryConnect = () => {
       if (Date.now() - startedAt > timeoutMs) {
-        reject(
-          new Error(
-            `Timeout esperando ${host}:${port} (${timeoutMs}ms)`,
-          ),
-        );
+        reject(new Error(`Timeout esperando ${host}:${port} (${timeoutMs}ms)`));
         return;
       }
 

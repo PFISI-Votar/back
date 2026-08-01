@@ -85,7 +85,9 @@ const fetchAutogestionPersona = async () => {
     fail(`Autogestión login ${loginRes.status}`);
   }
   const loginData = await loginRes.json();
-  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString('base64');
+  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString(
+    'base64',
+  );
   const userRes = await fetch(`${AUTOGESTION_BASE}/usuarios`, {
     headers: {
       Accept: '*/*',
@@ -129,7 +131,9 @@ const main = async () => {
     body: JSON.stringify({ nick: NICK, password: PASSWORD }),
   });
   if (!adminLogin.ok) {
-    fail(`admin login ${adminLogin.status} — ${JSON.stringify(adminLogin.body)}`);
+    fail(
+      `admin login ${adminLogin.status} — ${JSON.stringify(adminLogin.body)}`,
+    );
   }
   const cookies = getCookieHeader(adminLogin.response);
   console.log(`[setup] ✓ ${adminLogin.body.user?.name}`);
@@ -175,7 +179,9 @@ const main = async () => {
     cookies,
   );
   if (!categoria.ok) {
-    fail(`crear categoría ${categoria.status} — ${JSON.stringify(categoria.body)}`);
+    fail(
+      `crear categoría ${categoria.status} — ${JSON.stringify(categoria.body)}`,
+    );
   }
   const idCategoria = categoria.body.idCategoria;
 
@@ -211,7 +217,9 @@ const main = async () => {
       cookies,
     );
     if (!candidato.ok) {
-      fail(`crear candidato ${candidato.status} — ${JSON.stringify(candidato.body)}`);
+      fail(
+        `crear candidato ${candidato.status} — ${JSON.stringify(candidato.body)}`,
+      );
     }
   }
   console.log('[setup] ✓ 2 listas con 1 candidato cada una');
@@ -226,7 +234,9 @@ const main = async () => {
     cookies,
   );
   if (!imported.ok) {
-    fail(`importar padrón ${imported.status} — ${JSON.stringify(imported.body)}`);
+    fail(
+      `importar padrón ${imported.status} — ${JSON.stringify(imported.body)}`,
+    );
   }
   console.log(
     `[setup] ✓ ${imported.body.totalProcesados ?? imported.body.totalVotantes ?? 2} votantes, Merkle GENERADO`,
@@ -239,7 +249,9 @@ const main = async () => {
     cookies,
   );
   if (!oficializar.ok) {
-    fail(`oficializar ${oficializar.status} — ${JSON.stringify(oficializar.body)}`);
+    fail(
+      `oficializar ${oficializar.status} — ${JSON.stringify(oficializar.body)}`,
+    );
   }
   console.log(`[setup] ✓ estado=${oficializar.body.estado}`);
 
@@ -265,7 +277,9 @@ const main = async () => {
     }),
   });
   if (!voterLogin.ok) {
-    fail(`votante login ${voterLogin.status} — ${JSON.stringify(voterLogin.body)}`);
+    fail(
+      `votante login ${voterLogin.status} — ${JSON.stringify(voterLogin.body)}`,
+    );
   }
   const voterCookies = getCookieHeader(voterLogin.response);
   const proof = await api(

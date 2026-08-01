@@ -71,7 +71,9 @@ const login = async (nick, password) => {
     },
   });
   if (!response.ok) {
-    throw new Error(`Login falló (${response.status}): ${await response.text()}`);
+    throw new Error(
+      `Login falló (${response.status}): ${await response.text()}`,
+    );
   }
   const data = await response.json();
   if (!data.hashActual) {
