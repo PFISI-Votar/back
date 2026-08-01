@@ -88,7 +88,9 @@ const fetchPersona = async () => {
   if (!loginRes.ok || !loginData.hashActual) {
     fail('no se pudo obtener persona de Autogestión');
   }
-  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString('base64');
+  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString(
+    'base64',
+  );
   const userRes = await fetch(`${base}/usuarios`, {
     headers: { Accept: '*/*', nick: NICK, Authorization: `Basic ${auth}` },
   });
@@ -256,7 +258,9 @@ const main = async () => {
     cookies,
   );
   if (!listaA.ok || !listaB.ok) {
-    fail(`listas: ${JSON.stringify(listaA.body)} / ${JSON.stringify(listaB.body)}`);
+    fail(
+      `listas: ${JSON.stringify(listaA.body)} / ${JSON.stringify(listaB.body)}`,
+    );
   }
 
   const candidateIds = [];
@@ -349,9 +353,7 @@ const main = async () => {
   await new Promise((r) => setTimeout(r, 500));
   const resultados = await api(`/elecciones/${idEleccion}/resultados`);
   if (!resultados.ok) {
-    fail(
-      `resultados ${resultados.status}: ${JSON.stringify(resultados.body)}`,
-    );
+    fail(`resultados ${resultados.status}: ${JSON.stringify(resultados.body)}`);
   }
 
   console.log(`

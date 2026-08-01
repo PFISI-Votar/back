@@ -90,11 +90,11 @@ Panel de gestión: `http://localhost:5173` — login con el mismo nick/password 
 
 ### Variables de entorno de desarrollo
 
-| Variable | Descripción |
-|----------|-------------|
-| `DEV_ADMIN_NICK` | Usuario UTN para registrarte como admin al bootstrap |
-| `DEV_ADMIN_PASSWORD` | Contraseña UTN |
-| `DEV_SEED_DEMO=true` | Carga elecciones demo tras migrar |
+| Variable             | Descripción                                          |
+| -------------------- | ---------------------------------------------------- |
+| `DEV_ADMIN_NICK`     | Usuario UTN para registrarte como admin al bootstrap |
+| `DEV_ADMIN_PASSWORD` | Contraseña UTN                                       |
+| `DEV_SEED_DEMO=true` | Carga elecciones demo tras migrar                    |
 
 ### Comandos útiles
 

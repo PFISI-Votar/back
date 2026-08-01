@@ -15,8 +15,7 @@ const backRoot = resolve(__dirname, '..');
 
 config({ path: resolve(backRoot, '.env') });
 
-const isTruthy = (value) =>
-  value === true || value === 'true' || value === '1';
+const isTruthy = (value) => value === true || value === 'true' || value === '1';
 
 const logStep = (message) => {
   console.log(`\n[dev] ${message}`);
@@ -34,8 +33,15 @@ const runCommand = (command, args, options = {}) =>
     });
     child.on('error', reject);
     child.on('exit', (code) => {
-      if (code === 0) { resolvePromise(); return; }
-      reject(new Error(`${command} ${args.join(' ')} falló con código de salida ${code}`));
+      if (code === 0) {
+        resolvePromise();
+        return;
+      }
+      reject(
+        new Error(
+          `${command} ${args.join(' ')} falló con código de salida ${code}`,
+        ),
+      );
     });
   });
 
@@ -48,12 +54,23 @@ const runCommandCapture = (command, args, options = {}) =>
       env: { ...process.env, ...options.env },
       shell: isWindows,
     });
-    child.stdout.on('data', (chunk) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk) => { process.stderr.write(chunk); });
+    child.stdout.on('data', (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk) => {
+      process.stderr.write(chunk);
+    });
     child.on('error', reject);
     child.on('exit', (code) => {
-      if (code === 0) { resolvePromise(stdout.trim()); return; }
-      reject(new Error(`${command} ${args.join(' ')} falló con código de salida ${code}`));
+      if (code === 0) {
+        resolvePromise(stdout.trim());
+        return;
+      }
+      reject(
+        new Error(
+          `${command} ${args.join(' ')} falló con código de salida ${code}`,
+        ),
+      );
     });
   });
 

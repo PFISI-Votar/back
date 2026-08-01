@@ -24,9 +24,7 @@ const runOne = async () => {
 };
 
 const main = async () => {
-  console.log(
-    `VOTAR-364 UAT-02: ${concurrency} concurrent GETs → ${url}`,
-  );
+  console.log(`VOTAR-364 UAT-02: ${concurrency} concurrent GETs → ${url}`);
   const results = await Promise.all(
     Array.from({ length: concurrency }, () => runOne()),
   );

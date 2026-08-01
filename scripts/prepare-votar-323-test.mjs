@@ -66,7 +66,9 @@ const fetchPersona = async () => {
   if (!loginRes.ok || !loginData.hashActual) {
     fail(`Autogestión login ${loginRes.status}`);
   }
-  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString('base64');
+  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString(
+    'base64',
+  );
   const userRes = await fetch(`${AUTOGESTION_BASE}/usuarios`, {
     headers: {
       Accept: '*/*',
@@ -127,7 +129,8 @@ const main = async () => {
     },
     cookies,
   );
-  if (!create.ok) fail(`crear ${create.status}: ${JSON.stringify(create.body)}`);
+  if (!create.ok)
+    fail(`crear ${create.status}: ${JSON.stringify(create.body)}`);
   const idEleccion = create.body.idEleccion;
   log(`   idEleccion=${idEleccion}`);
 
@@ -137,7 +140,10 @@ const main = async () => {
     {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ permitirVotoMultiple: true, maxVotosPorVotante: 2 }),
+      body: JSON.stringify({
+        permitirVotoMultiple: true,
+        maxVotosPorVotante: 2,
+      }),
     },
     cookies,
   );
@@ -205,22 +211,32 @@ const main = async () => {
   log('6) Importar padrón (Bruno + dummy)');
   const csv = `dni,email\n${persona.dni},${persona.email}\n30111222,ana@frvm.utn.edu.ar\n`;
   const form = new FormData();
-  form.append('file', new Blob([csv], { type: 'text/csv' }), 'padron-votar-323.csv');
+  form.append(
+    'file',
+    new Blob([csv], { type: 'text/csv' }),
+    'padron-votar-323.csv',
+  );
   const imported = await api(
     `/elecciones/${idEleccion}/padron/import`,
     { method: 'POST', body: form },
     cookies,
   );
-  if (!imported.ok) fail(`padron ${imported.status}: ${JSON.stringify(imported.body)}`);
-  log(`   votantes=${imported.body.totalProcesados ?? imported.body.totalVotantes ?? 2}`);
+  if (!imported.ok)
+    fail(`padron ${imported.status}: ${JSON.stringify(imported.body)}`);
+  log(
+    `   votantes=${imported.body.totalProcesados ?? imported.body.totalVotantes ?? 2}`,
+  );
 
-  log('7) Oficializar (+ deploy createElection si backend tiene ELECTION_ADMIN_PRIVATE_KEY)');
+  log(
+    '7) Oficializar (+ deploy createElection si backend tiene ELECTION_ADMIN_PRIVATE_KEY)',
+  );
   const ofic = await api(
     `/elecciones/${idEleccion}/oficializar`,
     { method: 'POST' },
     cookies,
   );
-  if (!ofic.ok) fail(`oficializar ${ofic.status}: ${JSON.stringify(ofic.body)}`);
+  if (!ofic.ok)
+    fail(`oficializar ${ofic.status}: ${JSON.stringify(ofic.body)}`);
   log(`   estado=${ofic.body.estado}`);
 
   log('8) Publicar Merkle on-chain');
@@ -254,7 +270,9 @@ const main = async () => {
     }),
   });
   if (!voterLogin.ok) {
-    fail(`votante login ${voterLogin.status}: ${JSON.stringify(voterLogin.body)}`);
+    fail(
+      `votante login ${voterLogin.status}: ${JSON.stringify(voterLogin.body)}`,
+    );
   }
   const voterCookies = getCookieHeader(voterLogin.response);
   const estadoRevoto = await api(
@@ -263,7 +281,9 @@ const main = async () => {
     voterCookies,
   );
   if (!estadoRevoto.ok) {
-    fail(`estado-revoto ${estadoRevoto.status}: ${JSON.stringify(estadoRevoto.body)}`);
+    fail(
+      `estado-revoto ${estadoRevoto.status}: ${JSON.stringify(estadoRevoto.body)}`,
+    );
   }
   log(
     `   revoteHabilitado=${estadoRevoto.body.revoteHabilitado} intentosRestantes=${estadoRevoto.body.intentosRestantes}`,

@@ -44,7 +44,9 @@ function parseArgs(argv) {
 function toBytes32Hex(hashHex) {
   const normalized = hashHex.startsWith('0x') ? hashHex.slice(2) : hashHex;
   if (!REGEX_HEX_64.test(normalized)) {
-    throw new Error(`Leaf inválida: se esperaban 64 hex, recibido "${hashHex}"`);
+    throw new Error(
+      `Leaf inválida: se esperaban 64 hex, recibido "${hashHex}"`,
+    );
   }
   return `0x${normalized.toLowerCase()}`;
 }
@@ -56,7 +58,10 @@ function main() {
     process.exit(1);
   }
 
-  const proofArray = proof.split(',').map((item) => item.trim()).filter(Boolean);
+  const proofArray = proof
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean);
   if (proofArray.length === 0) {
     console.error('Error: --proof debe contener al menos un hash hermano.');
     process.exit(1);
@@ -71,7 +76,9 @@ function main() {
   );
 
   if (isValid) {
-    console.log('OK: la prueba de pertenencia es válida para la raíz indicada.');
+    console.log(
+      'OK: la prueba de pertenencia es válida para la raíz indicada.',
+    );
     process.exit(0);
   }
 

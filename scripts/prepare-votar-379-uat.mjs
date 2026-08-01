@@ -66,7 +66,9 @@ const fetchPersona = async () => {
   if (!loginRes.ok || !loginData.hashActual) {
     fail('no se pudo obtener persona de Autogestión');
   }
-  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString('base64');
+  const auth = Buffer.from(`${NICK}:${loginData.hashActual}`).toString(
+    'base64',
+  );
   const userRes = await fetch(`${base}/usuarios`, {
     headers: { Accept: '*/*', nick: NICK, Authorization: `Basic ${auth}` },
   });
@@ -171,7 +173,9 @@ const main = async () => {
     cookies,
   );
   if (!listaA.response.ok || !listaB.response.ok) {
-    fail(`listas: ${JSON.stringify(listaA.body)} / ${JSON.stringify(listaB.body)}`);
+    fail(
+      `listas: ${JSON.stringify(listaA.body)} / ${JSON.stringify(listaB.body)}`,
+    );
   }
 
   for (const [lista, candidato] of [
@@ -201,16 +205,24 @@ const main = async () => {
   log('5) Importar padrón (vos + 2 dummy)');
   const csv = `dni,email\n${persona.dni},${persona.email}\n30111222,ana@frvm.utn.edu.ar\n30222333,votante2@frvm.utn.edu.ar\n`;
   const form = new FormData();
-  form.append('file', new Blob([csv], { type: 'text/csv' }), 'padron-uat-379.csv');
+  form.append(
+    'file',
+    new Blob([csv], { type: 'text/csv' }),
+    'padron-uat-379.csv',
+  );
   const imported = await api(
     `/elecciones/${idEleccion}/padron/import`,
     { method: 'POST', body: form },
     cookies,
   );
   if (!imported.response.ok) {
-    fail(`padron ${imported.response.status}: ${JSON.stringify(imported.body)}`);
+    fail(
+      `padron ${imported.response.status}: ${JSON.stringify(imported.body)}`,
+    );
   }
-  log(`   procesados=${imported.body.totalProcesados ?? imported.body.totalVotantes}`);
+  log(
+    `   procesados=${imported.body.totalProcesados ?? imported.body.totalVotantes}`,
+  );
 
   log('6) Oficializar oferta');
   const ofic = await api(
@@ -230,7 +242,9 @@ const main = async () => {
     cookies,
   );
   if (!publish.response.ok) {
-    fail(`publicar ${publish.response.status}: ${JSON.stringify(publish.body)}`);
+    fail(
+      `publicar ${publish.response.status}: ${JSON.stringify(publish.body)}`,
+    );
   }
   log(`   tx=${publish.body.txHash}`);
 

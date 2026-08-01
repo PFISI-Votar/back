@@ -15,14 +15,20 @@ const cmd = (bin) => (isWindows ? `${bin}.cmd` : bin);
 
 const logReady = () => {
   const port = process.env.PORT ?? 3000;
-  const hasBlockchainEnv = existsSync(resolve(backRoot, '.env.blockchain.local'));
+  const hasBlockchainEnv = existsSync(
+    resolve(backRoot, '.env.blockchain.local'),
+  );
   console.log('\n[dev] API lista');
   console.log(`[dev]   API:     http://localhost:${port}`);
   console.log(`[dev]   Swagger: http://localhost:${port}/api/docs`);
   if (hasBlockchainEnv) {
-    console.log('[dev]   Blockchain: configuración local cargada desde .env.blockchain.local');
+    console.log(
+      '[dev]   Blockchain: configuración local cargada desde .env.blockchain.local',
+    );
   } else {
-    console.warn('[dev]   Blockchain: sin .env.blockchain.local — levantá primero npm run dev en blockchain/');
+    console.warn(
+      '[dev]   Blockchain: sin .env.blockchain.local — levantá primero npm run dev en blockchain/',
+    );
   }
   console.log('[dev] Presioná Ctrl+C para detener la API\n');
 };
