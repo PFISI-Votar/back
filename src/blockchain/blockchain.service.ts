@@ -302,16 +302,7 @@ export class BlockchainService {
   async getVoteParticipationByTxHash(
     txHash: string,
   ): Promise<VoteParticipationOnChain> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const ballotAddress = this.configService.get<string>(
-      'BALLOT_CONTRACT_ADDRESS',
-    );
-
-    if (!rpcUrl || !ballotAddress) {
-      throw new ServiceUnavailableException(
-        'La verificación on-chain no está configurada (SEPOLIA_RPC_URL, BALLOT_CONTRACT_ADDRESS).',
-      );
-    }
+    const rpcUrl = this.requireRpcUrl();
 
     const provider = new JsonRpcProvider(rpcUrl);
     let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
@@ -339,37 +330,48 @@ export class BlockchainService {
       );
     }
 
-    const toAddress = receipt.to?.toLowerCase();
-    if (!toAddress || toAddress !== ballotAddress.toLowerCase()) {
-      throw new NotFoundException(
-        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
-      );
-    }
-
+    // VOTAR-439: cada comicio tiene su propio BallotContract desplegado vía
+    // ElectionFactory (ver resolveElectionContracts), por lo que el idEleccion
+    // se decodifica del evento ANTES de validar la dirección del contrato —
+    // comparar contra un único BALLOT_CONTRACT_ADDRESS fijo rechazaba con 404
+    // cualquier voto de un comicio distinto al que ese valor apuntaba.
     const iface = new Interface(BALLOT_CONTRACT_ABI);
     const voteEvent = receipt.logs
       .map((log: Log) => {
         try {
-          return iface.parseLog({
-            topics: [...log.topics],
-            data: log.data,
-          });
+          return {
+            log,
+            parsed: iface.parseLog({
+              topics: [...log.topics],
+              data: log.data,
+            }),
+          };
         } catch {
           return null;
         }
       })
-      .find((parsed) => parsed?.name === 'SignedVoteCast');
+      .find((entry) => entry?.parsed?.name === 'SignedVoteCast');
 
-    if (!voteEvent) {
+    if (!voteEvent?.parsed) {
       throw new NotFoundException(
         'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
-    const idEleccion = Number(voteEvent.args[0]);
+    const idEleccion = Number(voteEvent.parsed.args[0]);
     if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
       throw new NotFoundException(
         'El evento SignedVoteCast no incluye un id de elección válido.',
+      );
+    }
+
+    const { ballot: ballotAddress } =
+      await this.resolveElectionContracts(idEleccion);
+
+    const eventAddress = voteEvent.log.address?.toLowerCase();
+    if (!eventAddress || eventAddress !== ballotAddress.toLowerCase()) {
+      throw new NotFoundException(
+        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
