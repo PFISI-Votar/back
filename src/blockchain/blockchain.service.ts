@@ -605,6 +605,106 @@ export class BlockchainService {
   }
 
   /**
+   * VOTAR-327: seals the RevoteConfig audit trail on ElectionFactory.
+   * RevoteConfig has no setter — it is frozen since {deployElectionStack}'s
+   * createElection call — so this is a declarative seal, not a functional
+   * guard; see ElectionFactory.lockConfig NatSpec. One-shot on-chain,
+   * idempotent on retry like {lockElectionWindow}.
+   */
+  async lockRevoteConfig(
+    idEleccion: number,
+  ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const privateKey = this.configService.get<string>(
+      'ELECTION_ADMIN_PRIVATE_KEY',
+    );
+
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'El sellado de RevoteConfig on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+      );
+    }
+
+    let factoryAddress: string;
+    try {
+      const factoryPayload =
+        await this.contratoBlockchainService.getElectionFactory();
+      factoryAddress = factoryPayload.direccionContrato;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new ServiceUnavailableException(
+          'ElectionFactory no registrada en PostgreSQL. Ejecutá sync:election-factory tras el deploy.',
+        );
+      }
+      throw error;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    const contract = new Contract(
+      factoryAddress,
+      ELECTION_FACTORY_CONTRACT_ABI,
+      wallet,
+    ) as unknown as {
+      lockConfig(electionId: number): Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.lockConfig(idEleccion);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = this.decodeErrorName(
+        error,
+        ELECTION_FACTORY_CONTRACT_ABI,
+      );
+
+      if (decodedName === 'ConfigLocked' || message.includes('ConfigLocked')) {
+        this.logger.warn(
+          `La configuración de re-voto del comicio ${idEleccion} ya estaba sellada on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', blockNumber: 0, alreadyLocked: true };
+      }
+      if (
+        decodedName === 'ElectionDoesNotExist' ||
+        message.includes('ElectionDoesNotExist')
+      ) {
+        throw new UnprocessableEntityException(
+          `El comicio ${idEleccion} no tiene stack electoral desplegado on-chain (ElectionFactory.getElection sin deployment).`,
+        );
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee DEFAULT_ADMIN_ROLE en ElectionFactory.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo sellar la configuración de re-voto on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'El sellado de RevoteConfig no devolvió recibo de confirmación.',
+      );
+    }
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      alreadyLocked: false,
+    };
+  }
+
+  /**
    * VOTAR-364: resolves AuditView address for an election.
    * Prefer ElectionFactory.getElection(...).auditView; fallback AUDIT_VIEW_ADDRESS.
    */
@@ -812,6 +912,17 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeErrorName(error, MERKLE_ROOT_STORE_ABI);
+
+      // VOTAR-327: a retried transitionToAbierta may re-run this step after
+      // lockConfig already sealed the window — treat that as a no-op instead
+      // of failing the whole transition.
+      if (decodedName === 'ConfigLocked' || message.includes('ConfigLocked')) {
+        this.logger.warn(
+          `La ventana electoral del comicio ${electionId} ya está sellada on-chain; se omite la reescritura (VOTAR-327).`,
+        );
+        return { txHash: '', blockNumber: 0 };
+      }
       if (
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
@@ -834,6 +945,84 @@ export class BlockchainService {
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
+    };
+  }
+
+  /**
+   * VOTAR-327: seals the voting window on MerkleRootStore so setElectionWindow
+   * reverts with ConfigLocked afterwards. One-shot on-chain — a second call
+   * for the same election is treated as idempotent (already locked, not an
+   * error) so retrying `transitionToAbierta` never fails on this step alone
+   * (mirrors the registerCandidates/CandidateSetSealed pattern of VOTAR-345).
+   */
+  async lockElectionWindow(
+    electionId: number,
+  ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const contractAddress = this.configService.get<string>(
+      'MERKLE_ROOT_STORE_ADDRESS',
+    );
+    const privateKey = this.configService.get<string>(
+      'ELECTION_ADMIN_PRIVATE_KEY',
+    );
+
+    if (!rpcUrl || !contractAddress || !privateKey) {
+      throw new ServiceUnavailableException(
+        'El sellado de la ventana electoral on-chain no está configurado (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+      );
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    const contract = new Contract(
+      contractAddress,
+      MERKLE_ROOT_STORE_ABI,
+      wallet,
+    ) as unknown as {
+      lockConfig(electionId: number): Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.lockConfig(electionId);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = this.decodeErrorName(error, MERKLE_ROOT_STORE_ABI);
+
+      if (decodedName === 'ConfigLocked' || message.includes('ConfigLocked')) {
+        this.logger.warn(
+          `La ventana electoral del comicio ${electionId} ya estaba sellada on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', blockNumber: 0, alreadyLocked: true };
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee ELECTION_ADMIN_ROLE en el contrato.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo sellar la ventana electoral on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'El sellado de la ventana electoral no devolvió recibo de confirmación.',
+      );
+    }
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      alreadyLocked: false,
     };
   }
 
@@ -888,7 +1077,10 @@ export class BlockchainService {
       // hit here) never populates error.message with the error name, only
       // the raw revert data. Decode that data ourselves so the string
       // fallbacks below aren't the only signal.
-      const decodedName = this.decodeVoteRegistryErrorName(error);
+      const decodedName = this.decodeErrorName(
+        error,
+        VOTE_REGISTRY_CONTRACT_ABI,
+      );
 
       if (
         decodedName === 'CandidateSetSealed' ||
@@ -1203,13 +1395,18 @@ export class BlockchainService {
   }
 
   /**
-   * VOTAR-345 — decodes a VoteRegistry custom error name from the raw revert
-   * data on an ethers error. Needed because ethers only auto-decodes custom
-   * errors via the contract ABI on staticCall/call; a real send() (the path
-   * every write in this service takes) surfaces estimateGas failures as
-   * "unknown custom error" in .message, with only the raw hex in .data.
+   * VOTAR-345 — decodes a custom error name from the raw revert data on an
+   * ethers error, against an arbitrary contract ABI. Needed because ethers
+   * only auto-decodes custom errors via the contract ABI on staticCall/call;
+   * a real send() (the path every write in this service takes) surfaces
+   * estimateGas failures as "unknown custom error" in .message, with only
+   * the raw hex in .data. Generalized from a VoteRegistry-only decoder to
+   * also cover MerkleRootStore/ElectionFactory's ConfigLocked (VOTAR-327).
    */
-  private decodeVoteRegistryErrorName(error: unknown): string | undefined {
+  private decodeErrorName(
+    error: unknown,
+    abi: ConstructorParameters<typeof Interface>[0],
+  ): string | undefined {
     const err = error as {
       data?: unknown;
       info?: { error?: { data?: unknown } };
@@ -1219,7 +1416,7 @@ export class BlockchainService {
       return undefined;
     }
     try {
-      return new Interface(VOTE_REGISTRY_CONTRACT_ABI).parseError(data)?.name;
+      return new Interface(abi).parseError(data)?.name;
     } catch {
       return undefined;
     }
