@@ -65,6 +65,7 @@ export class EleccionRepository implements IEleccionRepository {
           metodosAutenticacion: dto.metodosAutenticacion,
           permitirVotoEnBlanco: false,
           permitirVotoMultiple: false,
+          permitirVotoNulo: true,
           maxVotosPorVotante: 1,
           minIntervaloSegundos: 0,
           mostrarResultadosTiempoReal: false,
