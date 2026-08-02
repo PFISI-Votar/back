@@ -313,4 +313,88 @@ describe('ConfiguracionComicioService', () => {
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
+
+  describe('VOTAR-443 configuracion-voto-nulo', () => {
+    beforeEach(() => {
+      mockEleccionRepository.findOne.mockResolvedValue({ ...baseEleccion });
+      mockConfigRepository.findOne.mockResolvedValue({
+        ...baseConfig,
+        permitirVotoNulo: true,
+      });
+      mockConfigRepository.save.mockImplementation(
+        (entity: ConfiguracionComicio) => Promise.resolve(entity),
+      );
+    });
+
+    it('obtenerConfiguracionVotoNulo refleja estado persistido', async () => {
+      const actual = await service.obtenerConfiguracionVotoNulo(1);
+      expect(actual).toEqual({
+        idEleccion: 1,
+        permitirVotoNulo: true,
+        editable: true,
+      });
+    });
+
+    it('guardarConfiguracionVotoNulo persiste el flag', async () => {
+      const actual = await service.guardarConfiguracionVotoNulo(
+        1,
+        { permitirVotoNulo: false },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.permitirVotoNulo).toBe(false);
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({ permitirVotoNulo: false }),
+      );
+    });
+
+    it('registra audit log solo cuando el flag cambia', async () => {
+      await service.guardarConfiguracionVotoNulo(
+        1,
+        { permitirVotoNulo: false },
+        { actorId: 'admin-1', ipOrigen: '127.0.0.1' },
+      );
+
+      expect(mockAuditLoggerService.logConfigModificada).toHaveBeenCalledWith(
+        expect.objectContaining({ idEleccion: 1, actorId: 'admin-1' }),
+      );
+
+      mockAuditLoggerService.logConfigModificada.mockClear();
+      mockConfigRepository.findOne.mockResolvedValue({
+        ...baseConfig,
+        permitirVotoNulo: true,
+      });
+
+      await service.guardarConfiguracionVotoNulo(
+        1,
+        { permitirVotoNulo: true },
+        { actorId: 'admin-1' },
+      );
+
+      expect(mockAuditLoggerService.logConfigModificada).not.toHaveBeenCalled();
+    });
+
+    it('lanza 409 si el comicio no está en BORRADOR', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue({
+        ...baseEleccion,
+        estado: EleccionEstado.CONFIGURADA,
+      });
+
+      await expect(
+        service.guardarConfiguracionVotoNulo(
+          1,
+          { permitirVotoNulo: false },
+          { actorId: 'admin-1' },
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('lanza 404 si la elección no existe', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerConfiguracionVotoNulo(99),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
 });
