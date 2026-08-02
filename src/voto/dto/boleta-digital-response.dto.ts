@@ -82,6 +82,9 @@ export class BoletaDigitalResponseDto {
   @ApiProperty()
   permitirVotoEnBlanco: boolean;
 
+  @ApiProperty()
+  permitirVotoNulo: boolean;
+
   @ApiProperty({ type: [CategoriaBoletaDigitalDto] })
   categorias: CategoriaBoletaDigitalDto[];
 
