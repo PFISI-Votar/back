@@ -14,6 +14,7 @@ import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { ParticipacionSnapshot } from '@/dashboard-publico/entities/participacion-snapshot.entity';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import { DeepPartial } from 'typeorm';
 
 jest.mock('@/eleccion/gateways/eleccion.gateway', () => ({
   EleccionGateway: class EleccionGateway {
@@ -62,7 +63,11 @@ describe('CierreComicioService', () => {
           useValue: {
             existsBy: jest.fn(),
             save: jest.fn(),
-            create: jest.fn().mockImplementation((dto) => dto),
+            create: jest
+              .fn()
+              .mockImplementation(
+                (dto: DeepPartial<ParticipacionSnapshot>) => dto,
+              ),
           },
         },
         {
@@ -89,9 +94,7 @@ describe('CierreComicioService', () => {
     configuracionRepository = module.get(
       getRepositoryToken(ConfiguracionComicio),
     );
-    snapshotRepository = module.get(
-      getRepositoryToken(ParticipacionSnapshot),
-    );
+    snapshotRepository = module.get(getRepositoryToken(ParticipacionSnapshot));
     electionStateService = module.get(ElectionStateService);
     auditLoggerService = module.get(AuditLoggerService);
     eleccionGateway = module.get(EleccionGateway);
