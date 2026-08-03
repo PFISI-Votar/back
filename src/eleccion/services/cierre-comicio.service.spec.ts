@@ -12,6 +12,8 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
+import { ParticipacionSnapshot } from '@/dashboard-publico/entities/participacion-snapshot.entity';
+import { BlockchainService } from '@/blockchain/blockchain.service';
 
 jest.mock('@/eleccion/gateways/eleccion.gateway', () => ({
   EleccionGateway: class EleccionGateway {
@@ -25,9 +27,11 @@ describe('CierreComicioService', () => {
   let service: CierreComicioService;
   let eleccionRepository: jest.Mocked<Repository<Eleccion>>;
   let configuracionRepository: jest.Mocked<Repository<ConfiguracionComicio>>;
+  let snapshotRepository: jest.Mocked<Repository<ParticipacionSnapshot>>;
   let electionStateService: jest.Mocked<ElectionStateService>;
   let auditLoggerService: jest.Mocked<AuditLoggerService>;
   let eleccionGateway: jest.Mocked<EleccionGateway>;
+  let blockchainService: jest.Mocked<BlockchainService>;
 
   const mockEleccion: Eleccion = {
     idEleccion: 1,
@@ -54,6 +58,14 @@ describe('CierreComicioService', () => {
           useValue: { findOne: jest.fn(), save: jest.fn() },
         },
         {
+          provide: getRepositoryToken(ParticipacionSnapshot),
+          useValue: {
+            existsBy: jest.fn(),
+            save: jest.fn(),
+            create: jest.fn().mockImplementation((dto) => dto),
+          },
+        },
+        {
           provide: ElectionStateService,
           useValue: { transitionToCerrada: jest.fn() },
         },
@@ -65,6 +77,10 @@ describe('CierreComicioService', () => {
           provide: EleccionGateway,
           useValue: { emitEleccionCerrada: jest.fn() },
         },
+        {
+          provide: BlockchainService,
+          useValue: { getParticipationStats: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -73,9 +89,13 @@ describe('CierreComicioService', () => {
     configuracionRepository = module.get(
       getRepositoryToken(ConfiguracionComicio),
     );
+    snapshotRepository = module.get(
+      getRepositoryToken(ParticipacionSnapshot),
+    );
     electionStateService = module.get(ElectionStateService);
     auditLoggerService = module.get(AuditLoggerService);
     eleccionGateway = module.get(EleccionGateway);
+    blockchainService = module.get(BlockchainService);
   });
 
   it('cierra manualmente, congela snapshot y emite evento', async () => {
@@ -89,11 +109,27 @@ describe('CierreComicioService', () => {
       mostrarResultadosTiempoReal: true,
     } as ConfiguracionComicio);
 
+    snapshotRepository.existsBy.mockResolvedValue(false);
+    blockchainService.getParticipationStats.mockResolvedValue({
+      totalVotes: 50,
+      blankVotes: 2,
+      nullVotes: 1,
+    });
+
     const result = await service.cerrarManual(1, 'admin-1', '127.0.0.1');
 
     expect(electionStateService.transitionToCerrada).toHaveBeenCalledWith(1);
     expect(configuracionRepository.save).toHaveBeenCalledWith(
       expect.objectContaining({ mostrarResultadosTiempoReal: false }),
+    );
+    expect(snapshotRepository.save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        idEleccion: 1,
+        totalVotos: 50,
+        votosBlanco: 2,
+        votosNulo: 1,
+        congelado: true,
+      }),
     );
     expect(auditLoggerService.logComicioCerrado).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -9,7 +9,7 @@ const createService = (deps?: {
   configuracion?: unknown;
   totalPadron?: number;
   stats?: { totalVotes: number; blankVotes: number; nullVotes: number };
-  timeline?: Array<{ etiqueta: string; acumulado: number; nuevos: number }>;
+  snapshots?: Array<{ tomadoEn: Date; totalVotos: number }>;
   votesByCandidate?: Record<number, number>;
   blockchainError?: Error;
 }) => {
@@ -30,6 +30,23 @@ const createService = (deps?: {
       },
     ),
   };
+
+  const defaultSnapshots = deps?.snapshots ?? [
+    { tomadoEn: new Date(Date.now() - 2 * 60 * 60 * 1000), totalVotos: 10 },
+    { tomadoEn: new Date(Date.now() - 1 * 60 * 60 * 1000), totalVotos: 25 },
+  ];
+
+  const queryBuilder = {
+    where: jest.fn().mockReturnThis(),
+    andWhere: jest.fn().mockReturnThis(),
+    orderBy: jest.fn().mockReturnThis(),
+    getMany: jest.fn().mockResolvedValue(defaultSnapshots),
+  };
+
+  const snapshotRepository = {
+    createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
+  };
+
   const padronService = {
     obtenerTotalVotantesPublico: jest.fn().mockResolvedValue({
       totalVotantesHabilitados: deps?.totalPadron ?? 100,
@@ -44,12 +61,6 @@ const createService = (deps?: {
         deps?.stats ?? { totalVotes: 25, blankVotes: 0, nullVotes: 0 },
       );
     }),
-    getVoteCastTimeline: jest.fn().mockResolvedValue(
-      deps?.timeline ?? [
-        { etiqueta: '10:00', acumulado: 10, nuevos: 10 },
-        { etiqueta: '11:00', acumulado: 25, nuevos: 15 },
-      ],
-    ),
     getVotesByCandidate: jest
       .fn()
       .mockImplementation((_id: number, candidateId: number) => {
@@ -83,6 +94,7 @@ const createService = (deps?: {
   const service = new ParticipacionPublicService(
     eleccionRepository as never,
     configuracionRepository as never,
+    snapshotRepository as never,
     padronService as never,
     blockchainService as never,
     ofertaElectoralQueryService as never,
@@ -91,13 +103,14 @@ const createService = (deps?: {
   return {
     service,
     eleccionRepository,
+    snapshotRepository,
     padronService,
     blockchainService,
     ofertaElectoralQueryService,
   };
 };
 
-describe('ParticipacionPublicService — VOTAR-365', () => {
+describe('ParticipacionPublicService — VOTAR-433', () => {
   it('UAT-01: calcula Participación Electoral 25% con padrón 100 y 25 votos', async () => {
     const { service } = createService({
       totalPadron: 100,
@@ -113,16 +126,14 @@ describe('ParticipacionPublicService — VOTAR-365', () => {
     expect(actual.serieTemporal.at(-1)?.acumulado).toBe(25);
   });
 
-  it('UAT-01: incluye curva temporal de afluencia', async () => {
-    const { service, blockchainService } = createService();
+  it('UAT-01: incluye curva temporal de afluencia desde snapshot DB', async () => {
+    const { service, snapshotRepository } = createService();
 
     const actual = await service.obtenerParticipacionPublica(7, 12);
 
-    expect(blockchainService.getVoteCastTimeline).toHaveBeenCalledWith(7, 12);
-    expect(actual.serieTemporal).toEqual([
-      { etiqueta: '10:00', acumulado: 10, nuevos: 10 },
-      { etiqueta: '11:00', acumulado: 25, nuevos: 15 },
-    ]);
+    expect(snapshotRepository.createQueryBuilder).toHaveBeenCalledWith('s');
+    expect(actual.serieTemporal.length).toBeGreaterThan(0);
+    expect(actual.serieTemporal.at(-1)?.acumulado).toBe(25);
   });
 
   it('UAT-02: desglosa votos por lista/categoría y valida coherencia de totales', async () => {
