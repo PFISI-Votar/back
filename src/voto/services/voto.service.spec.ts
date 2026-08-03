@@ -29,7 +29,6 @@ const createOfertaMock = () => ({
   configuracion: {
     idEleccion: 1,
     permitirVotoEnBlanco: false,
-    permitirVotoNulo: true,
     metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
     mostrarResultadosTiempoReal: false,
   },
@@ -110,7 +109,6 @@ const createRepositories = () => {
       findOne: jest.fn().mockResolvedValue({
         idEleccion: 1,
         permitirVotoEnBlanco: false,
-        permitirVotoNulo: true,
         metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
         mostrarResultadosTiempoReal: false,
       }),
@@ -178,7 +176,6 @@ describe('VotoService', () => {
 
     const actual = await service.obtenerBoletaDigital(1, VOTANTE_HASH);
 
-    expect(actual.permitirVotoNulo).toBe(true);
     expect(actual.categorias.map((categoria) => categoria.nombre)).toEqual([
       'Presidente',
       'Vocales',

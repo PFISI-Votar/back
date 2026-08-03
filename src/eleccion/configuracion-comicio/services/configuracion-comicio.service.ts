@@ -15,10 +15,6 @@ import {
   ConfiguracionRevotoResponseDto,
   GuardarConfiguracionRevotoDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-revoto.dto';
-import {
-  ConfiguracionVotoNuloResponseDto,
-  GuardarConfiguracionVotoNuloDto,
-} from '@/eleccion/configuracion-comicio/dto/configuracion-voto-nulo.dto';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
@@ -60,7 +56,6 @@ export class ConfiguracionComicioService {
       metodosAutenticacion,
       permitirVotoEnBlanco: false,
       permitirVotoMultiple: false,
-      permitirVotoNulo: true,
       maxVotosPorVotante: 1,
       minIntervaloSegundos: 0,
       mostrarResultadosTiempoReal: false,
@@ -114,48 +109,6 @@ export class ConfiguracionComicioService {
       });
     }
     return this.toRevotoResponse(guardada, eleccion.estado);
-  }
-
-  async obtenerConfiguracionVotoNulo(
-    idEleccion: number,
-  ): Promise<ConfiguracionVotoNuloResponseDto> {
-    const eleccion = await this.assertEleccionExists(idEleccion);
-    const config = await this.findOrCreateConfig(idEleccion);
-    return this.toVotoNuloResponse(config, eleccion.estado);
-  }
-
-  async guardarConfiguracionVotoNulo(
-    idEleccion: number,
-    dto: GuardarConfiguracionVotoNuloDto,
-    auditContext: ConfiguracionRevotoAuditContext,
-  ): Promise<ConfiguracionVotoNuloResponseDto> {
-    const eleccion = await this.assertEleccionExists(idEleccion);
-    assertEleccionEditable(eleccion);
-    const config = await this.findOrCreateConfig(idEleccion);
-    const antes = { permitirVotoNulo: config.permitirVotoNulo };
-    config.permitirVotoNulo = dto.permitirVotoNulo;
-    const guardada = await this.configRepository.save(config);
-    const despues = { permitirVotoNulo: guardada.permitirVotoNulo };
-    if (antes.permitirVotoNulo !== despues.permitirVotoNulo) {
-      await this.auditLoggerService.logConfigModificada({
-        idEleccion,
-        actorId: auditContext.actorId,
-        ipOrigen: auditContext.ipOrigen,
-        cambios: { votoNulo: { antes, despues } },
-      });
-    }
-    return this.toVotoNuloResponse(guardada, eleccion.estado);
-  }
-
-  private toVotoNuloResponse(
-    config: ConfiguracionComicio,
-    estado: EleccionEstado,
-  ): ConfiguracionVotoNuloResponseDto {
-    return {
-      idEleccion: config.idEleccion,
-      permitirVotoNulo: config.permitirVotoNulo,
-      editable: estado === EleccionEstado.BORRADOR,
-    };
   }
 
   private validarDtoRevoto(dto: GuardarConfiguracionRevotoDto): void {

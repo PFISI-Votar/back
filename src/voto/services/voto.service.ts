@@ -136,7 +136,6 @@ export class VotoService {
       idBoleta: oferta.boleta.idBoleta,
       titulo: oferta.boleta.titulo,
       permitirVotoEnBlanco: oferta.configuracion.permitirVotoEnBlanco,
-      permitirVotoNulo: oferta.configuracion.permitirVotoNulo,
       categorias: this.mapCategorias(oferta),
     };
   }
