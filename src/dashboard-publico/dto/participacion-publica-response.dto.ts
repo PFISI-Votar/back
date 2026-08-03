@@ -5,36 +5,36 @@ import { SerieTemporalPuntoDto } from './serie-temporal.dto';
 
 export class VerificacionTotalesDto {
   @ApiProperty({ example: true })
-  coherente: boolean;
+  coherente!: boolean;
 
   @ApiProperty({ example: 25 })
-  totalOnChain: number;
+  totalOnChain!: number;
 
   @ApiProperty({ example: 25 })
-  totalCalculado: number;
+  totalCalculado!: number;
 }
 
 export class ParticipacionPublicaResponseDto {
   @ApiProperty({ example: 7 })
-  idEleccion: number;
+  idEleccion!: number;
 
   @ApiProperty({ example: false })
-  snapshotCongelado: boolean;
+  snapshotCongelado!: boolean;
 
   @ApiProperty({ type: FormulaParticipacionDto })
-  formula: FormulaParticipacionDto;
+  formula!: FormulaParticipacionDto;
 
   @ApiProperty({ type: [SerieTemporalPuntoDto] })
-  serieTemporal: SerieTemporalPuntoDto[];
+  serieTemporal!: SerieTemporalPuntoDto[];
 
   @ApiProperty({ type: [DesgloseCategoriaDto] })
-  desglosePorCategoria: DesgloseCategoriaDto[];
+  desglosePorCategoria!: DesgloseCategoriaDto[];
 
   @ApiProperty({ type: VerificacionTotalesDto })
-  verificacionTotales: VerificacionTotalesDto;
+  verificacionTotales!: VerificacionTotalesDto;
 
   @ApiProperty({
     example: 'AuditViewContract.getParticipationStats + VoteRegistry.VoteCast',
   })
-  fuenteDatos: string;
+  fuenteDatos!: string;
 }

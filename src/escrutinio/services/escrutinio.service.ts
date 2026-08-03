@@ -167,6 +167,7 @@ export class EscrutinioService {
       idEleccion: eleccion.idEleccion,
       nombre: eleccion.nombre,
       estado: eleccion.estado,
+      tipoVotacion: eleccion.tipoVotacion,
       congelado,
       fuente: 'ON_CHAIN',
       actualizadoEn: new Date().toISOString(),
