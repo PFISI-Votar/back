@@ -124,4 +124,40 @@ describe('ListaService', () => {
       service.create(999, { nombre: 'X', sigla: 'X' }),
     ).rejects.toThrow(NotFoundException);
   });
+
+  it('VOTAR-436: debe lanzar 409 al crear una lista con sigla duplicada en el mismo comicio', async () => {
+    mockEleccionRepository.findOne.mockResolvedValue(mockEleccion);
+    mockBoletaService.ensureBoleta.mockResolvedValue(mockBoleta);
+    mockListaRepository.findOne.mockResolvedValue({
+      idLista: 1,
+      idBoleta: 10,
+      nombre: 'Lista A',
+      sigla: 'LA',
+    });
+
+    await expect(
+      service.create(1, { nombre: 'Lista A', sigla: 'LA' }),
+    ).rejects.toThrow(ConflictException);
+    expect(mockListaRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('VOTAR-436: debe lanzar 409 al actualizar una lista con la sigla de otra lista existente', async () => {
+    const lista = {
+      idLista: 1,
+      idBoleta: 10,
+      nombre: 'Lista A',
+      sigla: 'LA',
+      color: null,
+      estado: EstadoLista.BORRADOR,
+      boleta: { eleccion: mockEleccion },
+    };
+    mockListaRepository.findOne
+      .mockResolvedValueOnce(lista)
+      .mockResolvedValueOnce({ idLista: 2, idBoleta: 10, sigla: 'LB' });
+
+    await expect(service.update(1, { sigla: 'LB' })).rejects.toThrow(
+      ConflictException,
+    );
+    expect(mockListaRepository.save).not.toHaveBeenCalled();
+  });
 });

@@ -15,6 +15,10 @@ import {
   ConfiguracionRevotoResponseDto,
   GuardarConfiguracionRevotoDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-revoto.dto';
+import {
+  ConfiguracionVotoNuloResponseDto,
+  GuardarConfiguracionVotoNuloDto,
+} from '@/eleccion/configuracion-comicio/dto/configuracion-voto-nulo.dto';
 import { ConfiguracionComicioService } from '@/eleccion/configuracion-comicio/services/configuracion-comicio.service';
 
 @ApiTags('configuracion-comicio')
@@ -63,6 +67,48 @@ export class ConfiguracionComicioController {
   ): Promise<ConfiguracionRevotoResponseDto> {
     const user = assertAuthenticatedUser(req.user);
     return this.configuracionComicioService.guardarConfiguracionRevoto(
+      idEleccion,
+      dto,
+      {
+        actorId: user.sub,
+        ipOrigen: this.resolveClientIp(req),
+      },
+    );
+  }
+
+  @Get('elecciones/:idEleccion/configuracion-voto-nulo')
+  @ApiOperation({
+    summary: 'Obtener configuración de voto nulo del comicio (VOTAR-443)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: ConfiguracionVotoNuloResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  async obtenerConfiguracionVotoNulo(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<ConfiguracionVotoNuloResponseDto> {
+    return this.configuracionComicioService.obtenerConfiguracionVotoNulo(
+      idEleccion,
+    );
+  }
+
+  @Put('elecciones/:idEleccion/configuracion-voto-nulo')
+  @ApiOperation({
+    summary: 'Guardar configuración de voto nulo del comicio (VOTAR-443)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: ConfiguracionVotoNuloResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict — comicio no editable (no BORRADOR)',
+  })
+  async guardarConfiguracionVotoNulo(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Body() dto: GuardarConfiguracionVotoNuloDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ConfiguracionVotoNuloResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    return this.configuracionComicioService.guardarConfiguracionVotoNulo(
       idEleccion,
       dto,
       {

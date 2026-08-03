@@ -193,6 +193,7 @@ export const seedElection = async (
       idEleccion: eleccion.idEleccion,
       permitirVotoEnBlanco: true,
       permitirVotoMultiple: false,
+      permitirVotoNulo: true,
       maxVotosPorVotante: 1,
       minIntervaloSegundos: 0,
       mostrarResultadosTiempoReal: false,
