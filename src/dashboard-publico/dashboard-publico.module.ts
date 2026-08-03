@@ -22,12 +22,9 @@ import { PadronModule } from '@/padron/padron.module';
     ]),
   ],
   controllers: [ParticipacionPublicController],
-  providers: [
-    ParticipacionPublicService,
-    ParticipacionSamplerService,
-  ],
+  providers: [ParticipacionPublicService, ParticipacionSamplerService],
   exports: [
-    ParticipacionSamplerService,        // exportado para CierreComicioService
+    ParticipacionSamplerService, // exportado para CierreComicioService
   ],
 })
 export class DashboardPublicoModule {}

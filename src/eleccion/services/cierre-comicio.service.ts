@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, UnprocessableEntityException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  UnprocessableEntityException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ParticipacionSnapshot } from '@/dashboard-publico/entities/participacion-snapshot.entity';
@@ -10,7 +15,6 @@ import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
-
 
 /**
  * Orquestación del cierre manual/automático del comicio (VOTAR-321).
@@ -81,7 +85,8 @@ export class CierreComicioService {
     try {
       await this.tomarMuestraFinalParticipacion(idEleccion);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Error desconocido';
+      const message =
+        error instanceof Error ? error.message : 'Error desconocido';
       this.logger.warn(
         `No se pudo tomar la muestra final de participación para comicio ${idEleccion}: ${message}`,
       );
@@ -124,7 +129,9 @@ export class CierreComicioService {
     await this.configuracionRepository.save(config);
   }
 
-  private async tomarMuestraFinalParticipacion(idEleccion: number): Promise<void> {
+  private async tomarMuestraFinalParticipacion(
+    idEleccion: number,
+  ): Promise<void> {
     const yaCongelado = await this.snapshotRepository.existsBy({
       idEleccion,
       congelado: true,
@@ -133,7 +140,8 @@ export class CierreComicioService {
       return;
     }
 
-    const stats = await this.blockchainService.getParticipationStats(idEleccion);
+    const stats =
+      await this.blockchainService.getParticipationStats(idEleccion);
 
     await this.snapshotRepository.save(
       this.snapshotRepository.create({

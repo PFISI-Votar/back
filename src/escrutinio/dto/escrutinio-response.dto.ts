@@ -15,7 +15,7 @@ export class EscrutinioResponseDto {
   estado!: EleccionEstado;
 
   @ApiProperty({ enum: TipoVotacion })
-  tipoVotacion!: TipoVotacion;    
+  tipoVotacion!: TipoVotacion;
 
   @ApiProperty({
     example: false,

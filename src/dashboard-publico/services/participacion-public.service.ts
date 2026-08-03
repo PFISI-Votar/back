@@ -80,7 +80,7 @@ export class ParticipacionPublicService {
     const expresion = `(${votosAfirmativos} + ${stats.blankVotes} + ${stats.nullVotes}) / ${totalPadron} × 100 = ${porcentajeParticipacion}%`;
 
     const [serieTemporal, desglosePorCategoria] = await Promise.all([
-      this.buildSerieTemporal(idEleccion, horasVentana),  // ← ya no usa eth_getLogs
+      this.buildSerieTemporal(idEleccion, horasVentana), // ← ya no usa eth_getLogs
       this.buildDesglosePorCategoria(
         idEleccion,
         stats.blankVotes,

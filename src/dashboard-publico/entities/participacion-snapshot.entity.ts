@@ -1,4 +1,12 @@
-import { Column, CreateDateColumn, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  Index,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 
 /**
@@ -17,7 +25,6 @@ import { Eleccion } from '@/eleccion/entities/eleccion.entity';
   'idEleccion',
   'tomadoEn',
 ])
-
 export class ParticipacionSnapshot {
   @PrimaryGeneratedColumn({ name: 'id_snapshot' })
   idSnapshot!: number;
@@ -29,17 +36,17 @@ export class ParticipacionSnapshot {
   @JoinColumn({ name: 'id_eleccion' })
   eleccion!: Eleccion;
 
-/**
- * Momento en que se tomó la muestra (el cron-job del servidor, no tiempo real de 
- * blockchain, se toma esta limitación para evitar estar leyendo todos los bloques de la 
- * testnet de sepolia, algo muy intensivo -y además alchemy nos limita a ver solo 10 bloques para
- * atrás con el plan free).
- *
- * Tenemos que tener en cuenta que el gráfico final agrupa a los votos en buckets de una hora,
- * entonces no es necesario representar el instante exacto en que se emitió un voto, sino cuándo
- * el ParticipacionSamplerService leyó el contrato. La resolución temporal
- * depende del intervalo del sampler (SAMPLE_INTERVAL_MS).
- */
+  /**
+   * Momento en que se tomó la muestra (el cron-job del servidor, no tiempo real de
+   * blockchain, se toma esta limitación para evitar estar leyendo todos los bloques de la
+   * testnet de sepolia, algo muy intensivo -y además alchemy nos limita a ver solo 10 bloques para
+   * atrás con el plan free).
+   *
+   * Tenemos que tener en cuenta que el gráfico final agrupa a los votos en buckets de una hora,
+   * entonces no es necesario representar el instante exacto en que se emitió un voto, sino cuándo
+   * el ParticipacionSamplerService leyó el contrato. La resolución temporal
+   * depende del intervalo del sampler (SAMPLE_INTERVAL_MS).
+   */
   @CreateDateColumn({ name: 'tomado_en', type: 'timestamptz' })
   tomadoEn!: Date;
 

@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BlockchainService } from '@/blockchain/blockchain.service';
@@ -10,12 +15,12 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
  * Intervalo entre muestras: 5 minutos.
  *
  * En el gráfico de las métricas se analizan las estadísticas de gente que votó cada una hora (15 a 16,
- * 16 a 17, etc), asique 5 minutos da 12 muestras por bucket, más que suficiente para una curva suave. 
- * 
- * Votaciones cortas (< 1 hora) acumulan todos sus votos en un único bucket horario, lo cual 
+ * 16 a 17, etc), asique 5 minutos da 12 muestras por bucket, más que suficiente para una curva suave.
+ *
+ * Votaciones cortas (< 1 hora) acumulan todos sus votos en un único bucket horario, lo cual
  * es correcto, ya que en comicios breves no tiene sentido un análisis de afluencia por franja.
  */
-const SAMPLE_INTERVAL_MS = 5 * 60 * 1_000; 
+const SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
 
 /**
  * VOTAR-433: samplea getParticipationStats() en el contrato cada 5 minutos
@@ -23,7 +28,7 @@ const SAMPLE_INTERVAL_MS = 5 * 60 * 1_000;
  *
  * Esto reemplaza el uso de eth_getLogs (getVoteCastTimeline) para construir
  * la curva temporal del dashboard público, eliminando la dependencia del
- * límite de rango de bloques del plan gratuito de Alchemy (que dejaba ver 10 bloques para 
+ * límite de rango de bloques del plan gratuito de Alchemy (que dejaba ver 10 bloques para
  * atrás de Sepolia, donde se genera aprox 1 bloque cada 10 segundos. En una votación de una
  * hora, habría que revisar 360 bloques -donde capaz solo 3 son de nuestro sistema- y encima
  * tendríamos que hacer 36 peticiones a Alchemy; y esto por cada usuario que consulta
@@ -49,7 +54,9 @@ export class ParticipacionSamplerService
   ) {}
 
   onModuleInit(): void {
-    this.logger.log(`Iniciando sampler de participación (intervalo ${SAMPLE_INTERVAL_MS / 1000}s)` );
+    this.logger.log(
+      `Iniciando sampler de participación (intervalo ${SAMPLE_INTERVAL_MS / 1000}s)`,
+    );
     this.intervalId = setInterval(() => {
       void this.tick();
     }, SAMPLE_INTERVAL_MS);
@@ -97,7 +104,9 @@ export class ParticipacionSamplerService
     } catch (error) {
       const message =
         error instanceof Error ? error.message : 'Error desconocido';
-      this.logger.error(`Error en tick del sampler de participación: ${message}`);
+      this.logger.error(
+        `Error en tick del sampler de participación: ${message}`,
+      );
     } finally {
       this.isTickRunning = false;
     }
@@ -107,7 +116,6 @@ export class ParticipacionSamplerService
     idEleccion: number,
     congelado: boolean,
   ): Promise<void> {
-    
     // Si ya existe una muestra congelada, el comicio está cerrado: no samplear más.
     const yaCongelado = await this.snapshotRepository.existsBy({
       idEleccion,
