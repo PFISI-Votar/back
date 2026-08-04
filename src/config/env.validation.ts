@@ -63,7 +63,6 @@ export const envValidationSchema = Joi.object({
   SEPOLIA_RPC_URL: Joi.string().uri().optional(),
   MERKLE_ROOT_STORE_ADDRESS: Joi.string().optional(),
 
-
   PRIVATE_KEY: Joi.string().optional(),
   ADMIN_MULTISIG_ADDRESS: Joi.string().optional(),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
@@ -71,7 +70,6 @@ export const envValidationSchema = Joi.object({
   AUDIT_VIEW_CONTRACT_ADDRESS: Joi.string().optional(),
   VOTE_REGISTRY_CONTRACT_ADDRESS: Joi.string().optional(),
   BLOCKCHAIN_NETWORK_NAME: Joi.string().optional(),
-
 
   CHAIN_ID: Joi.number().default(11155111),
   ETHERSCAN_BASE_URL: Joi.string()

@@ -397,7 +397,9 @@ export class BlockchainService {
     estado: EleccionEstado,
   ): Promise<{ txHash: string; blockNumber: number }> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const contractAddress = this.configService.get<string>('MERKLE_ROOT_STORE_ADDRESS');
+    const contractAddress = this.configService.get<string>(
+      'MERKLE_ROOT_STORE_ADDRESS',
+    );
 
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
