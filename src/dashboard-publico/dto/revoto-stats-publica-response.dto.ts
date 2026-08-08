@@ -4,7 +4,10 @@ export class RevotoOverwriteTimelinePuntoDto {
   @ApiProperty({ example: '14:00' })
   etiqueta: string;
 
-  @ApiProperty({ example: 0.3, description: 'Tasa acumulada de sobreescritura (0–1)' })
+  @ApiProperty({
+    example: 0.3,
+    description: 'Tasa acumulada de sobreescritura (0–1)',
+  })
   overwriteRatio: number;
 
   @ApiProperty({ example: 30 })
@@ -27,7 +30,10 @@ export class RevotoStatsPublicaResponseDto {
   @ApiProperty({ example: 70 })
   uniqueVoters: number;
 
-  @ApiProperty({ example: 0.3, description: 'totalRevotes / (uniqueVoters + totalRevotes)' })
+  @ApiProperty({
+    example: 0.3,
+    description: 'totalRevotes / (uniqueVoters + totalRevotes)',
+  })
   overwriteRatio: number;
 
   @ApiProperty({ type: [RevotoOverwriteTimelinePuntoDto] })

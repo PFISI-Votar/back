@@ -1216,9 +1216,7 @@ export class BlockchainService {
       AUDIT_VIEW_CONTRACT_ABI,
       provider,
     ) as unknown as {
-      getRevoteStats: (
-        electionId: number,
-      ) => Promise<[bigint, bigint, bigint]>;
+      getRevoteStats: (electionId: number) => Promise<[bigint, bigint, bigint]>;
     };
 
     try {
@@ -1227,8 +1225,7 @@ export class BlockchainService {
       return {
         totalRevotes: Number(totalRevotes),
         uniqueVoters: Number(uniqueVoters),
-        overwriteRatio:
-          Number(overwriteRatioWad) / 1e18,
+        overwriteRatio: Number(overwriteRatioWad) / 1e18,
       };
     } catch (error) {
       const message =

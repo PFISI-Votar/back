@@ -124,11 +124,7 @@ describe('BlockchainService', () => {
       args: [42, '0x' + 'a'.repeat(64), 1700000000n],
     });
     mockGetParticipationStats.mockResolvedValue([25n, 0n, 0n]);
-    mockGetRevoteStats.mockResolvedValue([
-      30n,
-      70n,
-      (30n * 10n ** 18n) / 100n,
-    ]);
+    mockGetRevoteStats.mockResolvedValue([30n, 70n, (30n * 10n ** 18n) / 100n]);
     mockGetVotesByCandidate.mockResolvedValue(10n);
     mockVoteCastFilter.mockReturnValue({});
     mockQueryFilter.mockResolvedValue([]);
