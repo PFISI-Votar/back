@@ -309,6 +309,18 @@ export class BlockchainService {
     return 'Ethereum';
   }
 
+  getChainId(): number {
+    const configured = this.configService.get<number>('CHAIN_ID');
+    if (
+      typeof configured === 'number' &&
+      Number.isFinite(configured) &&
+      configured > 0
+    ) {
+      return configured;
+    }
+    return 11155111;
+  }
+
   /**
    * VOTAR-360/366: confirm SignedVoteCast inclusion by txHash without exposing vote choice.
    * selectionHash / nullifier are parsed only to prove the event exists and are never
@@ -1434,8 +1446,15 @@ export class BlockchainService {
           : a.sortLogIndex - b.sortLogIndex,
       )
       .map(
-        ({ sortBlock: _sortBlock, sortLogIndex: _sortLogIndex, ...entry }) =>
-          entry,
+        (entry): BlockchainTransactionAuditEntry => ({
+          hashTransaccion: entry.hashTransaccion,
+          numeroBloque: entry.numeroBloque,
+          marcaTiempo: entry.marcaTiempo,
+          contratoEtiqueta: entry.contratoEtiqueta,
+          nombreEvento: entry.nombreEvento,
+          descripcionLegible: entry.descripcionLegible,
+          explorerUrl: entry.explorerUrl,
+        }),
       );
   }
 
