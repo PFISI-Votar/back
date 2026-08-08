@@ -16,6 +16,13 @@ const mockGetTransactionReceipt = jest.fn();
 const mockParseLog = jest.fn();
 const mockGetParticipationStats = jest.fn();
 const mockGetVotesByCandidate = jest.fn();
+const mockGetElectionState = jest.fn();
+const mockMerkleRootStoreAddress = jest.fn();
+const mockGetMerkleRoot = jest.fn();
+const mockIsPublished = jest.fn();
+const mockRevoteEnabled = jest.fn();
+const mockMaxVotesPerVoter = jest.fn();
+const mockMinIntervalSeconds = jest.fn();
 const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
 const mockVoteCastFilter = jest.fn();
@@ -33,9 +40,20 @@ jest.mock('ethers', () => {
       const hasVoteCast = abiList.some(
         (item: { name?: string }) => item.name === 'VoteCast',
       );
-      const hasGetParticipation = abiList.some(
-        (item: { name?: string }) => item.name === 'getParticipationStats',
-      );
+      const abiHas = (name: string) =>
+        abiList.some((item: { name?: string } | string) =>
+          typeof item === 'string'
+            ? item.includes(name)
+            : item.name === name,
+        );
+      const hasGetParticipation = abiHas('getParticipationStats');
+      const hasGetElectionState = abiHas('getElectionState');
+      const hasMerkleRootStoreGetter = abiHas('merkleRootStore');
+      const hasPublishRoot = abiHas('publishRoot');
+      const hasSetElectionState = abiHas('setElectionState');
+      const hasGetMerkleRoot = abiHas('getMerkleRoot');
+      const hasRevoteEnabled = abiHas('revoteEnabled');
+      const hasMaxVotesPerVoter = abiHas('maxVotesPerVoter');
       const hasGetElection = abiList.some(
         (item: { name?: string }) => item.name === 'getElection',
       );
@@ -49,10 +67,41 @@ jest.mock('ethers', () => {
           queryFilter: mockQueryFilter,
         };
       }
+      if (hasGetElectionState && hasMerkleRootStoreGetter) {
+        return {
+          getElectionState: mockGetElectionState,
+          merkleRootStore: mockMerkleRootStoreAddress,
+          getParticipationStats: mockGetParticipationStats,
+          getVotesByCandidate: mockGetVotesByCandidate,
+        };
+      }
+      if (hasPublishRoot || hasSetElectionState) {
+        return {
+          publishRoot: mockPublishRoot,
+          setElectionState: mockSetElectionState,
+          getMerkleRoot: mockGetMerkleRoot,
+          isPublished: mockIsPublished,
+        };
+      }
       if (hasGetParticipation) {
         return {
           getParticipationStats: mockGetParticipationStats,
           getVotesByCandidate: mockGetVotesByCandidate,
+        };
+      }
+      if (hasGetMerkleRoot) {
+        return {
+          getMerkleRoot: mockGetMerkleRoot,
+          isPublished: mockIsPublished,
+        };
+      }
+      if (hasRevoteEnabled) {
+        return { revoteEnabled: mockRevoteEnabled };
+      }
+      if (hasMaxVotesPerVoter) {
+        return {
+          maxVotesPerVoter: mockMaxVotesPerVoter,
+          minIntervalSeconds: mockMinIntervalSeconds,
         };
       }
       if (hasGetElection) {
@@ -120,6 +169,15 @@ describe('BlockchainService', () => {
     });
     mockGetParticipationStats.mockResolvedValue([25n, 0n, 0n]);
     mockGetVotesByCandidate.mockResolvedValue(10n);
+    mockGetElectionState.mockResolvedValue(2n);
+    mockMerkleRootStoreAddress.mockResolvedValue(
+      '0x55d1d115309872C16B9646362C82fFa246F3F652',
+    );
+    mockGetMerkleRoot.mockResolvedValue(['0x' + 'a'.repeat(64), 1700000000n]);
+    mockIsPublished.mockResolvedValue(true);
+    mockRevoteEnabled.mockResolvedValue(true);
+    mockMaxVotesPerVoter.mockResolvedValue(3n);
+    mockMinIntervalSeconds.mockResolvedValue(60n);
     mockVoteCastFilter.mockReturnValue({});
     mockQueryFilter.mockResolvedValue([]);
 
@@ -168,6 +226,27 @@ describe('BlockchainService', () => {
     expect(service.buildExplorerUrl('0xabc')).toBe(
       'https://sepolia.etherscan.io/tx/0xabc',
     );
+  });
+
+  it('buildExplorerAddressUrl returns Etherscan contract link', () => {
+    expect(
+      service.buildExplorerAddressUrl(
+        '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+      ),
+    ).toBe(
+      'https://sepolia.etherscan.io/address/0x5FbDB2315678afecb367f032d93F642f64180aa3',
+    );
+  });
+
+  it('getContratoEstadoOnChain returns audit metadata (VOTAR-367)', async () => {
+    const actual = await service.getContratoEstadoOnChain(7);
+
+    expect(actual.estadoOnChain).toEqual({ codigo: 2, etiqueta: 'ABIERTA' });
+    expect(actual.merkleRoot.publicado).toBe(true);
+    expect(actual.merkleRoot.hash).toBe('0x' + 'a'.repeat(64));
+    expect(actual.contratos.auditView.explorerUrl).toContain('/address/');
+    expect(actual.revoto.maxVotosPorVotante).toBe(3);
+    expect(actual.red).toBe('Sepolia');
   });
 
   it('getNetworkDisplayName defaults to Sepolia', () => {

@@ -66,7 +66,58 @@ export type VoteCastTimelinePoint = {
   nuevos: number;
 };
 
+export type ContratoDireccionOnChain = {
+  direccion: string;
+  explorerUrl: string;
+};
+
+export type ContratoEstadoOnChain = {
+  estadoOnChain: {
+    codigo: number;
+    etiqueta: string;
+  };
+  merkleRoot: {
+    hash: string;
+    publicado: boolean;
+    publicadoEn: string | null;
+  };
+  revoto: {
+    habilitado: boolean;
+    maxVotosPorVotante: number;
+    minIntervaloSegundos: number;
+    politicaRevoto: 'LAST_VOTE_WINS' | 'DISABLED';
+  };
+  contratos: {
+    ballot: ContratoDireccionOnChain;
+    voteRegistry: ContratoDireccionOnChain;
+    auditView: ContratoDireccionOnChain;
+    merkleRootStore: ContratoDireccionOnChain;
+  };
+  red: string;
+  chainId: number;
+};
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+const ZERO_MERKLE_ROOT =
+  '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+const BLOCKCHAIN_STATE_LABELS: Record<number, string> = {
+  0: 'BORRADOR',
+  1: 'CONFIGURADA',
+  2: 'ABIERTA',
+  3: 'CERRADA',
+  4: 'ESCRUTADA',
+};
+
+const BALLOT_REVOTE_READ_ABI = [
+  'function maxVotesPerVoter() view returns (uint16)',
+  'function minIntervalSeconds() view returns (uint32)',
+] as const;
+
+const VOTE_REGISTRY_REVOTE_READ_ABI = [
+  'function revoteEnabled() view returns (bool)',
+] as const;
 
 interface AuditViewContract {
   getParticipationStats(electionId: number): Promise<[bigint, bigint, bigint]>;
@@ -270,6 +321,18 @@ export class BlockchainService {
       this.configService.get<string>('ETHERSCAN_BASE_URL') ??
       'https://sepolia.etherscan.io';
     return `${base}/tx/${txHash}`;
+  }
+
+  buildExplorerAddressUrl(contractAddress: string): string {
+    const base =
+      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
+      'https://sepolia.etherscan.io';
+    return `${base}/address/${contractAddress}`;
+  }
+
+  getChainId(): number {
+    const configured = this.configService.get<number>('CHAIN_ID');
+    return Number.isFinite(configured) && configured > 0 ? configured : 11155111;
   }
 
   /**
@@ -1001,6 +1064,101 @@ export class BlockchainService {
   }
 
   /**
+   * VOTAR-367 — public contract audit metadata for dashboard auditors.
+   */
+  async getContratoEstadoOnChain(
+    idEleccion: number,
+  ): Promise<ContratoEstadoOnChain> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      getElectionState: (electionId: number) => Promise<number | bigint>;
+      merkleRootStore: () => Promise<string>;
+    };
+
+    let stateCode: number;
+    let merkleRootStoreAddress: string;
+    try {
+      [stateCode, merkleRootStoreAddress] = await Promise.all([
+        auditView.getElectionState(idEleccion).then((value) => Number(value)),
+        auditView.merkleRootStore(),
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar el estado del contrato on-chain: ${message}`,
+      );
+    }
+
+    const merkleStore = new Contract(
+      merkleRootStoreAddress,
+      MERKLE_ROOT_STORE_ABI,
+      provider,
+    ) as unknown as MerkleRootStoreContract;
+
+    let root: string;
+    let timestamp: bigint;
+    let publicado: boolean;
+    try {
+      [[root, timestamp], publicado] = await Promise.all([
+        merkleStore.getMerkleRoot(idEleccion),
+        merkleStore.isPublished(idEleccion),
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar la raíz Merkle on-chain: ${message}`,
+      );
+    }
+
+    const revote = await this.resolveRevoteLimitsOnChain(idEleccion, addresses);
+
+    const toContratoDireccion = (
+      direccion: string,
+    ): ContratoDireccionOnChain => ({
+      direccion,
+      explorerUrl: this.buildExplorerAddressUrl(direccion),
+    });
+
+    const timestampSeconds = Number(timestamp);
+    const publicadoEn =
+      publicado && timestampSeconds > 0
+        ? new Date(timestampSeconds * 1000).toISOString()
+        : null;
+
+    return {
+      estadoOnChain: {
+        codigo: stateCode,
+        etiqueta: BLOCKCHAIN_STATE_LABELS[stateCode] ?? 'DESCONOCIDO',
+      },
+      merkleRoot: {
+        hash: root === ZERO_MERKLE_ROOT ? ZERO_MERKLE_ROOT : root,
+        publicado,
+        publicadoEn,
+      },
+      revoto: revote,
+      contratos: {
+        ballot: toContratoDireccion(addresses.ballot),
+        voteRegistry: toContratoDireccion(addresses.voteRegistry),
+        auditView: toContratoDireccion(addresses.auditView),
+        merkleRootStore: toContratoDireccion(merkleRootStoreAddress),
+      },
+      red: this.getNetworkDisplayName(),
+      chainId: this.getChainId(),
+    };
+  }
+
+  /**
    * VOTAR-365 / VOTAR-350: aggregate participation via AuditViewContract.
    */
   async getParticipationStats(
@@ -1223,6 +1381,105 @@ export class BlockchainService {
       );
     }
     return rpcUrl;
+  }
+
+  private async resolveRevoteLimitsOnChain(
+    idEleccion: number,
+    addresses: ElectionContractAddresses,
+  ): Promise<ContratoEstadoOnChain['revoto']> {
+    const fromFactory = await this.fetchRevoteConfigFromFactory(idEleccion);
+    if (fromFactory) {
+      return {
+        habilitado: fromFactory.enabled,
+        maxVotosPorVotante: fromFactory.maxVotesPerVoter,
+        minIntervaloSegundos: fromFactory.minIntervalSeconds,
+        politicaRevoto: fromFactory.enabled ? 'LAST_VOTE_WINS' : 'DISABLED',
+      };
+    }
+
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const ballot = new Contract(
+      addresses.ballot,
+      BALLOT_REVOTE_READ_ABI,
+      provider,
+    ) as unknown as {
+      maxVotesPerVoter: () => Promise<number | bigint>;
+      minIntervalSeconds: () => Promise<number | bigint>;
+    };
+    const voteRegistry = new Contract(
+      addresses.voteRegistry,
+      VOTE_REGISTRY_REVOTE_READ_ABI,
+      provider,
+    ) as unknown as {
+      revoteEnabled: () => Promise<boolean>;
+    };
+
+    try {
+      const [habilitado, maxVotosPorVotante, minIntervaloSegundos] =
+        await Promise.all([
+          voteRegistry.revoteEnabled(),
+          ballot.maxVotesPerVoter().then((value) => Number(value)),
+          ballot.minIntervalSeconds().then((value) => Number(value)),
+        ]);
+
+      return {
+        habilitado,
+        maxVotosPorVotante,
+        minIntervaloSegundos,
+        politicaRevoto: habilitado ? 'LAST_VOTE_WINS' : 'DISABLED',
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudieron consultar los límites de re-voto on-chain: ${message}`,
+      );
+    }
+  }
+
+  private async fetchRevoteConfigFromFactory(
+    idEleccion: number,
+  ): Promise<RevoteConfigOnChain | null> {
+    if (this.resolveContractsFromEnv()) {
+      return null;
+    }
+
+    const rpcUrl = this.requireRpcUrl();
+    let factory: { direccionContrato: string };
+    try {
+      factory = await this.contratoBlockchainService.getElectionFactory();
+    } catch {
+      return null;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const contract = new Contract(
+      factory.direccionContrato,
+      ELECTION_FACTORY_GET_ELECTION_ABI,
+      provider,
+    ) as unknown as {
+      getElection: (electionId: number) => Promise<{
+        revoteConfig: RevoteConfigOnChain;
+        exists: boolean;
+      }>;
+    };
+
+    try {
+      const deployment = await contract.getElection(idEleccion);
+      if (!deployment.exists) {
+        return null;
+      }
+      return {
+        enabled: deployment.revoteConfig.enabled,
+        maxVotesPerVoter: Number(deployment.revoteConfig.maxVotesPerVoter),
+        minIntervalSeconds: Number(deployment.revoteConfig.minIntervalSeconds),
+        policy: Number(deployment.revoteConfig.policy),
+      };
+    } catch {
+      return null;
+    }
   }
 
   private resolveContractsFromEnv(): ElectionContractAddresses | null {
