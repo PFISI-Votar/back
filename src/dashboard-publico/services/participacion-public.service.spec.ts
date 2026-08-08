@@ -20,7 +20,7 @@ const createService = (deps?: {
         nombre: 'Comicio UTN',
         estado: EleccionEstado.ABIERTA,
         fechaFin: new Date(Date.now() + 2 * 60 * 60 * 1_000), // comicio aún abierto → ancla = ahora
-      }
+      },
     ),
   };
   const configuracionRepository = {
