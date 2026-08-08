@@ -95,8 +95,7 @@ describe('BlockchainService', () => {
       const values: Record<string, string> = {
         SEPOLIA_RPC_URL: 'https://sepolia.example.com',
         MERKLE_ROOT_STORE_ADDRESS: '0x55d1d115309872C16B9646362C82fFa246F3F652',
-        MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
-        ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
+        PRIVATE_KEY: '0x' + '1'.repeat(64),
         BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
         AUDIT_VIEW_CONTRACT_ADDRESS:
           '0x1111111111111111111111111111111111111111',
@@ -495,8 +494,7 @@ describe('BlockchainService', () => {
           SEPOLIA_RPC_URL: 'https://sepolia.example.com',
           MERKLE_ROOT_STORE_ADDRESS:
             '0x55d1d115309872C16B9646362C82fFa246F3F652',
-          MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
-          ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
+          PRIVATE_KEY: '0x' + '1'.repeat(64),
           BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
           ETHERSCAN_BASE_URL: 'https://sepolia.etherscan.io',
         };

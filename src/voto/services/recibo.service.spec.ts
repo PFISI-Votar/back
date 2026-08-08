@@ -32,7 +32,7 @@ describe('ReciboService (VOTAR-360)', () => {
 
   const configService = {
     get: jest.fn((key: string) => {
-      if (key === 'RECIBO_SIGNING_PRIVATE_KEY') {
+      if (key === 'PRIVATE_KEY') {
         return signingWallet.privateKey;
       }
       return undefined;
