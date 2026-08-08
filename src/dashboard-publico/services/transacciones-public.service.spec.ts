@@ -1,0 +1,100 @@
+import { NotFoundException } from '@nestjs/common';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { TransaccionesPublicService } from '@/dashboard-publico/services/transacciones-public.service';
+
+const createService = (deps?: {
+  eleccion?: unknown;
+  configuracion?: unknown;
+  transacciones?: Array<{
+    hashTransaccion: string;
+    numeroBloque: number;
+    marcaTiempo: string;
+    contratoEtiqueta: string;
+    nombreEvento: string;
+    descripcionLegible: string;
+    explorerUrl: string;
+  }>;
+}) => {
+  const eleccionRepository = {
+    findOne: jest.fn().mockResolvedValue(
+      deps?.eleccion ?? {
+        idEleccion: 7,
+        nombre: 'Comicio UTN',
+        estado: EleccionEstado.ABIERTA,
+      },
+    ),
+  };
+  const configuracionRepository = {
+    findOne: jest.fn().mockResolvedValue(
+      deps?.configuracion ?? {
+        idEleccion: 7,
+        mostrarResultadosTiempoReal: true,
+      },
+    ),
+  };
+  const blockchainService = {
+    scanElectionTransactionHistory: jest.fn().mockResolvedValue(
+      deps?.transacciones ?? [
+        {
+          hashTransaccion: '0x' + 'aa'.repeat(32),
+          numeroBloque: 100,
+          marcaTiempo: '2026-08-08T12:00:00.000Z',
+          contratoEtiqueta: 'VoteRegistry',
+          nombreEvento: 'VoteCast',
+          descripcionLegible: 'Sufragio contabilizado (candidato #3)',
+          explorerUrl: `https://sepolia.etherscan.io/tx/${'0x' + 'aa'.repeat(32)}`,
+        },
+      ],
+    ),
+    getNetworkDisplayName: jest.fn().mockReturnValue('Sepolia'),
+    getChainId: jest.fn().mockReturnValue(11155111),
+  };
+
+  const service = new TransaccionesPublicService(
+    eleccionRepository as never,
+    configuracionRepository as never,
+    blockchainService as never,
+  );
+
+  return { service, eleccionRepository, blockchainService };
+};
+
+describe('TransaccionesPublicService — VOTAR-373', () => {
+  it('returns public transaction history with explorer links', async () => {
+    const { service, blockchainService } = createService();
+
+    const actual = await service.obtenerTransaccionesPublica(7);
+
+    expect(actual.idEleccion).toBe(7);
+    expect(actual.red).toBe('Sepolia');
+    expect(actual.transacciones).toHaveLength(1);
+    expect(actual.transacciones[0].explorerUrl).toContain(
+      'sepolia.etherscan.io/tx/',
+    );
+    expect(
+      blockchainService.scanElectionTransactionHistory,
+    ).toHaveBeenCalledWith(7);
+  });
+
+  it('marks snapshot as frozen when comicio is closed', async () => {
+    const { service } = createService({
+      eleccion: {
+        idEleccion: 7,
+        estado: EleccionEstado.CERRADA,
+      },
+    });
+
+    const actual = await service.obtenerTransaccionesPublica(7);
+
+    expect(actual.snapshotCongelado).toBe(true);
+  });
+
+  it('throws NotFound when comicio does not exist', async () => {
+    const { service, eleccionRepository } = createService();
+    eleccionRepository.findOne.mockResolvedValue(null);
+
+    await expect(service.obtenerTransaccionesPublica(7)).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+});

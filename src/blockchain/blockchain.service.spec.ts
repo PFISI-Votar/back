@@ -18,6 +18,9 @@ const mockGetParticipationStats = jest.fn();
 const mockGetVotesByCandidate = jest.fn();
 const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
+const mockBallotQueryFilter = jest.fn();
+const mockRegistryQueryFilter = jest.fn();
+const mockMerkleQueryFilter = jest.fn();
 const mockVoteCastFilter = jest.fn();
 const mockRegisterCandidates = jest.fn();
 
@@ -27,26 +30,61 @@ jest.mock('ethers', () => {
     ...actual,
     Contract: jest.fn().mockImplementation((_address: string, abi: unknown) => {
       const abiList = Array.isArray(abi) ? abi : [];
-      const hasRegisterCandidates = abiList.some(
-        (item: { name?: string }) => item.name === 'registerCandidates',
-      );
-      const hasVoteCast = abiList.some(
-        (item: { name?: string }) => item.name === 'VoteCast',
-      );
-      const hasGetParticipation = abiList.some(
-        (item: { name?: string }) => item.name === 'getParticipationStats',
-      );
-      const hasGetElection = abiList.some(
-        (item: { name?: string }) => item.name === 'getElection',
-      );
+      const abiHas = (name: string) =>
+        abiList.some((item: { name?: string } | string) =>
+          typeof item === 'string' ? item.includes(name) : item.name === name,
+        );
+      const hasRegisterCandidates = abiHas('registerCandidates');
+      const hasVoteCast = abiHas('VoteCast');
+      const hasSignedVoteCast = abiHas('SignedVoteCast');
+      const hasGetParticipation = abiHas('getParticipationStats');
+      const hasGetElection = abiHas('getElection');
+      const hasMerkleRootStore =
+        abiHas('publishRoot') &&
+        abiHas('RootPublished') &&
+        !hasRegisterCandidates;
+      if (hasMerkleRootStore) {
+        return {
+          publishRoot: mockPublishRoot,
+          setElectionState: mockSetElectionState,
+          getMerkleRoot: jest.fn(),
+          isPublished: jest.fn(),
+          filters: {
+            RootPublished: jest.fn().mockReturnValue({ type: 'RootPublished' }),
+            ElectionStateChanged: jest
+              .fn()
+              .mockReturnValue({ type: 'ElectionStateChanged' }),
+            ElectionWindowSet: jest
+              .fn()
+              .mockReturnValue({ type: 'ElectionWindowSet' }),
+          },
+          queryFilter: mockMerkleQueryFilter,
+        };
+      }
+      if (hasSignedVoteCast) {
+        return {
+          filters: {
+            SignedVoteCast: jest
+              .fn()
+              .mockReturnValue({ type: 'SignedVoteCast' }),
+          },
+          queryFilter: mockBallotQueryFilter,
+        };
+      }
       // VOTE_REGISTRY_CONTRACT_ABI carries both the VoteCast/VoteUpdated events
       // and the registerCandidates function fragment in one array (VOTAR-345),
       // so a real Contract built from it supports both — merge, don't branch.
       if (hasRegisterCandidates || hasVoteCast) {
         return {
           registerCandidates: mockRegisterCandidates,
-          filters: { VoteCast: mockVoteCastFilter },
-          queryFilter: mockQueryFilter,
+          filters: {
+            VoteCast: mockVoteCastFilter,
+            VoteUpdated: jest.fn().mockReturnValue({ type: 'VoteUpdated' }),
+            CandidateSetRegistered: jest
+              .fn()
+              .mockReturnValue({ type: 'CandidateSetRegistered' }),
+          },
+          queryFilter: mockRegistryQueryFilter,
         };
       }
       if (hasGetParticipation) {
@@ -120,8 +158,11 @@ describe('BlockchainService', () => {
     });
     mockGetParticipationStats.mockResolvedValue([25n, 0n, 0n]);
     mockGetVotesByCandidate.mockResolvedValue(10n);
-    mockVoteCastFilter.mockReturnValue({});
+    mockVoteCastFilter.mockReturnValue({ type: 'VoteCast' });
     mockQueryFilter.mockResolvedValue([]);
+    mockBallotQueryFilter.mockResolvedValue([]);
+    mockRegistryQueryFilter.mockResolvedValue([]);
+    mockMerkleQueryFilter.mockResolvedValue([]);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -454,7 +495,7 @@ describe('BlockchainService', () => {
 
     it('getVoteCastTimeline builds hourly buckets from first votes only', async () => {
       const nowSec = Math.floor(Date.now() / 1000);
-      mockQueryFilter.mockResolvedValue([
+      mockRegistryQueryFilter.mockResolvedValue([
         {
           args: {
             voterHash: '0xaaa',
@@ -486,6 +527,58 @@ describe('BlockchainService', () => {
       expect(actual.reduce((sum, point) => sum + point.nuevos, 0)).toBe(2);
       const serialized = JSON.stringify(actual);
       expect(serialized).not.toMatch(/0xaaa|0xbbb/);
+    });
+
+    it('scanElectionTransactionHistory returns chronological audit entries (VOTAR-373)', async () => {
+      const txHash = '0x' + '11'.repeat(32);
+      mockBallotQueryFilter.mockResolvedValue([
+        {
+          transactionHash: txHash,
+          blockNumber: 100,
+          index: 0,
+          eventName: 'SignedVoteCast',
+          args: { electionId: 7n },
+        },
+      ]);
+      mockRegistryQueryFilter.mockImplementation(
+        (filter: { type?: string }) => {
+          if (filter?.type === 'VoteCast') {
+            return Promise.resolve([
+              {
+                transactionHash: txHash,
+                blockNumber: 100,
+                index: 1,
+                eventName: 'VoteCast',
+                args: { candidateId: 3n, isOverwrite: false },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+      mockMerkleQueryFilter.mockResolvedValue([
+        {
+          transactionHash: '0x' + '22'.repeat(32),
+          blockNumber: 50,
+          index: 0,
+          eventName: 'RootPublished',
+          args: { electionId: 7n },
+        },
+      ]);
+      mockGetBlock.mockResolvedValue({ timestamp: 1700000000 });
+
+      const actual = await service.scanElectionTransactionHistory(7);
+
+      expect(actual).toHaveLength(2);
+      expect(actual[0].numeroBloque).toBe(50);
+      expect(actual[1].hashTransaccion).toBe(txHash);
+      expect(actual[1].explorerUrl).toBe(
+        `https://sepolia.etherscan.io/tx/${txHash}`,
+      );
+      expect(actual[1].descripcionLegible).toContain('Sufragio');
+      expect(JSON.stringify(actual)).not.toMatch(
+        /nullifier|voterHash|selectionHash/i,
+      );
     });
 
     it('resolveElectionContracts falls back to factory when env addresses missing', async () => {
