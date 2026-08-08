@@ -332,7 +332,9 @@ export class BlockchainService {
 
   getChainId(): number {
     const configured = this.configService.get<number>('CHAIN_ID');
-    return Number.isFinite(configured) && configured > 0 ? configured : 11155111;
+    return Number.isFinite(configured) && configured > 0
+      ? configured
+      : 11155111;
   }
 
   /**

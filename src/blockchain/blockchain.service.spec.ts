@@ -42,9 +42,7 @@ jest.mock('ethers', () => {
       );
       const abiHas = (name: string) =>
         abiList.some((item: { name?: string } | string) =>
-          typeof item === 'string'
-            ? item.includes(name)
-            : item.name === name,
+          typeof item === 'string' ? item.includes(name) : item.name === name,
         );
       const hasGetParticipation = abiHas('getParticipationStats');
       const hasGetElectionState = abiHas('getElectionState');

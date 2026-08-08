@@ -12,7 +12,10 @@ export class ContratoDireccionPublicaDto {
 }
 
 export class EstadoOnChainPublicoDto {
-  @ApiProperty({ example: 2, description: 'Enum MerkleRootStore.ElectionState' })
+  @ApiProperty({
+    example: 2,
+    description: 'Enum MerkleRootStore.ElectionState',
+  })
   codigo: number;
 
   @ApiProperty({ example: 'ABIERTA' })
@@ -46,7 +49,10 @@ export class LimitesRevotoPublicoDto {
   @ApiProperty({ example: 60 })
   minIntervaloSegundos: number;
 
-  @ApiProperty({ example: 'LAST_VOTE_WINS', enum: ['LAST_VOTE_WINS', 'DISABLED'] })
+  @ApiProperty({
+    example: 'LAST_VOTE_WINS',
+    enum: ['LAST_VOTE_WINS', 'DISABLED'],
+  })
   politicaRevoto: 'LAST_VOTE_WINS' | 'DISABLED';
 }
 
