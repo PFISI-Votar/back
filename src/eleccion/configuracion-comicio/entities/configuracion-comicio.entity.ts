@@ -27,6 +27,9 @@ export class ConfiguracionComicio {
   @Column({ name: 'permitir_voto_multiple', type: 'boolean', default: false })
   permitirVotoMultiple: boolean;
 
+  @Column({ name: 'permitir_voto_nulo', type: 'boolean', default: true })
+  permitirVotoNulo: boolean;
+
   @Column({ name: 'max_votos_por_votante', type: 'int', default: 1 })
   maxVotosPorVotante: number;
 

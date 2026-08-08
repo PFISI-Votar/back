@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BoletaService } from '@/eleccion/lista/services/boleta.service';
@@ -30,6 +34,7 @@ export class ListaService {
     const eleccion = await this.findEleccionOrFail(idEleccion);
     assertEleccionEditable(eleccion);
     const boleta = await this.boletaService.ensureBoleta(idEleccion);
+    await this.validateSiglaUnica(boleta.idBoleta, dto.sigla, null);
     const lista = this.listaRepository.create({
       idBoleta: boleta.idBoleta,
       nombre: dto.nombre,
@@ -59,6 +64,9 @@ export class ListaService {
   ): Promise<ListaResponseDto> {
     const lista = await this.findListaWithEleccionOrFail(idLista);
     assertEleccionEditable(lista.boleta.eleccion);
+    if (dto.sigla !== undefined && dto.sigla !== lista.sigla) {
+      await this.validateSiglaUnica(lista.idBoleta, dto.sigla, idLista);
+    }
     if (dto.nombre !== undefined) {
       lista.nombre = dto.nombre;
     }
@@ -137,6 +145,21 @@ export class ListaService {
       throw new NotFoundException(`Lista ${idLista} no encontrada`);
     }
     return lista;
+  }
+
+  private async validateSiglaUnica(
+    idBoleta: number,
+    sigla: string,
+    excludeIdLista: number | null,
+  ): Promise<void> {
+    const existente = await this.listaRepository.findOne({
+      where: { idBoleta, sigla },
+    });
+    if (existente && existente.idLista !== excludeIdLista) {
+      throw new ConflictException(
+        `Ya existe una lista con la sigla "${sigla}" en este comicio`,
+      );
+    }
   }
 
   private async findEleccionOrFail(idEleccion: number): Promise<Eleccion> {
