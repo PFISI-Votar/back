@@ -121,19 +121,17 @@ export class ReciboService {
   }
 
   private getSigningWallet(): Wallet {
-    const privateKey = this.configService.get<string>(
-      'RECIBO_SIGNING_PRIVATE_KEY',
-    );
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!privateKey) {
       throw new ServiceUnavailableException(
-        'La firma de recibos no está configurada (RECIBO_SIGNING_PRIVATE_KEY).',
+        'La firma de recibos no está configurada (PRIVATE_KEY).',
       );
     }
     try {
       return new Wallet(privateKey);
     } catch {
       throw new ServiceUnavailableException(
-        'RECIBO_SIGNING_PRIVATE_KEY no es una clave privada válida.',
+        'PRIVATE_KEY no es una clave privada válida.',
       );
     }
   }

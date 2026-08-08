@@ -128,13 +128,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'MERKLE_UPDATER_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La publicación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, MERKLE_UPDATER_PRIVATE_KEY).',
+        'La publicación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -402,13 +400,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La sincronización de estado on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+        'La sincronización de estado on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -475,13 +471,11 @@ export class BlockchainService {
     revoteConfig: RevoteConfigOnChain,
   ): Promise<DeployElectionStackResult> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
-        'El despliegue on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El despliegue on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
       );
     }
 
@@ -606,7 +600,7 @@ export class BlockchainService {
 
   /**
    * VOTAR-364: resolves AuditView address for an election.
-   * Prefer ElectionFactory.getElection(...).auditView; fallback AUDIT_VIEW_ADDRESS.
+   * Prefer ElectionFactory.getElection(...).auditView; fallback ADMIN_MULTISIG_ADDRESS.
    */
   async resolveAuditViewAddress(electionId: number): Promise<string> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
@@ -635,15 +629,15 @@ export class BlockchainService {
           return deployment.auditView;
         }
       } catch {
-        // Fall through to AUDIT_VIEW_ADDRESS fallback.
+        // Fall through to ADMIN_MULTISIG_ADDRESS fallback.
       }
     }
-    const fallback = this.configService.get<string>('AUDIT_VIEW_ADDRESS');
+    const fallback = this.configService.get<string>('ADMIN_MULTISIG_ADDRESS');
     if (fallback && fallback.toLowerCase() !== ZERO_ADDRESS) {
       return fallback;
     }
     throw new ServiceUnavailableException(
-      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni AUDIT_VIEW_ADDRESS).',
+      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni ADMIN_MULTISIG_ADDRESS).',
     );
   }
 
@@ -763,13 +757,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La sincronización de ventana on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+        'La sincronización de ventana on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -848,13 +840,11 @@ export class BlockchainService {
     candidateIds: number[],
   ): Promise<{ txHash: string; blockNumber: number; alreadySealed: boolean }> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
-        'El sellado del set de candidatos on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El sellado del set de candidatos on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
       );
     }
 
