@@ -66,6 +66,19 @@ export type VoteCastTimelinePoint = {
   nuevos: number;
 };
 
+export type RevoteStatsOnChain = {
+  totalRevotes: number;
+  uniqueVoters: number;
+  overwriteRatio: number;
+};
+
+export type RevoteOverwriteTimelinePoint = {
+  etiqueta: string;
+  overwriteRatio: number;
+  totalRevotes: number;
+  totalEventos: number;
+};
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 interface AuditViewContract {
@@ -1188,6 +1201,168 @@ export class BlockchainService {
         etiqueta,
         acumulado,
         nuevos: bucket.nuevos,
+      };
+    });
+  }
+
+  /**
+   * VOTAR-329 — aggregate revote metrics via AuditViewContract.getRevoteStats.
+   */
+  async getRevoteStats(idEleccion: number): Promise<RevoteStatsOnChain> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      getRevoteStats: (
+        electionId: number,
+      ) => Promise<[bigint, bigint, bigint]>;
+    };
+
+    try {
+      const [totalRevotes, uniqueVoters, overwriteRatioWad] =
+        await auditView.getRevoteStats(idEleccion);
+      return {
+        totalRevotes: Number(totalRevotes),
+        uniqueVoters: Number(uniqueVoters),
+        overwriteRatio:
+          Number(overwriteRatioWad) / 1e18,
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudieron obtener las estadísticas de re-voto on-chain: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * VOTAR-329 — hourly cumulative overwrite ratio from VoteCast events.
+   */
+  async getRevoteOverwriteTimeline(
+    idEleccion: number,
+    horasVentana = 12,
+  ): Promise<RevoteOverwriteTimelinePoint[]> {
+    const hours = Math.max(1, Math.min(72, Math.floor(horasVentana)));
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const registry = new Contract(
+      addresses.voteRegistry,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      filters: {
+        VoteCast: (electionId: number) => unknown;
+      };
+      queryFilter: (filter: unknown) => Promise<
+        Array<{
+          args: {
+            isOverwrite: boolean;
+          };
+          blockNumber: number;
+        }>
+      >;
+    };
+
+    let events: Array<{
+      args: { isOverwrite: boolean };
+      blockNumber: number;
+    }>;
+    try {
+      const filter = registry.filters.VoteCast(idEleccion);
+      events = await registry.queryFilter(filter);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar la curva de re-voto VoteCast: ${message}`,
+      );
+    }
+
+    const blockTimestampCache = new Map<number, number>();
+    const sortedEvents = [...events].sort(
+      (a, b) => a.blockNumber - b.blockNumber,
+    );
+
+    const timedEvents: Array<{ timestampMs: number; isOverwrite: boolean }> =
+      [];
+    for (const event of sortedEvents) {
+      let timestampMs = blockTimestampCache.get(event.blockNumber);
+      if (timestampMs === undefined) {
+        const block = await provider.getBlock(event.blockNumber);
+        timestampMs = block?.timestamp
+          ? Number(block.timestamp) * 1000
+          : Date.now();
+        blockTimestampCache.set(event.blockNumber, timestampMs);
+      }
+      timedEvents.push({
+        timestampMs,
+        isOverwrite: event.args.isOverwrite === true,
+      });
+    }
+
+    const nowMs = Date.now();
+    const windowStartMs = nowMs - hours * 60 * 60 * 1000;
+    const bucketCount = hours;
+    const buckets = Array.from({ length: bucketCount }, (_, index) => {
+      const startMs = windowStartMs + index * 60 * 60 * 1000;
+      return { startMs, endMs: startMs + 60 * 60 * 1000 };
+    });
+
+    let revotesBeforeWindow = 0;
+    let eventsBeforeWindow = 0;
+    for (const event of timedEvents) {
+      if (event.timestampMs >= windowStartMs) {
+        break;
+      }
+      eventsBeforeWindow += 1;
+      if (event.isOverwrite) {
+        revotesBeforeWindow += 1;
+      }
+    }
+
+    return buckets.map((bucket) => {
+      let cumulativeRevotes = revotesBeforeWindow;
+      let cumulativeEvents = eventsBeforeWindow;
+
+      for (const event of timedEvents) {
+        if (event.timestampMs < windowStartMs) {
+          continue;
+        }
+        if (event.timestampMs >= bucket.endMs) {
+          break;
+        }
+        cumulativeEvents += 1;
+        if (event.isOverwrite) {
+          cumulativeRevotes += 1;
+        }
+      }
+
+      const overwriteRatio =
+        cumulativeEvents === 0
+          ? 0
+          : Math.round((cumulativeRevotes / cumulativeEvents) * 1000) / 1000;
+
+      const date = new Date(bucket.startMs);
+      const etiqueta = date.toLocaleTimeString('es-AR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'America/Argentina/Buenos_Aires',
+      });
+
+      return {
+        etiqueta,
+        overwriteRatio,
+        totalRevotes: cumulativeRevotes,
+        totalEventos: cumulativeEvents,
       };
     });
   }

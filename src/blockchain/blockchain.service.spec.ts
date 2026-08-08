@@ -15,6 +15,7 @@ const mockGetBlock = jest.fn();
 const mockGetTransactionReceipt = jest.fn();
 const mockParseLog = jest.fn();
 const mockGetParticipationStats = jest.fn();
+const mockGetRevoteStats = jest.fn();
 const mockGetVotesByCandidate = jest.fn();
 const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
@@ -36,6 +37,9 @@ jest.mock('ethers', () => {
       const hasGetParticipation = abiList.some(
         (item: { name?: string }) => item.name === 'getParticipationStats',
       );
+      const hasGetRevoteStats = abiList.some(
+        (item: { name?: string }) => item.name === 'getRevoteStats',
+      );
       const hasGetElection = abiList.some(
         (item: { name?: string }) => item.name === 'getElection',
       );
@@ -49,9 +53,10 @@ jest.mock('ethers', () => {
           queryFilter: mockQueryFilter,
         };
       }
-      if (hasGetParticipation) {
+      if (hasGetParticipation || hasGetRevoteStats) {
         return {
           getParticipationStats: mockGetParticipationStats,
+          getRevoteStats: mockGetRevoteStats,
           getVotesByCandidate: mockGetVotesByCandidate,
         };
       }
@@ -119,6 +124,11 @@ describe('BlockchainService', () => {
       args: [42, '0x' + 'a'.repeat(64), 1700000000n],
     });
     mockGetParticipationStats.mockResolvedValue([25n, 0n, 0n]);
+    mockGetRevoteStats.mockResolvedValue([
+      30n,
+      70n,
+      (30n * 10n ** 18n) / 100n,
+    ]);
     mockGetVotesByCandidate.mockResolvedValue(10n);
     mockVoteCastFilter.mockReturnValue({});
     mockQueryFilter.mockResolvedValue([]);
@@ -486,6 +496,43 @@ describe('BlockchainService', () => {
       expect(actual.reduce((sum, point) => sum + point.nuevos, 0)).toBe(2);
       const serialized = JSON.stringify(actual);
       expect(serialized).not.toMatch(/0xaaa|0xbbb/);
+    });
+
+    it('getRevoteStats returns aggregates from AuditViewContract (VOTAR-329)', async () => {
+      const actual = await service.getRevoteStats(7);
+
+      expect(actual).toEqual({
+        totalRevotes: 30,
+        uniqueVoters: 70,
+        overwriteRatio: 0.3,
+      });
+      expect(mockGetRevoteStats).toHaveBeenCalledWith(7);
+    });
+
+    it('getRevoteOverwriteTimeline builds cumulative overwrite ratio series', async () => {
+      const nowSec = Math.floor(Date.now() / 1000);
+      mockQueryFilter.mockResolvedValue([
+        {
+          args: { isOverwrite: false },
+          blockNumber: 1,
+        },
+        {
+          args: { isOverwrite: true },
+          blockNumber: 2,
+        },
+        {
+          args: { isOverwrite: false },
+          blockNumber: 3,
+        },
+      ]);
+      mockGetBlock.mockResolvedValue({ timestamp: nowSec - 1800 });
+
+      const actual = await service.getRevoteOverwriteTimeline(7, 2);
+
+      expect(actual).toHaveLength(2);
+      expect(actual[1].totalEventos).toBe(3);
+      expect(actual[1].totalRevotes).toBe(1);
+      expect(actual[1].overwriteRatio).toBeCloseTo(1 / 3, 3);
     });
 
     it('resolveElectionContracts falls back to factory when env addresses missing', async () => {

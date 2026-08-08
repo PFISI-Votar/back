@@ -15,6 +15,17 @@ export const AUDIT_VIEW_CONTRACT_ABI = [
   },
   {
     type: 'function',
+    name: 'getRevoteStats',
+    stateMutability: 'view',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+    outputs: [
+      { name: 'totalRevotes', type: 'uint256' },
+      { name: 'uniqueVoters', type: 'uint256' },
+      { name: 'overwriteRatio', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'function',
     name: 'getVotesByCandidate',
     stateMutability: 'view',
     inputs: [
