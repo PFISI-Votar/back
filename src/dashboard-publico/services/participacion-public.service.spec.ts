@@ -19,7 +19,8 @@ const createService = (deps?: {
         idEleccion: 7,
         nombre: 'Comicio UTN',
         estado: EleccionEstado.ABIERTA,
-      },
+        fechaFin: new Date(Date.now() + 2 * 60 * 60 * 1_000), // comicio aún abierto → ancla = ahora
+      }
     ),
   };
   const configuracionRepository = {
@@ -195,6 +196,7 @@ describe('ParticipacionPublicService — VOTAR-433', () => {
       eleccion: {
         idEleccion: 7,
         estado: EleccionEstado.CERRADA,
+        fechaFin: new Date(Date.now() - 30 * 60 * 1_000), // cerrado hace 30 min
       },
       configuracion: {
         idEleccion: 7,

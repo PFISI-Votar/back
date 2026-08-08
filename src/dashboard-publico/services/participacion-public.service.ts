@@ -80,7 +80,7 @@ export class ParticipacionPublicService {
     const expresion = `(${votosAfirmativos} + ${stats.blankVotes} + ${stats.nullVotes}) / ${totalPadron} × 100 = ${porcentajeParticipacion}%`;
 
     const [serieTemporal, desglosePorCategoria] = await Promise.all([
-      this.buildSerieTemporal(idEleccion, horasVentana), // ← ya no usa eth_getLogs
+      this.buildSerieTemporal(idEleccion, horasVentana, eleccion.fechaFin), // ← ya no usa eth_getLogs
       this.buildDesglosePorCategoria(
         idEleccion,
         stats.blankVotes,
@@ -132,10 +132,14 @@ export class ParticipacionPublicService {
   private async buildSerieTemporal(
     idEleccion: number,
     horasVentana: number,
+    fechaFin?: Date,
   ): Promise<SerieTemporalPuntoDto[]> {
     const hours = Math.max(1, Math.min(72, Math.floor(horasVentana)));
-    const ahora = new Date();
-    const ventanaInicio = new Date(ahora.getTime() - hours * 60 * 60 * 1_000);
+
+    // VOTAR-433: anclar la ventana al cierre del comicio si ya terminó,
+    // así un comicio cerrado consultado horas/días después sigue mostrando su serie.
+    const ancla = fechaFin && fechaFin < new Date() ? fechaFin : new Date();
+    const ventanaInicio = new Date(ancla.getTime() - hours * 60 * 60 * 1_000);
 
     const snapshots = await this.snapshotRepository
       .createQueryBuilder('s')
@@ -148,7 +152,6 @@ export class ParticipacionPublicService {
       return [];
     }
 
-    // Construir buckets horarios dentro de la ventana
     const buckets = Array.from({ length: hours }, (_, i) => {
       const startMs = ventanaInicio.getTime() + i * 60 * 60 * 1_000;
       return { startMs, maxAcumulado: 0 };
@@ -166,21 +169,22 @@ export class ParticipacionPublicService {
       );
     }
 
-    // Calcular "nuevos" como diferencia con el bucket anterior
-    // y descartar buckets vacíos al inicio (antes del primer voto)
     let acumuladoAnterior = 0;
     let primerBucketConVotos = false;
     const puntos: SerieTemporalPuntoDto[] = [];
 
     for (const bucket of buckets) {
       if (!primerBucketConVotos && bucket.maxAcumulado === 0) {
-        // Saltear buckets vacíos antes del primer voto para no mostrar
-        // horas muertas al inicio del gráfico
         continue;
       }
       primerBucketConVotos = true;
 
-      const nuevos = Math.max(0, bucket.maxAcumulado - acumuladoAnterior);
+      // Propagar el último acumulado conocido hacia adelante
+      // en lugar de emitir 0, y descartar buckets finales que no aportaron
+      // nuevos votos y están más allá del último snapshot.
+      const acumulado = Math.max(bucket.maxAcumulado, acumuladoAnterior);
+      const nuevos = Math.max(0, acumulado - acumuladoAnterior);
+
       const etiqueta = new Date(bucket.startMs).toLocaleTimeString('es-AR', {
         hour: '2-digit',
         minute: '2-digit',
@@ -188,13 +192,17 @@ export class ParticipacionPublicService {
         timeZone: 'America/Argentina/Buenos_Aires',
       });
 
-      puntos.push({
-        etiqueta,
-        acumulado: bucket.maxAcumulado,
-        nuevos,
-      });
+      puntos.push({ etiqueta, acumulado, nuevos });
+      acumuladoAnterior = acumulado;
+    }
 
-      acumuladoAnterior = bucket.maxAcumulado;
+    // Descartar buckets finales vacíos (posteriores al último snapshot con votos)
+    while (
+      puntos.length > 1 &&
+      puntos.at(-1)!.nuevos === 0 &&
+      puntos.at(-1)!.acumulado === puntos.at(-2)!.acumulado
+    ) {
+      puntos.pop();
     }
 
     return puntos;
