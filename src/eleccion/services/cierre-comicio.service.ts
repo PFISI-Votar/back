@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { ParticipacionSnapshot } from '@/dashboard-publico/entities/participacion-snapshot.entity';
+import { BlockchainService } from '@/blockchain/blockchain.service';
 import { Eleccion } from '../entities/eleccion.entity';
 import { EleccionEstado } from '../enums/eleccion-estado.enum';
 import { CerrarEleccionResponseDto } from '../dto/cerrar-eleccion-response.dto';
@@ -30,6 +32,9 @@ export class CierreComicioService {
     private readonly auditLoggerService: AuditLoggerService,
     private readonly eleccionGateway: EleccionGateway,
     private readonly electionStateService: ElectionStateService,
+    @InjectRepository(ParticipacionSnapshot)
+    private readonly snapshotRepository: Repository<ParticipacionSnapshot>,
+    private readonly blockchainService: BlockchainService,
   ) {}
 
   async cerrarManual(
@@ -73,6 +78,20 @@ export class CierreComicioService {
 
     await this.congelarSnapshotDashboard(idEleccion);
 
+    // VOTAR-433: muestra final de participación con congelado=true.
+    // Se persiste directamente desde CierreComicioService para evitar
+    // dependencia circular con DashboardPublicoModule. El sampler detecta
+    // la muestra congelada en el próximo tick y deja de procesar el comicio.
+    try {
+      await this.tomarMuestraFinalParticipacion(idEleccion);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : 'Error desconocido';
+      this.logger.warn(
+        `No se pudo tomar la muestra final de participación para comicio ${idEleccion}: ${message}`,
+      );
+    }
+
     await this.auditLoggerService.logComicioCerrado({
       idEleccion,
       actorId,
@@ -108,5 +127,35 @@ export class CierreComicioService {
     }
     config.mostrarResultadosTiempoReal = false;
     await this.configuracionRepository.save(config);
+  }
+
+  private async tomarMuestraFinalParticipacion(
+    idEleccion: number,
+  ): Promise<void> {
+    const yaCongelado = await this.snapshotRepository.existsBy({
+      idEleccion,
+      congelado: true,
+    });
+    if (yaCongelado) {
+      return;
+    }
+
+    const stats =
+      await this.blockchainService.getParticipationStats(idEleccion);
+
+    await this.snapshotRepository.save(
+      this.snapshotRepository.create({
+        idEleccion,
+        totalVotos: stats.totalVotes,
+        votosBlanco: stats.blankVotes,
+        votosNulo: stats.nullVotes,
+        congelado: true,
+      }),
+    );
+
+    this.logger.log(
+      `Comicio ${idEleccion}: muestra final de participación guardada ` +
+        `(totalVotos=${stats.totalVotes})`,
+    );
   }
 }

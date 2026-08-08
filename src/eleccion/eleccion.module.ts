@@ -7,6 +7,7 @@ import { EleccionesController } from '@/eleccion/controllers/eleccion.controller
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
 import { ELECCION_REPOSITORY } from '@/eleccion/interfaces/eleccion.repository.interface';
+import { ParticipacionSnapshot } from '@/dashboard-publico/entities/participacion-snapshot.entity';
 import { ListaModule } from '@/eleccion/lista/lista.module';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
@@ -31,6 +32,7 @@ import { AuditModule } from '@/audit/audit.module';
       Categoria,
       PadronElectoral,
       MerkleTree,
+      ParticipacionSnapshot,
     ]),
     ListaModule,
     CandidatoModule,
