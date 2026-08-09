@@ -175,18 +175,12 @@ export class BlockchainService {
           'La raíz Merkle ya fue publicada on-chain para este comicio.',
         );
       }
-      if (
-        decodedName === 'RootLocked' ||
-        message.includes('RootLocked')
-      ) {
+      if (decodedName === 'RootLocked' || message.includes('RootLocked')) {
         throw new ServiceUnavailableException(
           'No se puede publicar el padrón porque el comicio ya está abierto, cerrado o escrutado (sello hermético).',
         );
       }
-      if (
-        decodedName === 'RootIsZero' ||
-        message.includes('RootIsZero')
-      ) {
+      if (decodedName === 'RootIsZero' || message.includes('RootIsZero')) {
         throw new ServiceUnavailableException(
           'La raíz Merkle calculada es inválida (vacía).',
         );
