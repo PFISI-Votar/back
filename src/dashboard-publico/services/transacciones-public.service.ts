@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import { TransaccionBlockchainService } from '@/blockchain/services/transaccion-blockchain.service';
 import { TransaccionesPublicaResponseDto } from '@/dashboard-publico/dto/transacciones-publica-response.dto';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -12,8 +13,7 @@ const ESTADOS_ELECCION_CERRADOS = [
   EleccionEstado.ESCRUTADA,
 ];
 
-const FUENTE_DATOS =
-  'BlockScanner: SignedVoteCast + VoteCast + VoteUpdated + CandidateSetRegistered + MerkleRootStore';
+const FUENTE_DATOS = 'Índice append-only verificable on-chain (Etherscan)';
 
 @Injectable()
 export class TransaccionesPublicService {
@@ -23,6 +23,7 @@ export class TransaccionesPublicService {
     @InjectRepository(ConfiguracionComicio)
     private readonly configuracionRepository: Repository<ConfiguracionComicio>,
     private readonly blockchainService: BlockchainService,
+    private readonly transaccionBlockchainService: TransaccionBlockchainService,
   ) {}
 
   async obtenerTransaccionesPublica(
@@ -48,8 +49,10 @@ export class TransaccionesPublicService {
     const snapshotCongelado =
       resultadosDefinitivos || !configuracion.mostrarResultadosTiempoReal;
 
+    await this.blockchainService.resolveElectionContracts(idEleccion);
+
     const transacciones =
-      await this.blockchainService.scanElectionTransactionHistory(idEleccion);
+      await this.transaccionBlockchainService.listarPorEleccion(idEleccion);
 
     return {
       idEleccion,

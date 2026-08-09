@@ -33,7 +33,16 @@ const createService = (deps?: {
     ),
   };
   const blockchainService = {
-    scanElectionTransactionHistory: jest.fn().mockResolvedValue(
+    resolveElectionContracts: jest.fn().mockResolvedValue({
+      ballot: '0xballot',
+      voteRegistry: '0xregistry',
+      auditView: '0xaudit',
+    }),
+    getNetworkDisplayName: jest.fn().mockReturnValue('Sepolia'),
+    getChainId: jest.fn().mockReturnValue(11155111),
+  };
+  const transaccionBlockchainService = {
+    listarPorEleccion: jest.fn().mockResolvedValue(
       deps?.transacciones ?? [
         {
           hashTransaccion: '0x' + 'aa'.repeat(32),
@@ -43,37 +52,43 @@ const createService = (deps?: {
           nombreEvento: 'VoteCast',
           descripcionLegible: 'Sufragio contabilizado (candidato #3)',
           explorerUrl: `https://sepolia.etherscan.io/tx/${'0x' + 'aa'.repeat(32)}`,
+          logIndex: 0,
         },
       ],
     ),
-    getNetworkDisplayName: jest.fn().mockReturnValue('Sepolia'),
-    getChainId: jest.fn().mockReturnValue(11155111),
   };
 
   const service = new TransaccionesPublicService(
     eleccionRepository as never,
     configuracionRepository as never,
     blockchainService as never,
+    transaccionBlockchainService as never,
   );
 
-  return { service, eleccionRepository, blockchainService };
+  return {
+    service,
+    eleccionRepository,
+    blockchainService,
+    transaccionBlockchainService,
+  };
 };
 
 describe('TransaccionesPublicService — VOTAR-373', () => {
-  it('returns public transaction history with explorer links', async () => {
-    const { service, blockchainService } = createService();
+  it('returns indexed transaction history from PostgreSQL', async () => {
+    const { service, transaccionBlockchainService } = createService();
 
     const actual = await service.obtenerTransaccionesPublica(7);
 
     expect(actual.idEleccion).toBe(7);
     expect(actual.red).toBe('Sepolia');
+    expect(actual.fuenteDatos).toContain('append-only');
     expect(actual.transacciones).toHaveLength(1);
     expect(actual.transacciones[0].explorerUrl).toContain(
       'sepolia.etherscan.io/tx/',
     );
-    expect(
-      blockchainService.scanElectionTransactionHistory,
-    ).toHaveBeenCalledWith(7);
+    expect(transaccionBlockchainService.listarPorEleccion).toHaveBeenCalledWith(
+      7,
+    );
   });
 
   it('marks snapshot as frozen when comicio is closed', async () => {

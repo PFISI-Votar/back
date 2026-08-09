@@ -48,8 +48,7 @@ export class TransaccionesPublicaResponseDto {
   transacciones: TransaccionBlockchainPublicaDto[];
 
   @ApiProperty({
-    example:
-      'BlockScanner: SignedVoteCast + VoteCast + VoteUpdated + CandidateSetRegistered + MerkleRootStore',
+    example: 'Índice append-only verificable on-chain (Etherscan)',
   })
   fuenteDatos: string;
 }
