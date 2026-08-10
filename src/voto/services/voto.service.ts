@@ -74,6 +74,7 @@ export class VotoService {
       resultadosDefinitivos,
       snapshotCongelado:
         resultadosDefinitivos || !configuracion.mostrarResultadosTiempoReal,
+      permitirVotoNulo: configuracion.permitirVotoNulo,
     };
   }
 

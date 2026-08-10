@@ -30,4 +30,11 @@ export class BudConfigResponseDto {
       'True cuando el Portal de Transparencia debe dejar de actualizar dinámicamente',
   })
   snapshotCongelado!: boolean;
+
+  @ApiProperty({
+    description:
+      'VOTAR-447: si el comicio habilita voto nulo (y su recuento en el dashboard público)',
+    example: true,
+  })
+  permitirVotoNulo!: boolean;
 }

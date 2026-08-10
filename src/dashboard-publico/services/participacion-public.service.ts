@@ -115,6 +115,7 @@ export class ParticipacionPublicService {
         totalCalculado,
       },
       fuenteDatos: FUENTE_DATOS,
+      permitirVotoNulo: configuracion.permitirVotoNulo,
     };
   }
 
