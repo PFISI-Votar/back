@@ -52,6 +52,8 @@ jest.mock('ethers', () => {
         return {
           publishRoot: mockPublishRoot,
           setElectionState: mockSetElectionState,
+          setElectionWindow: mockSetElectionWindow,
+          lockConfig: mockLockConfigMerkle,
           getMerkleRoot: jest.fn(),
           isPublished: jest.fn(),
           filters: {
