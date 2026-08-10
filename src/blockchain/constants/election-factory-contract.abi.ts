@@ -53,6 +53,13 @@ export const ELECTION_FACTORY_CONTRACT_ABI = [
       { name: 'auditView', type: 'address' },
     ],
   },
+  // VOTAR-434 — required so ethers can decode createElection reverts from
+  // raw send() estimateGas failures ("unknown custom error" + .data).
+  {
+    type: 'error',
+    name: 'ElectionAlreadyExists',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+  },
   {
     type: 'function',
     name: 'lockConfig',
