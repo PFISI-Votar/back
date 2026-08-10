@@ -1,6 +1,6 @@
 {
   "contractName": "MerkleRootStore",
-  "abiHash": "0x0143ace1a5dd69537a83ac9a2dadabbc16faf776847a3b0058a663a435d96e62",
+  "abiHash": "0x4deae45074057985448c8cb060c7ad74405dbef910d16da9212227f9182f3e39",
   "abi": [
     {
       "inputs": [
@@ -37,6 +37,17 @@
     {
       "inputs": [],
       "name": "AdminIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ConfigLocked",
       "type": "error"
     },
     {
@@ -80,6 +91,19 @@
       ],
       "name": "RootLocked",
       "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ConfigurationLocked",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -471,6 +495,25 @@
           "type": "uint256"
         }
       ],
+      "name": "isConfigLocked",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
       "name": "isPublished",
       "outputs": [
         {
@@ -480,6 +523,19 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "lockConfig",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
