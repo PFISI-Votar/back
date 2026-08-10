@@ -107,8 +107,7 @@ describe('BlockchainService', () => {
       const values: Record<string, string> = {
         SEPOLIA_RPC_URL: 'https://sepolia.example.com',
         MERKLE_ROOT_STORE_ADDRESS: '0x55d1d115309872C16B9646362C82fFa246F3F652',
-        MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
-        ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
+        PRIVATE_KEY: '0x' + '1'.repeat(64),
         BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
         AUDIT_VIEW_CONTRACT_ADDRESS:
           '0x1111111111111111111111111111111111111111',
@@ -178,6 +177,33 @@ describe('BlockchainService', () => {
     await expect(
       service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
     ).rejects.toThrow(/MERKLE_UPDATER_ROLE/);
+  });
+
+  it('publishMerkleRoot maps RootLocked revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: RootLocked(42)'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/sello hermético/);
+  });
+
+  it('publishMerkleRoot maps RootIsZero revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: RootIsZero()'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/raíz Merkle calculada es inválida/);
+  });
+
+  it('publishMerkleRoot maps InvalidElectionWindow revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: InvalidElectionWindow()'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/ventana de votación configurada/);
   });
 
   it('buildExplorerUrl returns Etherscan link', () => {
@@ -662,8 +688,7 @@ describe('BlockchainService', () => {
           SEPOLIA_RPC_URL: 'https://sepolia.example.com',
           MERKLE_ROOT_STORE_ADDRESS:
             '0x55d1d115309872C16B9646362C82fFa246F3F652',
-          MERKLE_UPDATER_PRIVATE_KEY: '0x' + '1'.repeat(64),
-          ELECTION_ADMIN_PRIVATE_KEY: '0x' + '2'.repeat(64),
+          PRIVATE_KEY: '0x' + '1'.repeat(64),
           BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
           ETHERSCAN_BASE_URL: 'https://sepolia.etherscan.io',
         };

@@ -11,6 +11,7 @@ import {
   ContractTransactionReceipt,
   ContractTransactionResponse,
   Interface,
+  type InterfaceAbi,
   JsonRpcProvider,
   Log,
   Wallet,
@@ -128,13 +129,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'MERKLE_UPDATER_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La publicación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, MERKLE_UPDATER_PRIVATE_KEY).',
+        'La publicación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -155,7 +154,12 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
@@ -163,9 +167,30 @@ export class BlockchainService {
           'La cuenta configurada no posee MERKLE_UPDATER_ROLE en el contrato.',
         );
       }
-      if (message.includes('RootAlreadyPublished')) {
+      if (
+        decodedName === 'RootAlreadyPublished' ||
+        message.includes('RootAlreadyPublished')
+      ) {
         throw new ServiceUnavailableException(
           'La raíz Merkle ya fue publicada on-chain para este comicio.',
+        );
+      }
+      if (decodedName === 'RootLocked' || message.includes('RootLocked')) {
+        throw new ServiceUnavailableException(
+          'No se puede publicar el padrón porque el comicio ya está abierto, cerrado o escrutado (sello hermético).',
+        );
+      }
+      if (decodedName === 'RootIsZero' || message.includes('RootIsZero')) {
+        throw new ServiceUnavailableException(
+          'La raíz Merkle calculada es inválida (vacía).',
+        );
+      }
+      if (
+        decodedName === 'InvalidElectionWindow' ||
+        message.includes('InvalidElectionWindow')
+      ) {
+        throw new ServiceUnavailableException(
+          'La ventana de votación configurada para el comicio es inválida.',
         );
       }
       throw new ServiceUnavailableException(
@@ -402,13 +427,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La sincronización de estado on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+        'La sincronización de estado on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -475,13 +498,11 @@ export class BlockchainService {
     revoteConfig: RevoteConfigOnChain,
   ): Promise<DeployElectionStackResult> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
-        'El despliegue on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El despliegue on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
       );
     }
 
@@ -615,13 +636,11 @@ export class BlockchainService {
     idEleccion: number,
   ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
 
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
-        'El sellado de RevoteConfig on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El sellado de RevoteConfig on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
       );
     }
 
@@ -658,7 +677,7 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
-      const decodedName = this.decodeErrorName(
+      const decodedName = this.decodeContractErrorName(
         error,
         ELECTION_FACTORY_CONTRACT_ABI,
       );
@@ -706,7 +725,7 @@ export class BlockchainService {
 
   /**
    * VOTAR-364: resolves AuditView address for an election.
-   * Prefer ElectionFactory.getElection(...).auditView; fallback AUDIT_VIEW_ADDRESS.
+   * Prefer ElectionFactory.getElection(...).auditView; fallback ADMIN_MULTISIG_ADDRESS.
    */
   async resolveAuditViewAddress(electionId: number): Promise<string> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
@@ -735,15 +754,15 @@ export class BlockchainService {
           return deployment.auditView;
         }
       } catch {
-        // Fall through to AUDIT_VIEW_ADDRESS fallback.
+        // Fall through to ADMIN_MULTISIG_ADDRESS fallback.
       }
     }
-    const fallback = this.configService.get<string>('AUDIT_VIEW_ADDRESS');
+    const fallback = this.configService.get<string>('ADMIN_MULTISIG_ADDRESS');
     if (fallback && fallback.toLowerCase() !== ZERO_ADDRESS) {
       return fallback;
     }
     throw new ServiceUnavailableException(
-      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni AUDIT_VIEW_ADDRESS).',
+      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni ADMIN_MULTISIG_ADDRESS).',
     );
   }
 
@@ -863,13 +882,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La sincronización de ventana on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+        'La sincronización de ventana on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -912,7 +929,10 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
-      const decodedName = this.decodeErrorName(error, MERKLE_ROOT_STORE_ABI);
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
 
       // VOTAR-327: a retried transitionToAbierta may re-run this step after
       // lockConfig already sealed the window — treat that as a no-op instead
@@ -962,13 +982,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
 
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'El sellado de la ventana electoral on-chain no está configurado (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El sellado de la ventana electoral on-chain no está configurado (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -991,7 +1009,10 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
-      const decodedName = this.decodeErrorName(error, MERKLE_ROOT_STORE_ABI);
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
 
       if (decodedName === 'ConfigLocked' || message.includes('ConfigLocked')) {
         this.logger.warn(
@@ -1037,13 +1058,11 @@ export class BlockchainService {
     candidateIds: number[],
   ): Promise<{ txHash: string; blockNumber: number; alreadySealed: boolean }> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
-        'El sellado del set de candidatos on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El sellado del set de candidatos on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
       );
     }
 
@@ -1077,7 +1096,7 @@ export class BlockchainService {
       // hit here) never populates error.message with the error name, only
       // the raw revert data. Decode that data ourselves so the string
       // fallbacks below aren't the only signal.
-      const decodedName = this.decodeErrorName(
+      const decodedName = this.decodeContractErrorName(
         error,
         VOTE_REGISTRY_CONTRACT_ABI,
       );
@@ -1395,17 +1414,17 @@ export class BlockchainService {
   }
 
   /**
-   * VOTAR-345 — decodes a custom error name from the raw revert data on an
-   * ethers error, against an arbitrary contract ABI. Needed because ethers
-   * only auto-decodes custom errors via the contract ABI on staticCall/call;
-   * a real send() (the path every write in this service takes) surfaces
-   * estimateGas failures as "unknown custom error" in .message, with only
-   * the raw hex in .data. Generalized from a VoteRegistry-only decoder to
-   * also cover MerkleRootStore/ElectionFactory's ConfigLocked (VOTAR-327).
+   * Decodes a contract custom error name from the raw revert data on an
+   * ethers error. Needed because ethers only auto-decodes custom errors via
+   * the contract ABI on staticCall/call; a real send() (the path every write
+   * in this service takes) surfaces estimateGas failures as "unknown custom
+   * error" in .message, with only the raw hex in .data. Generalized from
+   * VOTAR-345's VoteRegistry-only version to cover any contract ABI,
+   * including MerkleRootStore/ElectionFactory's ConfigLocked (VOTAR-327).
    */
-  private decodeErrorName(
+  private decodeContractErrorName(
     error: unknown,
-    abi: ConstructorParameters<typeof Interface>[0],
+    abi: InterfaceAbi,
   ): string | undefined {
     const err = error as {
       data?: unknown;

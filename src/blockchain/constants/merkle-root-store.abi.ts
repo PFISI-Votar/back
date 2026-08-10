@@ -23,6 +23,13 @@ export const MERKLE_ROOT_STORE_ABI = [
   // reverts; without this fragment the error surfaces as "unknown custom
   // error" and BlockchainService's string-match error handling never fires.
   'error ConfigLocked(uint256 electionId)',
-  // OpenZeppelin AccessControl — inherited via VotarAccessControl.
+  'error AccessControlBadConfirmation()',
   'error AccessControlUnauthorizedAccount(address account, bytes32 neededRole)',
+  'error AdminIsZeroAddress()',
+  'error EnforcedPause()',
+  'error ExpectedPause()',
+  'error InvalidElectionWindow()',
+  'error RootAlreadyPublished(uint256 electionId)',
+  'error RootIsZero()',
+  'error RootLocked(uint256 electionId)',
 ] as const;

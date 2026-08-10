@@ -2,6 +2,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import {
+  ConflictException,
   NotFoundException,
   UnprocessableEntityException,
   ServiceUnavailableException,
@@ -10,6 +11,7 @@ import { Repository } from 'typeorm';
 import { ElectionStateService } from './election-state.service';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { OfertaElectoralQueryService } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 
@@ -21,14 +23,16 @@ describe('ElectionStateService', () => {
 
   const mockEleccion: Eleccion = {
     idEleccion: 1,
-    titulo: 'Test Election',
+    nombre: 'Test Election',
     descripcion: 'Test Description',
     estado: EleccionEstado.CONFIGURADA,
+    tipoVotacion: TipoVotacion.POR_LISTA,
+    minimoCandidatosPorLista: null,
     fechaInicio: new Date('2026-07-15T10:00:00Z'),
     fechaFin: new Date('2026-07-15T18:00:00Z'),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-  } as Eleccion;
+    fechaCreacion: new Date(),
+    fechaActualizacion: new Date(),
+  };
 
   beforeEach(async () => {
     const mockRepository = {
@@ -290,6 +294,60 @@ describe('ElectionStateService', () => {
 
       expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
       expect(eleccionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a concurrent transition for the same election with ConflictException', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      eleccionRepository.save.mockResolvedValue({
+        ...eleccion,
+        estado: EleccionEstado.ABIERTA,
+      });
+
+      // Deja la primera llamada "colgada" a propósito, para simular que
+      // sigue en curso cuando llega la segunda (ej. scheduler vs manual).
+      let resolveRegisterCandidates: () => void;
+      const pending = new Promise<void>((resolve) => {
+        resolveRegisterCandidates = resolve;
+      });
+      blockchainService.registerCandidates.mockImplementation(async () => {
+        await pending;
+        return { txHash: '0xcand', blockNumber: 1, alreadySealed: false };
+      });
+      blockchainService.syncElectionWindow.mockResolvedValue({
+        txHash: '0xwin',
+        blockNumber: 1,
+      });
+      blockchainService.syncElectionState.mockResolvedValue({
+        txHash: '0xabc',
+        blockNumber: 1,
+      });
+
+      const firstCall = service.transitionToAbierta(1);
+
+      // La segunda llamada, mientras la primera sigue en curso, debe
+      // rechazarse inmediatamente sin tocar blockchain.
+      await expect(service.transitionToAbierta(1)).rejects.toThrow(
+        ConflictException,
+      );
+      await expect(service.transitionToAbierta(1)).rejects.toThrow(
+        /transición de estado en curso/,
+      );
+      expect(blockchainService.registerCandidates).toHaveBeenCalledTimes(1);
+
+      // Libera la primera llamada y confirma que termina bien.
+      resolveRegisterCandidates!();
+      await expect(firstCall).resolves.toMatchObject({
+        estado: EleccionEstado.ABIERTA,
+      });
+
+      // El lock debe haberse liberado tras completar la primera llamada:
+      // un tercer intento ya no debe fallar por ConflictException (lock
+      // trabado), sino por la regla de negocio normal (la elección ya no
+      // está en CONFIGURADA, porque la primera llamada la abrió).
+      await expect(service.transitionToAbierta(1)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
     });
   });
 
