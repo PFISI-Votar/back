@@ -53,4 +53,45 @@ export const ELECTION_FACTORY_CONTRACT_ABI = [
       { name: 'auditView', type: 'address' },
     ],
   },
+  {
+    type: 'function',
+    name: 'lockConfig',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'isConfigLocked',
+    stateMutability: 'view',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'bool' }],
+  },
+  {
+    type: 'event',
+    name: 'ConfigurationLocked',
+    inputs: [{ name: 'electionId', type: 'uint256', indexed: true }],
+  },
+  // VOTAR-327 — required so ethers can decode lockConfig reverts; without
+  // these fragments the error surfaces as "unknown custom error" and
+  // BlockchainService's string-match error handling never triggers.
+  {
+    type: 'error',
+    name: 'ConfigLocked',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+  },
+  {
+    type: 'error',
+    name: 'ElectionDoesNotExist',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+  },
+  // OpenZeppelin AccessControl / Pausable — inherited via VotarAccessControl.
+  {
+    type: 'error',
+    name: 'AccessControlUnauthorizedAccount',
+    inputs: [
+      { name: 'account', type: 'address' },
+      { name: 'neededRole', type: 'bytes32' },
+    ],
+  },
 ] as const;

@@ -20,6 +20,9 @@ const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
 const mockVoteCastFilter = jest.fn();
 const mockRegisterCandidates = jest.fn();
+const mockSetElectionWindow = jest.fn();
+const mockLockConfigMerkle = jest.fn();
+const mockLockConfigFactory = jest.fn();
 
 jest.mock('ethers', () => {
   const actual = jest.requireActual<typeof import('ethers')>('ethers');
@@ -56,11 +59,20 @@ jest.mock('ethers', () => {
         };
       }
       if (hasGetElection) {
-        return { getElection: mockGetElection };
+        // ELECTION_FACTORY_CONTRACT_ABI (VOTAR-327): also exposes lockConfig,
+        // used by BlockchainService.lockRevoteConfig.
+        return {
+          getElection: mockGetElection,
+          lockConfig: mockLockConfigFactory,
+        };
       }
       return {
         publishRoot: mockPublishRoot,
         setElectionState: mockSetElectionState,
+        setElectionWindow: mockSetElectionWindow,
+        // MERKLE_ROOT_STORE_ABI (VOTAR-327): lockConfig, used by
+        // BlockchainService.lockElectionWindow.
+        lockConfig: mockLockConfigMerkle,
       };
     }),
     Wallet: jest.fn().mockImplementation(() => ({})),
@@ -108,6 +120,9 @@ describe('BlockchainService', () => {
     mockPublishRoot.mockResolvedValue({ wait: mockWait });
     mockSetElectionState.mockResolvedValue({ wait: mockWait });
     mockRegisterCandidates.mockResolvedValue({ wait: mockWait });
+    mockSetElectionWindow.mockResolvedValue({ wait: mockWait });
+    mockLockConfigMerkle.mockResolvedValue({ wait: mockWait });
+    mockLockConfigFactory.mockResolvedValue({ wait: mockWait });
     mockWait.mockResolvedValue({
       hash: '0xabc',
       blockNumber: 100,
@@ -455,6 +470,158 @@ describe('BlockchainService', () => {
 
       await expect(service.registerCandidates(42, [101])).rejects.toThrow(
         UnprocessableEntityException,
+      );
+    });
+  });
+
+  describe('syncElectionWindow — VOTAR-321', () => {
+    const startTime = new Date('2026-07-15T10:00:00Z');
+    const endTime = new Date('2026-07-15T18:00:00Z');
+
+    it('syncs the voting window on success', async () => {
+      const actual = await service.syncElectionWindow(42, startTime, endTime);
+
+      expect(actual.txHash).toBe('0xabc');
+      expect(actual.blockNumber).toBe(100);
+      expect(mockSetElectionWindow).toHaveBeenCalledWith(
+        42,
+        Math.floor(startTime.getTime() / 1000),
+        Math.floor(endTime.getTime() / 1000),
+      );
+    });
+
+    it('treats a ConfigLocked revert as a no-op (idempotent retry, VOTAR-327)', async () => {
+      mockSetElectionWindow.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.syncElectionWindow(42, startTime, endTime);
+
+      expect(actual).toEqual({ txHash: '', blockNumber: 0 });
+    });
+  });
+
+  describe('lockElectionWindow — VOTAR-327', () => {
+    it('locks the voting window and returns tx metadata on success', async () => {
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyLocked: false,
+      });
+      expect(mockLockConfigMerkle).toHaveBeenCalledWith(42);
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(service.lockElectionWindow(42)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('treats ConfigLocked as idempotent, not an error', async () => {
+      mockLockConfigMerkle.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('treats ConfigLocked as idempotent when only raw revert .data is present (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          // ConfigLocked(uint256) encoded with electionId=42.
+          data: '0x9b4a661a000000000000000000000000000000000000000000000000000000000000002a',
+        },
+      );
+      mockLockConfigMerkle.mockRejectedValue(rawError);
+
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('maps AccessControl revert to a helpful role message', async () => {
+      mockLockConfigMerkle.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(service.lockElectionWindow(42)).rejects.toThrow(
+        /ELECTION_ADMIN_ROLE/,
+      );
+    });
+  });
+
+  describe('lockRevoteConfig — VOTAR-327', () => {
+    beforeEach(() => {
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+    });
+
+    it('locks the RevoteConfig audit trail and returns tx metadata on success', async () => {
+      const actual = await service.lockRevoteConfig(42);
+
+      expect(actual).toEqual({
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyLocked: false,
+      });
+      expect(mockLockConfigFactory).toHaveBeenCalledWith(42);
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('treats ConfigLocked as idempotent, not an error', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.lockRevoteConfig(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('maps ElectionDoesNotExist to a 422 with a helpful message', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('execution reverted: ElectionDoesNotExist(42)'),
+      );
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('maps AccessControl revert to a helpful role message', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        /DEFAULT_ADMIN_ROLE/,
       );
     });
   });
