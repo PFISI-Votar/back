@@ -579,12 +579,13 @@ describe('BlockchainService', () => {
       const actual = await service.scanElectionTransactionHistory(7);
 
       expect(actual).toHaveLength(2);
-      expect(actual[0].numeroBloque).toBe(50);
-      expect(actual[1].hashTransaccion).toBe(txHash);
-      expect(actual[1].explorerUrl).toBe(
+      expect(actual[0].numeroBloque).toBe(100);
+      expect(actual[0].hashTransaccion).toBe(txHash);
+      expect(actual[1].numeroBloque).toBe(50);
+      expect(actual[0].explorerUrl).toBe(
         `https://sepolia.etherscan.io/tx/${txHash}`,
       );
-      expect(actual[1].descripcionLegible).toContain('Sufragio');
+      expect(actual[0].descripcionLegible).toContain('Sufragio');
       expect(JSON.stringify(actual)).not.toMatch(
         /nullifier|voterHash|selectionHash/i,
       );

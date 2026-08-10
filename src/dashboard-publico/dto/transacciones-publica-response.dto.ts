@@ -20,7 +20,7 @@ export class TransaccionBlockchainPublicaDto {
   nombreEvento: string;
 
   @ApiProperty({
-    example: 'Sufragio contabilizado (candidato #3)',
+    example: 'Sufragio contabilizado',
   })
   descripcionLegible: string;
 

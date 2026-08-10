@@ -106,7 +106,7 @@ describe('TransaccionBlockchainService — VOTAR-373', () => {
     );
   });
 
-  it('listarPorEleccion returns mapped entries sorted from repository', async () => {
+  it('listarPorEleccion returns mapped entries sorted newest first', async () => {
     const { service, transaccionRepository } = createService();
     transaccionRepository.find.mockResolvedValue([
       {
@@ -115,15 +115,23 @@ describe('TransaccionBlockchainService — VOTAR-373', () => {
         marcaTiempo: new Date('2026-08-09T12:00:00.000Z'),
         contratoEtiqueta: 'BallotContract',
         nombreEvento: 'SignedVoteCast',
-        descripcionLegible: 'Sufragio firmado registrado en la urna digital',
+        descripcionLegible:
+          'Sufragio firmado registrado en la urna digital · Sufragio contabilizado (candidato #7) · Re-voto registrado (candidato #1.157920892373162e+77 → #7)',
         logIndex: 0,
       },
     ]);
 
     const actual = await service.listarPorEleccion(7);
 
+    expect(transaccionRepository.find).toHaveBeenCalledWith({
+      where: { idEleccion: 7 },
+      order: { numeroBloque: 'DESC', logIndex: 'DESC' },
+    });
     expect(actual).toHaveLength(1);
     expect(actual[0].hashTransaccion).toBe(TX_HASH);
+    expect(actual[0].descripcionLegible).toBe(
+      'Sufragio firmado registrado en la urna digital · Sufragio contabilizado',
+    );
     expect(actual[0].explorerUrl).toContain('etherscan.io');
   });
 });

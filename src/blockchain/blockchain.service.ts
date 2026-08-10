@@ -28,6 +28,11 @@ import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
 import { VOTE_REGISTRY_CONTRACT_ABI } from './constants/vote-registry-contract.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
 import { ContratoBlockchainService } from './services/contrato-blockchain.service';
+import {
+  describeVoteCastAudit,
+  describeVoteUpdatedAudit,
+  joinAuditDescriptions,
+} from './utils/audit-transaction-description.util';
 import type { BlockchainTransactionAuditEntry } from './blockchain-transaction.types';
 import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -1340,7 +1345,7 @@ export class BlockchainService {
       }
 
       const eventName = parsed.name;
-      let description: string;
+      let description: string | null;
       switch (eventName) {
         case 'SignedVoteCast':
           description = this.describeSignedVoteCast(args);
@@ -1365,6 +1370,10 @@ export class BlockchainService {
           break;
         default:
           description = `Evento ${eventName} registrado on-chain`;
+      }
+
+      if (!description) {
+        continue;
       }
 
       rawEvents.push({
@@ -1394,9 +1403,9 @@ export class BlockchainService {
     const minLogIndex = Math.min(...rawEvents.map((event) => event.logIndex));
     const primary = rawEvents.find((event) => event.logIndex === minLogIndex)!;
     const eventNames = [...new Set(rawEvents.map((event) => event.eventName))];
-    const descriptions = [
-      ...new Set(rawEvents.map((event) => event.description)),
-    ];
+    const descriptions = joinAuditDescriptions(
+      rawEvents.map((event) => event.description),
+    );
 
     return {
       hashTransaccion: receipt.hash.toLowerCase(),
@@ -1407,7 +1416,7 @@ export class BlockchainService {
       ),
       contratoEtiqueta: primary.contractLabel,
       nombreEvento: eventNames.join(', '),
-      descripcionLegible: descriptions.join(' · '),
+      descripcionLegible: descriptions,
       explorerUrl: this.buildExplorerUrl(receipt.hash),
       logIndex: minLogIndex,
     };
@@ -1538,19 +1547,25 @@ export class BlockchainService {
       mapper: (
         eventName: string,
         args: ReadonlyArray<unknown> & Record<string, unknown>,
-      ) => string,
+      ) => string | null,
     ): RawScannedEvent[] =>
-      events.map((event) => {
-        const eventName = String(event.eventName ?? 'Unknown');
-        return {
-          txHash: event.transactionHash.toLowerCase(),
-          blockNumber: event.blockNumber,
-          logIndex: event.index,
-          contractLabel,
-          eventName,
-          description: mapper(eventName, event.args),
-        };
-      });
+      events
+        .map((event) => {
+          const eventName = String(event.eventName ?? 'Unknown');
+          const description = mapper(eventName, event.args);
+          if (!description) {
+            return null;
+          }
+          return {
+            txHash: event.transactionHash.toLowerCase(),
+            blockNumber: event.blockNumber,
+            logIndex: event.index,
+            contractLabel,
+            eventName,
+            description,
+          };
+        })
+        .filter((event): event is RawScannedEvent => event !== null);
 
     const rawEvents: RawScannedEvent[] = [
       ...mapEvents(signedVoteEvents, 'BallotContract', (_, args) =>
@@ -1605,7 +1620,10 @@ export class BlockchainService {
       if (!existing.eventNames.includes(event.eventName)) {
         existing.eventNames.push(event.eventName);
       }
-      if (!existing.descriptions.includes(event.description)) {
+      if (
+        event.description &&
+        !existing.descriptions.includes(event.description)
+      ) {
         existing.descriptions.push(event.description);
       }
     }
@@ -1634,7 +1652,7 @@ export class BlockchainService {
         marcaTiempo,
         contratoEtiqueta: group.contractLabel,
         nombreEvento: group.eventNames.join(', '),
-        descripcionLegible: group.descriptions.join(' · '),
+        descripcionLegible: joinAuditDescriptions(group.descriptions),
         explorerUrl: this.buildExplorerUrl(txHash),
         sortBlock: group.blockNumber,
         sortLogIndex: group.logIndex,
@@ -1644,8 +1662,8 @@ export class BlockchainService {
     return entries
       .sort((a, b) =>
         a.sortBlock !== b.sortBlock
-          ? a.sortBlock - b.sortBlock
-          : a.sortLogIndex - b.sortLogIndex,
+          ? b.sortBlock - a.sortBlock
+          : b.sortLogIndex - a.sortLogIndex,
       )
       .map(
         (entry): BlockchainTransactionAuditEntry => ({
@@ -1668,22 +1686,15 @@ export class BlockchainService {
   }
 
   private describeVoteCast(
-    args: ReadonlyArray<unknown> & Record<string, unknown>,
+    _args: ReadonlyArray<unknown> & Record<string, unknown>,
   ): string {
-    const candidateId = Number(args.candidateId);
-    const isOverwrite = Boolean(args.isOverwrite);
-    if (isOverwrite) {
-      return `Sufragio contabilizado (candidato #${candidateId}, re-voto)`;
-    }
-    return `Sufragio contabilizado (candidato #${candidateId})`;
+    return describeVoteCastAudit();
   }
 
   private describeVoteUpdated(
     args: ReadonlyArray<unknown> & Record<string, unknown>,
-  ): string {
-    const oldCandidate = Number(args.oldCandidate);
-    const newCandidate = Number(args.newCandidate);
-    return `Re-voto registrado (candidato #${oldCandidate} → #${newCandidate})`;
+  ): string | null {
+    return describeVoteUpdatedAudit(args);
   }
 
   private describeCandidateSetRegistered(

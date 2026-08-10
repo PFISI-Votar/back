@@ -50,7 +50,7 @@ const createService = (deps?: {
           marcaTiempo: '2026-08-08T12:00:00.000Z',
           contratoEtiqueta: 'VoteRegistry',
           nombreEvento: 'VoteCast',
-          descripcionLegible: 'Sufragio contabilizado (candidato #3)',
+          descripcionLegible: 'Sufragio contabilizado',
           explorerUrl: `https://sepolia.etherscan.io/tx/${'0x' + 'aa'.repeat(32)}`,
           logIndex: 0,
         },

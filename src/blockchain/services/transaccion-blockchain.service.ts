@@ -11,6 +11,7 @@ import { Repository } from 'typeorm';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import type { BlockchainTransactionAuditEntry } from '@/blockchain/blockchain-transaction.types';
 import { TransaccionBlockchain } from '@/blockchain/entities/transaccion-blockchain.entity';
+import { normalizeDescripcionLegible } from '@/blockchain/utils/audit-transaction-description.util';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 
@@ -96,7 +97,7 @@ export class TransaccionBlockchainService {
 
     const rows = await this.transaccionRepository.find({
       where: { idEleccion },
-      order: { numeroBloque: 'ASC', logIndex: 'ASC' },
+      order: { numeroBloque: 'DESC', logIndex: 'DESC' },
     });
 
     return rows.map((row) => ({
@@ -105,7 +106,7 @@ export class TransaccionBlockchainService {
       marcaTiempo: row.marcaTiempo.toISOString(),
       contratoEtiqueta: row.contratoEtiqueta,
       nombreEvento: row.nombreEvento,
-      descripcionLegible: row.descripcionLegible,
+      descripcionLegible: normalizeDescripcionLegible(row.descripcionLegible),
       explorerUrl: this.blockchainService.buildExplorerUrl(row.hashTransaccion),
     }));
   }
