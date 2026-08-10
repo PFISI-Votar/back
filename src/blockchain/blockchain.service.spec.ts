@@ -10,6 +10,8 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 const mockPublishRoot = jest.fn();
 const mockSetElectionState = jest.fn();
+const mockSetElectionWindow = jest.fn();
+const mockCreateElection = jest.fn();
 const mockWait = jest.fn();
 const mockGetBlock = jest.fn();
 const mockGetTransactionReceipt = jest.fn();
@@ -56,11 +58,15 @@ jest.mock('ethers', () => {
         };
       }
       if (hasGetElection) {
-        return { getElection: mockGetElection };
+        return {
+          getElection: mockGetElection,
+          createElection: mockCreateElection,
+        };
       }
       return {
         publishRoot: mockPublishRoot,
         setElectionState: mockSetElectionState,
+        setElectionWindow: mockSetElectionWindow,
       };
     }),
     Wallet: jest.fn().mockImplementation(() => ({})),
@@ -70,7 +76,7 @@ jest.mock('ethers', () => {
     })),
     Interface: jest.fn().mockImplementation((abi: unknown) => ({
       parseLog: mockParseLog,
-      // Delegate to the real ethers Interface so decodeVoteRegistryErrorName's
+      // Delegate to the real ethers Interface so decodeContractErrorName's
       // custom-error decoding is exercised faithfully in tests, not stubbed.
       parseError: (data: string) =>
         new actual.Interface(abi as never).parseError(data),
@@ -107,6 +113,8 @@ describe('BlockchainService', () => {
     });
     mockPublishRoot.mockResolvedValue({ wait: mockWait });
     mockSetElectionState.mockResolvedValue({ wait: mockWait });
+    mockSetElectionWindow.mockResolvedValue({ wait: mockWait });
+    mockCreateElection.mockResolvedValue({ wait: mockWait });
     mockRegisterCandidates.mockResolvedValue({ wait: mockWait });
     mockWait.mockResolvedValue({
       hash: '0xabc',
@@ -122,6 +130,15 @@ describe('BlockchainService', () => {
     mockGetVotesByCandidate.mockResolvedValue(10n);
     mockVoteCastFilter.mockReturnValue({});
     mockQueryFilter.mockResolvedValue([]);
+    mockGetElection.mockResolvedValue({
+      ballot: '0x4444444444444444444444444444444444444444',
+      voteRegistry: '0x5555555555555555555555555555555555555555',
+      auditView: '0x6666666666666666666666666666666666666666',
+      exists: false,
+    });
+    mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+      direccionContrato: '0x3333333333333333333333333333333333333333',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -353,6 +370,20 @@ describe('BlockchainService', () => {
       ).rejects.toThrow(/ELECTION_ADMIN_ROLE/);
     });
 
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockSetElectionState.mockRejectedValue(rawError);
+
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(/ELECTION_ADMIN_ROLE/);
+    });
+
     it('throws when receipt is null', async () => {
       mockWait.mockResolvedValue(null);
 
@@ -367,6 +398,134 @@ describe('BlockchainService', () => {
       await expect(
         service.syncElectionState(42, EleccionEstado.ABIERTA),
       ).rejects.toThrow(/No se pudo sincronizar el estado on-chain/);
+    });
+  });
+
+  describe('syncElectionWindow — VOTAR-434', () => {
+    const start = new Date('2026-08-10T10:00:00.000Z');
+    const end = new Date('2026-08-10T18:00:00.000Z');
+
+    it('syncs election window to blockchain successfully', async () => {
+      const actual = await service.syncElectionWindow(42, start, end);
+
+      expect(actual.txHash).toBe('0xabc');
+      expect(actual.blockNumber).toBe(100);
+      expect(mockSetElectionWindow).toHaveBeenCalledWith(
+        42,
+        Math.floor(start.getTime() / 1000),
+        Math.floor(end.getTime() / 1000),
+      );
+    });
+
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockSetElectionWindow.mockRejectedValue(rawError);
+
+      await expect(service.syncElectionWindow(42, start, end)).rejects.toThrow(
+        /ELECTION_ADMIN_ROLE/,
+      );
+    });
+
+    it('maps InvalidElectionWindow from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        { data: '0xff6efeb1' },
+      );
+      mockSetElectionWindow.mockRejectedValue(rawError);
+
+      await expect(service.syncElectionWindow(42, start, end)).rejects.toThrow(
+        /ventana de votación configurada/,
+      );
+    });
+  });
+
+  describe('deployElectionStack — VOTAR-434', () => {
+    const revoteConfig = {
+      enabled: false,
+      maxVotesPerVoter: 1,
+      minIntervalSeconds: 0,
+      policy: 0,
+    };
+
+    it('deploys the election stack and returns addresses', async () => {
+      mockGetElection
+        .mockResolvedValueOnce({
+          ballot: '0x0000000000000000000000000000000000000000',
+          voteRegistry: '0x0000000000000000000000000000000000000000',
+          auditView: '0x0000000000000000000000000000000000000000',
+          exists: false,
+        })
+        .mockResolvedValueOnce({
+          ballot: '0x4444444444444444444444444444444444444444',
+          voteRegistry: '0x5555555555555555555555555555555555555555',
+          auditView: '0x6666666666666666666666666666666666666666',
+          exists: true,
+        });
+
+      const actual = await service.deployElectionStack(42, revoteConfig);
+
+      expect(actual).toEqual({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyDeployed: false,
+      });
+      expect(mockCreateElection).toHaveBeenCalledWith(42, revoteConfig);
+    });
+
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockCreateElection.mockRejectedValue(rawError);
+
+      await expect(
+        service.deployElectionStack(42, revoteConfig),
+      ).rejects.toThrow(/DEFAULT_ADMIN_ROLE/);
+    });
+
+    it('treats ElectionAlreadyExists from raw revert .data as alreadyDeployed', async () => {
+      mockGetElection
+        .mockResolvedValueOnce({
+          ballot: '0x0000000000000000000000000000000000000000',
+          voteRegistry: '0x0000000000000000000000000000000000000000',
+          auditView: '0x0000000000000000000000000000000000000000',
+          exists: false,
+        })
+        .mockResolvedValueOnce({
+          ballot: '0x4444444444444444444444444444444444444444',
+          voteRegistry: '0x5555555555555555555555555555555555555555',
+          auditView: '0x6666666666666666666666666666666666666666',
+          exists: true,
+        });
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0x2f684674000000000000000000000000000000000000000000000000000000000000002a',
+        },
+      );
+      mockCreateElection.mockRejectedValue(rawError);
+
+      const actual = await service.deployElectionStack(42, revoteConfig);
+
+      expect(actual).toEqual({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        txHash: '',
+        blockNumber: 0,
+        alreadyDeployed: true,
+      });
     });
   });
 

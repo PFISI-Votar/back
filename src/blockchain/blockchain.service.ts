@@ -464,7 +464,12 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
@@ -578,7 +583,12 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        ELECTION_FACTORY_CONTRACT_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
@@ -586,7 +596,10 @@ export class BlockchainService {
           'La cuenta configurada no posee DEFAULT_ADMIN_ROLE en ElectionFactory.',
         );
       }
-      if (message.includes('ElectionAlreadyExists')) {
+      if (
+        decodedName === 'ElectionAlreadyExists' ||
+        message.includes('ElectionAlreadyExists')
+      ) {
         const redeployed = await readFactory.getElection(idEleccion);
         return {
           ballot: redeployed.ballot,
@@ -831,12 +844,25 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
         throw new ServiceUnavailableException(
           'La cuenta configurada no posee ELECTION_ADMIN_ROLE en el contrato.',
+        );
+      }
+      if (
+        decodedName === 'InvalidElectionWindow' ||
+        message.includes('InvalidElectionWindow')
+      ) {
+        throw new ServiceUnavailableException(
+          'La ventana de votación configurada para el comicio es inválida.',
         );
       }
       throw new ServiceUnavailableException(
