@@ -5,6 +5,12 @@ export type RevoteOverwriteTimelinePoint = {
   totalEventos: number;
 };
 
+export type RevoteStatsFromIndex = {
+  totalRevotes: number;
+  uniqueVoters: number;
+  overwriteRatio: number;
+};
+
 type IndexedVoteEvent = {
   timestampMs: number;
   isRevote: boolean;
@@ -22,6 +28,30 @@ export function isIndexedVoteTransaction(row: {
 
 export function isIndexedRevote(row: { descripcionLegible: string }): boolean {
   return row.descripcionLegible.includes('Re-voto registrado');
+}
+
+/**
+ * Same aggregates as VoteRegistry.getRevoteStats, derived from the VOTAR-373 index.
+ * Used when AuditView predates getRevoteStats (non-upgradeable Sepolia deployments).
+ */
+export function buildRevoteStatsFromIndexedVotes(
+  voteEvents: Array<{ isRevote: boolean }>,
+): RevoteStatsFromIndex {
+  let totalRevotes = 0;
+  let uniqueVoters = 0;
+  for (const event of voteEvents) {
+    if (event.isRevote) {
+      totalRevotes += 1;
+    } else {
+      uniqueVoters += 1;
+    }
+  }
+  const totalEvents = uniqueVoters + totalRevotes;
+  return {
+    totalRevotes,
+    uniqueVoters,
+    overwriteRatio: totalEvents === 0 ? 0 : totalRevotes / totalEvents,
+  };
 }
 
 /**

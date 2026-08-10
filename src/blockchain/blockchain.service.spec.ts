@@ -133,6 +133,7 @@ describe('BlockchainService', () => {
 
   const mockTransaccionBlockchain = {
     indexarSilencioso: jest.fn(),
+    buildRevoteStatsFromIndex: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -551,6 +552,47 @@ describe('BlockchainService', () => {
         overwriteRatio: 0.3,
       });
       expect(mockGetRevoteStats).toHaveBeenCalledWith(7);
+    });
+
+    it('getRevoteStats falls back to indexed txs when AuditView lacks selector', async () => {
+      const callException = Object.assign(
+        new Error(
+          'missing revert data (action="call", data=null, reason=null, code=CALL_EXCEPTION, version=6.17.0)',
+        ),
+        { code: 'CALL_EXCEPTION' },
+      );
+      mockGetRevoteStats.mockRejectedValueOnce(callException);
+      mockTransaccionBlockchain.buildRevoteStatsFromIndex.mockResolvedValueOnce(
+        {
+          totalRevotes: 3,
+          uniqueVoters: 2,
+          overwriteRatio: 0.6,
+        },
+      );
+
+      const actual = await service.getRevoteStats(7);
+
+      expect(actual).toEqual({
+        totalRevotes: 3,
+        uniqueVoters: 2,
+        overwriteRatio: 0.6,
+      });
+      expect(
+        mockTransaccionBlockchain.buildRevoteStatsFromIndex,
+      ).toHaveBeenCalledWith(7);
+    });
+
+    it('getRevoteStats rethrows non-selector blockchain failures', async () => {
+      mockGetRevoteStats.mockRejectedValueOnce(
+        new Error('network timeout contacting RPC'),
+      );
+
+      await expect(service.getRevoteStats(7)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(
+        mockTransaccionBlockchain.buildRevoteStatsFromIndex,
+      ).not.toHaveBeenCalled();
     });
 
     it('scanElectionTransactionHistory returns chronological audit entries (VOTAR-373)', async () => {

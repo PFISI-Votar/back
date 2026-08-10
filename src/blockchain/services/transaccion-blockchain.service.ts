@@ -14,9 +14,11 @@ import { TransaccionBlockchain } from '@/blockchain/entities/transaccion-blockch
 import { normalizeDescripcionLegible } from '@/blockchain/utils/audit-transaction-description.util';
 import {
   buildRevoteOverwriteTimelineFromIndexedVotes,
+  buildRevoteStatsFromIndexedVotes,
   isIndexedRevote,
   isIndexedVoteTransaction,
   type RevoteOverwriteTimelinePoint,
+  type RevoteStatsFromIndex,
 } from '@/blockchain/utils/revote-overwrite-timeline.util';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
@@ -124,12 +126,33 @@ export class TransaccionBlockchainService {
     idEleccion: number,
     horasVentana = 12,
   ): Promise<RevoteOverwriteTimelinePoint[]> {
+    const voteEvents = await this.loadIndexedVoteEvents(idEleccion);
+    return buildRevoteOverwriteTimelineFromIndexedVotes(
+      voteEvents,
+      horasVentana,
+    );
+  }
+
+  /**
+   * VOTAR-329 — aggregate revote metrics from the transaction index when
+   * AuditViewContract.getRevoteStats is not present on the deployed bytecode.
+   */
+  async buildRevoteStatsFromIndex(
+    idEleccion: number,
+  ): Promise<RevoteStatsFromIndex> {
+    const voteEvents = await this.loadIndexedVoteEvents(idEleccion);
+    return buildRevoteStatsFromIndexedVotes(voteEvents);
+  }
+
+  private async loadIndexedVoteEvents(
+    idEleccion: number,
+  ): Promise<Array<{ timestampMs: number; isRevote: boolean }>> {
     const rows = await this.transaccionRepository.find({
       where: { idEleccion },
       order: { marcaTiempo: 'ASC', numeroBloque: 'ASC', logIndex: 'ASC' },
     });
 
-    const voteEvents = rows
+    return rows
       .filter((row) =>
         isIndexedVoteTransaction({
           nombreEvento: row.nombreEvento,
@@ -146,11 +169,6 @@ export class TransaccionBlockchainService {
           ),
         }),
       }));
-
-    return buildRevoteOverwriteTimelineFromIndexedVotes(
-      voteEvents,
-      horasVentana,
-    );
   }
 
   /**

@@ -1,5 +1,6 @@
 import {
   buildRevoteOverwriteTimelineFromIndexedVotes,
+  buildRevoteStatsFromIndexedVotes,
   isIndexedRevote,
   isIndexedVoteTransaction,
 } from '@/blockchain/utils/revote-overwrite-timeline.util';
@@ -18,6 +19,18 @@ describe('revote-overwrite-timeline.util — VOTAR-329/373', () => {
           'Sufragio contabilizado (candidato #7) · Re-voto registrado',
       }),
     ).toBe(true);
+  });
+
+  it('builds aggregate revote stats from indexed vote events (UAT-01 shape)', () => {
+    const votes = [
+      ...Array.from({ length: 70 }, () => ({ isRevote: false })),
+      ...Array.from({ length: 30 }, () => ({ isRevote: true })),
+    ];
+    expect(buildRevoteStatsFromIndexedVotes(votes)).toEqual({
+      totalRevotes: 30,
+      uniqueVoters: 70,
+      overwriteRatio: 0.3,
+    });
   });
 
   it('builds cumulative overwrite ratio series from indexed vote events', () => {
