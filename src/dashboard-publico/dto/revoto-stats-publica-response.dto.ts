@@ -40,7 +40,8 @@ export class RevotoStatsPublicaResponseDto {
   serieTemporal: RevotoOverwriteTimelinePuntoDto[];
 
   @ApiProperty({
-    example: 'AuditViewContract.getRevoteStats + transaccion_blockchain (VOTAR-373)',
+    example:
+      'AuditViewContract.getRevoteStats + transaccion_blockchain (VOTAR-373)',
   })
   fuenteDatos: string;
 }

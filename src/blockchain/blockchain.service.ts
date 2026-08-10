@@ -95,9 +95,7 @@ const BLOCKCHAIN_STATE_LABELS: Record<number, string> = {
 
 interface AuditViewContract {
   getParticipationStats(electionId: number): Promise<[bigint, bigint, bigint]>;
-  getRevoteStats(
-    electionId: number,
-  ): Promise<[bigint, bigint, bigint]>;
+  getRevoteStats(electionId: number): Promise<[bigint, bigint, bigint]>;
   getVotesByCandidate(
     electionId: number,
     candidateId: bigint | number,
