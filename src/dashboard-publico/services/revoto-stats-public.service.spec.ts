@@ -48,7 +48,9 @@ const createService = (deps?: {
         },
       );
     }),
-    getRevoteOverwriteTimeline: jest.fn().mockResolvedValue(
+  };
+  const transaccionBlockchainService = {
+    buildRevoteOverwriteTimeline: jest.fn().mockResolvedValue(
       deps?.timeline ?? [
         {
           etiqueta: '10:00',
@@ -71,10 +73,12 @@ const createService = (deps?: {
       eleccionRepository as never,
       configuracionRepository as never,
       blockchainService as never,
+      transaccionBlockchainService as never,
     ),
     eleccionRepository,
     configuracionRepository,
     blockchainService,
+    transaccionBlockchainService,
   };
 };
 
@@ -86,7 +90,9 @@ describe('RevotoStatsPublicService — VOTAR-329', () => {
     expect(actual.totalRevotes).toBe(30);
     expect(actual.uniqueVoters).toBe(70);
     expect(actual.overwriteRatio).toBe(0.3);
-    expect(actual.fuenteDatos).toBe('AuditViewContract.getRevoteStats');
+    expect(actual.fuenteDatos).toBe(
+      'AuditViewContract.getRevoteStats + transaccion_blockchain (VOTAR-373)',
+    );
     expect(actual.serieTemporal).toHaveLength(2);
   });
 

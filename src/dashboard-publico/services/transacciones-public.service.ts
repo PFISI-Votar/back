@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { TransaccionBlockchainService } from '@/blockchain/services/transaccion-blockchain.service';
-import { RevotoStatsPublicaResponseDto } from '@/dashboard-publico/dto/revoto-stats-publica-response.dto';
+import { TransaccionesPublicaResponseDto } from '@/dashboard-publico/dto/transacciones-publica-response.dto';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -13,11 +13,10 @@ const ESTADOS_ELECCION_CERRADOS = [
   EleccionEstado.ESCRUTADA,
 ];
 
-const FUENTE_DATOS =
-  'AuditViewContract.getRevoteStats + transaccion_blockchain (VOTAR-373)';
+const FUENTE_DATOS = 'Índice append-only verificable on-chain (Etherscan)';
 
 @Injectable()
-export class RevotoStatsPublicService {
+export class TransaccionesPublicService {
   constructor(
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
@@ -27,10 +26,9 @@ export class RevotoStatsPublicService {
     private readonly transaccionBlockchainService: TransaccionBlockchainService,
   ) {}
 
-  async obtenerRevotoStatsPublica(
+  async obtenerTransaccionesPublica(
     idEleccion: number,
-    horasVentana = 12,
-  ): Promise<RevotoStatsPublicaResponseDto> {
+  ): Promise<TransaccionesPublicaResponseDto> {
     const eleccion = await this.eleccionRepository.findOne({
       where: { idEleccion },
     });
@@ -51,21 +49,17 @@ export class RevotoStatsPublicService {
     const snapshotCongelado =
       resultadosDefinitivos || !configuracion.mostrarResultadosTiempoReal;
 
-    const [stats, serieTemporal] = await Promise.all([
-      this.blockchainService.getRevoteStats(idEleccion),
-      this.transaccionBlockchainService.buildRevoteOverwriteTimeline(
-        idEleccion,
-        horasVentana,
-      ),
-    ]);
+    await this.blockchainService.resolveElectionContracts(idEleccion);
+
+    const transacciones =
+      await this.transaccionBlockchainService.listarPorEleccion(idEleccion);
 
     return {
       idEleccion,
       snapshotCongelado,
-      totalRevotes: stats.totalRevotes,
-      uniqueVoters: stats.uniqueVoters,
-      overwriteRatio: stats.overwriteRatio,
-      serieTemporal,
+      red: this.blockchainService.getNetworkDisplayName(),
+      chainId: this.blockchainService.getChainId(),
+      transacciones,
       fuenteDatos: FUENTE_DATOS,
     };
   }
