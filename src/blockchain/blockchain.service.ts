@@ -11,6 +11,7 @@ import {
   ContractTransactionReceipt,
   ContractTransactionResponse,
   Interface,
+  type InterfaceAbi,
   JsonRpcProvider,
   Log,
   Wallet,
@@ -153,7 +154,12 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
@@ -161,9 +167,30 @@ export class BlockchainService {
           'La cuenta configurada no posee MERKLE_UPDATER_ROLE en el contrato.',
         );
       }
-      if (message.includes('RootAlreadyPublished')) {
+      if (
+        decodedName === 'RootAlreadyPublished' ||
+        message.includes('RootAlreadyPublished')
+      ) {
         throw new ServiceUnavailableException(
           'La raíz Merkle ya fue publicada on-chain para este comicio.',
+        );
+      }
+      if (decodedName === 'RootLocked' || message.includes('RootLocked')) {
+        throw new ServiceUnavailableException(
+          'No se puede publicar el padrón porque el comicio ya está abierto, cerrado o escrutado (sello hermético).',
+        );
+      }
+      if (decodedName === 'RootIsZero' || message.includes('RootIsZero')) {
+        throw new ServiceUnavailableException(
+          'La raíz Merkle calculada es inválida (vacía).',
+        );
+      }
+      if (
+        decodedName === 'InvalidElectionWindow' ||
+        message.includes('InvalidElectionWindow')
+      ) {
+        throw new ServiceUnavailableException(
+          'La ventana de votación configurada para el comicio es inválida.',
         );
       }
       throw new ServiceUnavailableException(
@@ -878,7 +905,10 @@ export class BlockchainService {
       // hit here) never populates error.message with the error name, only
       // the raw revert data. Decode that data ourselves so the string
       // fallbacks below aren't the only signal.
-      const decodedName = this.decodeVoteRegistryErrorName(error);
+      const decodedName = this.decodeContractErrorName(
+        error,
+        VOTE_REGISTRY_CONTRACT_ABI,
+      );
 
       if (
         decodedName === 'CandidateSetSealed' ||
@@ -1193,13 +1223,17 @@ export class BlockchainService {
   }
 
   /**
-   * VOTAR-345 — decodes a VoteRegistry custom error name from the raw revert
-   * data on an ethers error. Needed because ethers only auto-decodes custom
-   * errors via the contract ABI on staticCall/call; a real send() (the path
-   * every write in this service takes) surfaces estimateGas failures as
-   * "unknown custom error" in .message, with only the raw hex in .data.
+   * Decodes a contract custom error name from the raw revert data on an
+   * ethers error. Needed because ethers only auto-decodes custom errors via
+   * the contract ABI on staticCall/call; a real send() (the path every write
+   * in this service takes) surfaces estimateGas failures as "unknown custom
+   * error" in .message, with only the raw hex in .data. Generalized from
+   * VOTAR-345's VoteRegistry-only version to cover any contract ABI.
    */
-  private decodeVoteRegistryErrorName(error: unknown): string | undefined {
+  private decodeContractErrorName(
+    error: unknown,
+    abi: InterfaceAbi,
+  ): string | undefined {
     const err = error as {
       data?: unknown;
       info?: { error?: { data?: unknown } };
@@ -1209,7 +1243,7 @@ export class BlockchainService {
       return undefined;
     }
     try {
-      return new Interface(VOTE_REGISTRY_CONTRACT_ABI).parseError(data)?.name;
+      return new Interface(abi).parseError(data)?.name;
     } catch {
       return undefined;
     }

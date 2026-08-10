@@ -15,4 +15,13 @@ export const MERKLE_ROOT_STORE_ABI = [
   'event RootPublished(uint256 indexed electionId, bytes32 root, uint256 timestamp)',
   'event ElectionStateChanged(uint256 indexed electionId, uint8 newState)',
   'event ElectionWindowSet(uint256 indexed electionId, uint256 startTime, uint256 endTime)',
+  'error AccessControlBadConfirmation()',
+  'error AccessControlUnauthorizedAccount(address account, bytes32 neededRole)',
+  'error AdminIsZeroAddress()',
+  'error EnforcedPause()',
+  'error ExpectedPause()',
+  'error InvalidElectionWindow()',
+  'error RootAlreadyPublished(uint256 electionId)',
+  'error RootIsZero()',
+  'error RootLocked(uint256 electionId)',
 ] as const;

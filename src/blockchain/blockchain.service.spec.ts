@@ -164,6 +164,33 @@ describe('BlockchainService', () => {
     ).rejects.toThrow(/MERKLE_UPDATER_ROLE/);
   });
 
+  it('publishMerkleRoot maps RootLocked revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: RootLocked(42)'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/sello hermético/);
+  });
+
+  it('publishMerkleRoot maps RootIsZero revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: RootIsZero()'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/raíz Merkle calculada es inválida/);
+  });
+
+  it('publishMerkleRoot maps InvalidElectionWindow revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: InvalidElectionWindow()'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/ventana de votación configurada/);
+  });
+
   it('buildExplorerUrl returns Etherscan link', () => {
     expect(service.buildExplorerUrl('0xabc')).toBe(
       'https://sepolia.etherscan.io/tx/0xabc',
