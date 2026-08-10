@@ -22,7 +22,6 @@ const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
 const mockVoteCastFilter = jest.fn();
 const mockRegisterCandidates = jest.fn();
-const mockSetElectionWindow = jest.fn();
 const mockLockConfigMerkle = jest.fn();
 const mockLockConfigFactory = jest.fn();
 
@@ -64,10 +63,8 @@ jest.mock('ethers', () => {
         return {
           getElection: mockGetElection,
           createElection: mockCreateElection,
-        // ELECTION_FACTORY_CONTRACT_ABI (VOTAR-327): also exposes lockConfig,
-        // used by BlockchainService.lockRevoteConfig.
-        return {
-          getElection: mockGetElection,
+          // ELECTION_FACTORY_CONTRACT_ABI (VOTAR-327): also exposes lockConfig,
+          // used by BlockchainService.lockRevoteConfig.
           lockConfig: mockLockConfigFactory,
         };
       }
