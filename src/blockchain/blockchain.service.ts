@@ -1686,8 +1686,9 @@ export class BlockchainService {
   }
 
   private describeVoteCast(
-    _args: ReadonlyArray<unknown> & Record<string, unknown>,
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
   ): string {
+    void args;
     return describeVoteCastAudit();
   }
 
