@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -27,6 +29,13 @@ import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
 import { VOTE_REGISTRY_CONTRACT_ABI } from './constants/vote-registry-contract.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
 import { ContratoBlockchainService } from './services/contrato-blockchain.service';
+import {
+  describeVoteCastAudit,
+  describeVoteUpdatedAudit,
+  joinAuditDescriptions,
+} from './utils/audit-transaction-description.util';
+import type { BlockchainTransactionAuditEntry } from './blockchain-transaction.types';
+import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import type { RevoteConfigOnChain } from '@/eleccion/configuracion-comicio/mappers/revote-config.mapper';
 
@@ -67,7 +76,17 @@ export type VoteCastTimelinePoint = {
   nuevos: number;
 };
 
+export type { BlockchainTransactionAuditEntry } from './blockchain-transaction.types';
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+const BLOCKCHAIN_STATE_LABELS: Record<number, string> = {
+  0: 'BORRADOR',
+  1: 'CONFIGURADA',
+  2: 'ABIERTA',
+  3: 'CERRADA',
+  4: 'ESCRUTADA',
+};
 
 interface AuditViewContract {
   getParticipationStats(electionId: number): Promise<[bigint, bigint, bigint]>;
@@ -116,6 +135,8 @@ export class BlockchainService {
   constructor(
     private readonly configService: ConfigService,
     private readonly contratoBlockchainService: ContratoBlockchainService,
+    @Inject(forwardRef(() => TransaccionBlockchainService))
+    private readonly transaccionBlockchainService: TransaccionBlockchainService,
   ) {}
 
   /**
@@ -237,6 +258,8 @@ export class BlockchainService {
       ? new Date(block.timestamp * 1000)
       : new Date();
 
+    this.indexTxSilently(electionId, receipt.hash);
+
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
@@ -316,6 +339,18 @@ export class BlockchainService {
       return 'Sepolia';
     }
     return 'Ethereum';
+  }
+
+  getChainId(): number {
+    const configured = this.configService.get<number>('CHAIN_ID');
+    if (
+      typeof configured === 'number' &&
+      Number.isFinite(configured) &&
+      configured > 0
+    ) {
+      return configured;
+    }
+    return 11155111;
   }
 
   /**
@@ -488,10 +523,19 @@ export class BlockchainService {
       );
     }
 
+    this.indexTxSilently(electionId, receipt.hash);
+
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
     };
+  }
+
+  private indexTxSilently(idEleccion: number, txHash: string): void {
+    if (!txHash?.trim()) {
+      return;
+    }
+    this.transaccionBlockchainService.indexarSilencioso(idEleccion, txHash);
   }
 
   /**
@@ -627,6 +671,8 @@ export class BlockchainService {
         'createElection se confirmó pero getElection indica que el comicio no existe.',
       );
     }
+
+    this.indexTxSilently(idEleccion, receipt.hash);
 
     return {
       ballot: deployed.ballot,
@@ -984,6 +1030,8 @@ export class BlockchainService {
       );
     }
 
+    this.indexTxSilently(electionId, receipt.hash);
+
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
@@ -1159,6 +1207,8 @@ export class BlockchainService {
         'El sellado del set de candidatos no devolvió recibo de confirmación.',
       );
     }
+
+    this.indexTxSilently(idEleccion, receipt.hash);
 
     return {
       txHash: receipt.hash,
@@ -1433,6 +1483,489 @@ export class BlockchainService {
         nuevos: bucket.nuevos,
       };
     });
+  }
+
+  /**
+   * VOTAR-373 — parses a single confirmed tx receipt into one public audit row.
+   * Uses getTransactionReceipt (1 RPC), not eth_getLogs range scans.
+   */
+  async parseElectionTransactionAuditEntry(
+    txHash: string,
+    idEleccion: number,
+  ): Promise<(BlockchainTransactionAuditEntry & { logIndex: number }) | null> {
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
+    try {
+      receipt = await provider.getTransactionReceipt(txHash);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar la transacción on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt || receipt.status !== 1) {
+      return null;
+    }
+
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const merkleRootStoreAddress =
+      this.configService.get<string>('MERKLE_ROOT_STORE_ADDRESS') ??
+      ZERO_ADDRESS;
+
+    const ballotIface = new Interface(BALLOT_CONTRACT_ABI);
+    const registryIface = new Interface(VOTE_REGISTRY_CONTRACT_ABI);
+    const merkleIface = new Interface(MERKLE_ROOT_STORE_ABI);
+
+    const addressLabels = new Map<string, string>();
+    addressLabels.set(addresses.ballot.toLowerCase(), 'BallotContract');
+    addressLabels.set(addresses.voteRegistry.toLowerCase(), 'VoteRegistry');
+    if (merkleRootStoreAddress !== ZERO_ADDRESS) {
+      addressLabels.set(
+        merkleRootStoreAddress.toLowerCase(),
+        'MerkleRootStore',
+      );
+    }
+
+    type RawScannedEvent = {
+      logIndex: number;
+      contractLabel: string;
+      eventName: string;
+      description: string;
+    };
+
+    const rawEvents: RawScannedEvent[] = [];
+
+    for (const log of receipt.logs) {
+      const logAddress = log.address?.toLowerCase();
+      if (!logAddress) {
+        continue;
+      }
+
+      const contractLabel = addressLabels.get(logAddress);
+      if (!contractLabel) {
+        continue;
+      }
+
+      let parsed: ReturnType<Interface['parseLog']> | null = null;
+      try {
+        if (contractLabel === 'BallotContract') {
+          parsed = ballotIface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        } else if (contractLabel === 'VoteRegistry') {
+          parsed = registryIface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        } else if (contractLabel === 'MerkleRootStore') {
+          parsed = merkleIface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        }
+      } catch {
+        parsed = null;
+      }
+
+      if (!parsed) {
+        continue;
+      }
+
+      const args = parsed.args as ReadonlyArray<unknown> &
+        Record<string, unknown>;
+      const eventElectionId = Number(args[0] ?? args.electionId);
+      if (
+        Number.isFinite(eventElectionId) &&
+        eventElectionId > 0 &&
+        eventElectionId !== idEleccion
+      ) {
+        continue;
+      }
+
+      const eventName = parsed.name;
+      let description: string | null;
+      switch (eventName) {
+        case 'SignedVoteCast':
+          description = this.describeSignedVoteCast(args);
+          break;
+        case 'VoteCast':
+          description = this.describeVoteCast(args);
+          break;
+        case 'VoteUpdated':
+          description = this.describeVoteUpdated(args);
+          break;
+        case 'CandidateSetRegistered':
+          description = this.describeCandidateSetRegistered(args);
+          break;
+        case 'RootPublished':
+          description = 'Raíz Merkle del padrón publicada on-chain';
+          break;
+        case 'ElectionStateChanged':
+          description = this.describeElectionStateChanged(args);
+          break;
+        case 'ElectionWindowSet':
+          description = this.describeElectionWindowSet(args);
+          break;
+        default:
+          description = `Evento ${eventName} registrado on-chain`;
+      }
+
+      if (!description) {
+        continue;
+      }
+
+      rawEvents.push({
+        logIndex: log.index,
+        contractLabel,
+        eventName,
+        description,
+      });
+    }
+
+    if (rawEvents.length === 0) {
+      return {
+        hashTransaccion: receipt.hash.toLowerCase(),
+        numeroBloque: receipt.blockNumber,
+        marcaTiempo: await this.resolveBlockTimestampIso(
+          provider,
+          receipt.blockNumber,
+        ),
+        contratoEtiqueta: 'ElectionFactory',
+        nombreEvento: 'OnChainOperation',
+        descripcionLegible: 'Operación electoral registrada on-chain',
+        explorerUrl: this.buildExplorerUrl(receipt.hash),
+        logIndex: 0,
+      };
+    }
+
+    const minLogIndex = Math.min(...rawEvents.map((event) => event.logIndex));
+    const primary = rawEvents.find((event) => event.logIndex === minLogIndex)!;
+    const eventNames = [...new Set(rawEvents.map((event) => event.eventName))];
+    const descriptions = joinAuditDescriptions(
+      rawEvents.map((event) => event.description),
+    );
+
+    return {
+      hashTransaccion: receipt.hash.toLowerCase(),
+      numeroBloque: receipt.blockNumber,
+      marcaTiempo: await this.resolveBlockTimestampIso(
+        provider,
+        receipt.blockNumber,
+      ),
+      contratoEtiqueta: primary.contractLabel,
+      nombreEvento: eventNames.join(', '),
+      descripcionLegible: descriptions,
+      explorerUrl: this.buildExplorerUrl(receipt.hash),
+      logIndex: minLogIndex,
+    };
+  }
+
+  private async resolveBlockTimestampIso(
+    provider: JsonRpcProvider,
+    blockNumber: number,
+  ): Promise<string> {
+    const block = await provider.getBlock(blockNumber);
+    return block?.timestamp
+      ? new Date(Number(block.timestamp) * 1000).toISOString()
+      : new Date().toISOString();
+  }
+
+  /**
+   * VOTAR-373 — scans election contract logs via RPC and returns a chronological,
+   * privacy-safe audit trail (no nullifiers, voter hashes or selection hashes).
+   * @deprecated Prefer TransaccionBlockchainService index + DB reads (Alchemy free tier).
+   */
+  async scanElectionTransactionHistory(
+    idEleccion: number,
+  ): Promise<BlockchainTransactionAuditEntry[]> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const merkleRootStoreAddress =
+      this.configService.get<string>('MERKLE_ROOT_STORE_ADDRESS') ??
+      ZERO_ADDRESS;
+
+    type EventContract = {
+      filters: Record<string, (electionId: number) => unknown>;
+      queryFilter: (filter: unknown) => Promise<
+        Array<{
+          transactionHash: string;
+          blockNumber: number;
+          index: number;
+          eventName?: string;
+          args: ReadonlyArray<unknown> & Record<string, unknown>;
+        }>
+      >;
+    };
+
+    const ballot = new Contract(
+      addresses.ballot,
+      BALLOT_CONTRACT_ABI,
+      provider,
+    ) as unknown as EventContract;
+    const voteRegistry = new Contract(
+      addresses.voteRegistry,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      provider,
+    ) as unknown as EventContract;
+    const merkleRootStore =
+      merkleRootStoreAddress !== ZERO_ADDRESS
+        ? (new Contract(
+            merkleRootStoreAddress,
+            MERKLE_ROOT_STORE_ABI,
+            provider,
+          ) as unknown as EventContract)
+        : null;
+
+    let signedVoteEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let voteCastEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let voteUpdatedEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let candidateSetEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let rootPublishedEvents: Awaited<ReturnType<EventContract['queryFilter']>> =
+      [];
+    let electionStateEvents: Awaited<ReturnType<EventContract['queryFilter']>> =
+      [];
+    let electionWindowEvents: Awaited<
+      ReturnType<EventContract['queryFilter']>
+    > = [];
+
+    try {
+      [
+        signedVoteEvents,
+        voteCastEvents,
+        voteUpdatedEvents,
+        candidateSetEvents,
+        rootPublishedEvents,
+        electionStateEvents,
+        electionWindowEvents,
+      ] = await Promise.all([
+        ballot.queryFilter(ballot.filters.SignedVoteCast(idEleccion)),
+        voteRegistry.queryFilter(voteRegistry.filters.VoteCast(idEleccion)),
+        voteRegistry.queryFilter(voteRegistry.filters.VoteUpdated(idEleccion)),
+        voteRegistry.queryFilter(
+          voteRegistry.filters.CandidateSetRegistered(idEleccion),
+        ),
+        merkleRootStore
+          ? merkleRootStore.queryFilter(
+              merkleRootStore.filters.RootPublished(idEleccion),
+            )
+          : Promise.resolve([]),
+        merkleRootStore
+          ? merkleRootStore.queryFilter(
+              merkleRootStore.filters.ElectionStateChanged(idEleccion),
+            )
+          : Promise.resolve([]),
+        merkleRootStore
+          ? merkleRootStore.queryFilter(
+              merkleRootStore.filters.ElectionWindowSet(idEleccion),
+            )
+          : Promise.resolve([]),
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo escanear la actividad on-chain del comicio: ${message}`,
+      );
+    }
+
+    type RawScannedEvent = {
+      txHash: string;
+      blockNumber: number;
+      logIndex: number;
+      contractLabel: string;
+      eventName: string;
+      description: string;
+    };
+
+    const mapEvents = (
+      events: Awaited<ReturnType<EventContract['queryFilter']>>,
+      contractLabel: string,
+      mapper: (
+        eventName: string,
+        args: ReadonlyArray<unknown> & Record<string, unknown>,
+      ) => string | null,
+    ): RawScannedEvent[] =>
+      events
+        .map((event) => {
+          const eventName = String(event.eventName ?? 'Unknown');
+          const description = mapper(eventName, event.args);
+          if (!description) {
+            return null;
+          }
+          return {
+            txHash: event.transactionHash.toLowerCase(),
+            blockNumber: event.blockNumber,
+            logIndex: event.index,
+            contractLabel,
+            eventName,
+            description,
+          };
+        })
+        .filter((event): event is RawScannedEvent => event !== null);
+
+    const rawEvents: RawScannedEvent[] = [
+      ...mapEvents(signedVoteEvents, 'BallotContract', (_, args) =>
+        this.describeSignedVoteCast(args),
+      ),
+      ...mapEvents(voteCastEvents, 'VoteRegistry', (_, args) =>
+        this.describeVoteCast(args),
+      ),
+      ...mapEvents(voteUpdatedEvents, 'VoteRegistry', (_, args) =>
+        this.describeVoteUpdated(args),
+      ),
+      ...mapEvents(candidateSetEvents, 'VoteRegistry', (_, args) =>
+        this.describeCandidateSetRegistered(args),
+      ),
+      ...mapEvents(
+        rootPublishedEvents,
+        'MerkleRootStore',
+        () => 'Raíz Merkle del padrón publicada on-chain',
+      ),
+      ...mapEvents(electionStateEvents, 'MerkleRootStore', (_, args) =>
+        this.describeElectionStateChanged(args),
+      ),
+      ...mapEvents(electionWindowEvents, 'MerkleRootStore', (_, args) =>
+        this.describeElectionWindowSet(args),
+      ),
+    ];
+
+    const grouped = new Map<
+      string,
+      {
+        blockNumber: number;
+        logIndex: number;
+        contractLabel: string;
+        eventNames: string[];
+        descriptions: string[];
+      }
+    >();
+
+    for (const event of rawEvents) {
+      const existing = grouped.get(event.txHash);
+      if (!existing) {
+        grouped.set(event.txHash, {
+          blockNumber: event.blockNumber,
+          logIndex: event.logIndex,
+          contractLabel: event.contractLabel,
+          eventNames: [event.eventName],
+          descriptions: [event.description],
+        });
+        continue;
+      }
+      existing.logIndex = Math.min(existing.logIndex, event.logIndex);
+      if (!existing.eventNames.includes(event.eventName)) {
+        existing.eventNames.push(event.eventName);
+      }
+      if (
+        event.description &&
+        !existing.descriptions.includes(event.description)
+      ) {
+        existing.descriptions.push(event.description);
+      }
+    }
+
+    const blockTimestampCache = new Map<number, string>();
+    const entries: Array<
+      BlockchainTransactionAuditEntry & {
+        sortBlock: number;
+        sortLogIndex: number;
+      }
+    > = [];
+
+    for (const [txHash, group] of grouped.entries()) {
+      let marcaTiempo = blockTimestampCache.get(group.blockNumber);
+      if (!marcaTiempo) {
+        const block = await provider.getBlock(group.blockNumber);
+        marcaTiempo = block?.timestamp
+          ? new Date(Number(block.timestamp) * 1000).toISOString()
+          : new Date().toISOString();
+        blockTimestampCache.set(group.blockNumber, marcaTiempo);
+      }
+
+      entries.push({
+        hashTransaccion: txHash,
+        numeroBloque: group.blockNumber,
+        marcaTiempo,
+        contratoEtiqueta: group.contractLabel,
+        nombreEvento: group.eventNames.join(', '),
+        descripcionLegible: joinAuditDescriptions(group.descriptions),
+        explorerUrl: this.buildExplorerUrl(txHash),
+        sortBlock: group.blockNumber,
+        sortLogIndex: group.logIndex,
+      });
+    }
+
+    return entries
+      .sort((a, b) =>
+        a.sortBlock !== b.sortBlock
+          ? b.sortBlock - a.sortBlock
+          : b.sortLogIndex - a.sortLogIndex,
+      )
+      .map(
+        (entry): BlockchainTransactionAuditEntry => ({
+          hashTransaccion: entry.hashTransaccion,
+          numeroBloque: entry.numeroBloque,
+          marcaTiempo: entry.marcaTiempo,
+          contratoEtiqueta: entry.contratoEtiqueta,
+          nombreEvento: entry.nombreEvento,
+          descripcionLegible: entry.descripcionLegible,
+          explorerUrl: entry.explorerUrl,
+        }),
+      );
+  }
+
+  private describeSignedVoteCast(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    void args;
+    return 'Sufragio firmado registrado en la urna digital';
+  }
+
+  private describeVoteCast(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    void args;
+    return describeVoteCastAudit();
+  }
+
+  private describeVoteUpdated(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string | null {
+    return describeVoteUpdatedAudit(args);
+  }
+
+  private describeCandidateSetRegistered(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    const candidateCount = Number(args.candidateCount);
+    return `Set de candidatos sellado (${candidateCount} candidatos)`;
+  }
+
+  private describeElectionStateChanged(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    const stateCode = Number(args.newState);
+    const label = BLOCKCHAIN_STATE_LABELS[stateCode] ?? 'DESCONOCIDO';
+    return `Estado electoral actualizado a ${label}`;
+  }
+
+  private describeElectionWindowSet(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    const startTime = Number(args.startTime);
+    const endTime = Number(args.endTime);
+    const format = (unixSeconds: number): string =>
+      new Date(unixSeconds * 1000).toLocaleString('es-AR', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+      });
+    return `Ventana electoral configurada (${format(startTime)} — ${format(endTime)})`;
   }
 
   /**

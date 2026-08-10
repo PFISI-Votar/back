@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
 import { ParticipacionPublicController } from '@/dashboard-publico/controllers/participacion-public.controller';
+import { TransaccionesPublicController } from '@/dashboard-publico/controllers/transacciones-public.controller';
 import { ParticipacionPublicService } from '@/dashboard-publico/services/participacion-public.service';
+import { TransaccionesPublicService } from '@/dashboard-publico/services/transacciones-public.service';
 import { ParticipacionSamplerService } from '@/dashboard-publico/services/participacion-sampler.service';
 import { ParticipacionSnapshot } from '@/dashboard-publico/entities/participacion-snapshot.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
@@ -21,8 +23,12 @@ import { PadronModule } from '@/padron/padron.module';
       ParticipacionSnapshot,
     ]),
   ],
-  controllers: [ParticipacionPublicController],
-  providers: [ParticipacionPublicService, ParticipacionSamplerService],
+  controllers: [ParticipacionPublicController, TransaccionesPublicController],
+  providers: [
+    ParticipacionPublicService,
+    TransaccionesPublicService,
+    ParticipacionSamplerService,
+  ],
   exports: [
     ParticipacionSamplerService, // exportado para CierreComicioService
   ],
