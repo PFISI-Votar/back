@@ -1,10 +1,11 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Not, Repository } from 'typeorm';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { CrearEleccionValidationException } from '@/eleccion/exceptions/crear-eleccion-validation.exception';
 import { IEleccionService } from '@/eleccion/interfaces/eleccion.service.interface';
 import { ELECCION_REPOSITORY } from '@/eleccion/interfaces/eleccion.repository.interface';
@@ -82,8 +83,19 @@ export class EleccionesService implements IEleccionService {
     await this.eleccionOrmRepository.remove(eleccion);
   }
 
-  async listarElecciones(): Promise<EleccionResponseDto[]> {
+  /**
+   * VOTAR-322: sin filtro devuelve el panel de gestión activa (excluye
+   * comicios ARCHIVADA); con `estado` filtra exactamente a ese estado
+   * (usado por la pestaña Históricos con `estado=ARCHIVADA`).
+   */
+  async listarElecciones(
+    estado?: EleccionEstado,
+  ): Promise<EleccionResponseDto[]> {
+    const where = estado
+      ? { estado }
+      : { estado: Not(EleccionEstado.ARCHIVADA) };
     const elecciones = await this.eleccionOrmRepository.find({
+      where,
       order: { idEleccion: 'DESC' },
     });
     return Promise.all(
