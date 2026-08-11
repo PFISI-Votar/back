@@ -18,6 +18,7 @@ const mockGetBlock = jest.fn();
 const mockGetTransactionReceipt = jest.fn();
 const mockParseLog = jest.fn();
 const mockGetParticipationStats = jest.fn();
+const mockGetRevoteStats = jest.fn();
 const mockGetVotesByCandidate = jest.fn();
 const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
@@ -43,6 +44,7 @@ jest.mock('ethers', () => {
       const hasVoteCast = abiHas('VoteCast');
       const hasSignedVoteCast = abiHas('SignedVoteCast');
       const hasGetParticipation = abiHas('getParticipationStats');
+      const hasGetRevoteStats = abiHas('getRevoteStats');
       const hasGetElection = abiHas('getElection');
       const hasMerkleRootStore =
         abiHas('publishRoot') &&
@@ -94,9 +96,10 @@ jest.mock('ethers', () => {
           queryFilter: mockRegistryQueryFilter,
         };
       }
-      if (hasGetParticipation) {
+      if (hasGetParticipation || hasGetRevoteStats) {
         return {
           getParticipationStats: mockGetParticipationStats,
+          getRevoteStats: mockGetRevoteStats,
           getVotesByCandidate: mockGetVotesByCandidate,
         };
       }
@@ -146,6 +149,7 @@ describe('BlockchainService', () => {
 
   const mockTransaccionBlockchain = {
     indexarSilencioso: jest.fn(),
+    buildRevoteStatsFromIndex: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -183,6 +187,7 @@ describe('BlockchainService', () => {
       args: [42, '0x' + 'a'.repeat(64), 1700000000n],
     });
     mockGetParticipationStats.mockResolvedValue([25n, 0n, 0n]);
+    mockGetRevoteStats.mockResolvedValue([30n, 70n, 300000000000000000n]);
     mockGetVotesByCandidate.mockResolvedValue(10n);
     mockVoteCastFilter.mockReturnValue({ type: 'VoteCast' });
     mockQueryFilter.mockResolvedValue([]);
@@ -887,6 +892,58 @@ describe('BlockchainService', () => {
       expect(actual.reduce((sum, point) => sum + point.nuevos, 0)).toBe(2);
       const serialized = JSON.stringify(actual);
       expect(serialized).not.toMatch(/0xaaa|0xbbb/);
+    });
+
+    it('getRevoteStats returns aggregates from AuditViewContract (VOTAR-329)', async () => {
+      const actual = await service.getRevoteStats(7);
+
+      expect(actual).toEqual({
+        totalRevotes: 30,
+        uniqueVoters: 70,
+        overwriteRatio: 0.3,
+      });
+      expect(mockGetRevoteStats).toHaveBeenCalledWith(7);
+    });
+
+    it('getRevoteStats falls back to indexed txs when AuditView lacks selector', async () => {
+      const callException = Object.assign(
+        new Error(
+          'missing revert data (action="call", data=null, reason=null, code=CALL_EXCEPTION, version=6.17.0)',
+        ),
+        { code: 'CALL_EXCEPTION' },
+      );
+      mockGetRevoteStats.mockRejectedValueOnce(callException);
+      mockTransaccionBlockchain.buildRevoteStatsFromIndex.mockResolvedValueOnce(
+        {
+          totalRevotes: 3,
+          uniqueVoters: 2,
+          overwriteRatio: 0.6,
+        },
+      );
+
+      const actual = await service.getRevoteStats(7);
+
+      expect(actual).toEqual({
+        totalRevotes: 3,
+        uniqueVoters: 2,
+        overwriteRatio: 0.6,
+      });
+      expect(
+        mockTransaccionBlockchain.buildRevoteStatsFromIndex,
+      ).toHaveBeenCalledWith(7);
+    });
+
+    it('getRevoteStats rethrows non-selector blockchain failures', async () => {
+      mockGetRevoteStats.mockRejectedValueOnce(
+        new Error('network timeout contacting RPC'),
+      );
+
+      await expect(service.getRevoteStats(7)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(
+        mockTransaccionBlockchain.buildRevoteStatsFromIndex,
+      ).not.toHaveBeenCalled();
     });
 
     it('scanElectionTransactionHistory returns chronological audit entries (VOTAR-373)', async () => {

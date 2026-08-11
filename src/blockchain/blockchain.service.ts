@@ -65,6 +65,12 @@ export type ParticipationStatsOnChain = {
   nullVotes: number;
 };
 
+export type RevoteStatsOnChain = {
+  totalRevotes: number;
+  uniqueVoters: number;
+  overwriteRatio: number;
+};
+
 export type EscrutinioTalliesOnChain = {
   participation: ParticipationStatsOnChain;
   votesByCandidateId: Record<number, number>;
@@ -80,6 +86,26 @@ export type { BlockchainTransactionAuditEntry } from './blockchain-transaction.t
 
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
+/**
+ * True when an eth_call failed because the selector is absent on the deployed
+ * bytecode (typical for non-upgradeable contracts predating a new view).
+ */
+const isMissingOnChainSelectorError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code)
+      : '';
+  return (
+    code === 'CALL_EXCEPTION' ||
+    message.includes('CALL_EXCEPTION') ||
+    message.includes('missing revert data') ||
+    /function selector was not recognized|no matching fragment|unknown function/i.test(
+      message,
+    )
+  );
+};
+
 const BLOCKCHAIN_STATE_LABELS: Record<number, string> = {
   0: 'BORRADOR',
   1: 'CONFIGURADA',
@@ -90,6 +116,7 @@ const BLOCKCHAIN_STATE_LABELS: Record<number, string> = {
 
 interface AuditViewContract {
   getParticipationStats(electionId: number): Promise<[bigint, bigint, bigint]>;
+  getRevoteStats(electionId: number): Promise<[bigint, bigint, bigint]>;
   getVotesByCandidate(
     electionId: number,
     candidateId: bigint | number,
@@ -1483,6 +1510,59 @@ export class BlockchainService {
         nuevos: bucket.nuevos,
       };
     });
+  }
+
+  /**
+   * VOTAR-329 — aggregate revote metrics via AuditViewContract.getRevoteStats.
+   * Falls back to the VOTAR-373 transaction index when the deployed AuditView
+   * predates getRevoteStats (non-upgradeable contracts; eth_getLogs is capped).
+   */
+  async getRevoteStats(idEleccion: number): Promise<RevoteStatsOnChain> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as AuditViewContract;
+
+    try {
+      const [totalRevotes, uniqueVoters, overwriteRatioWad] =
+        await auditView.getRevoteStats(idEleccion);
+      return {
+        totalRevotes: Number(totalRevotes),
+        uniqueVoters: Number(uniqueVoters),
+        overwriteRatio: Number(overwriteRatioWad) / 1e18,
+      };
+    } catch (error) {
+      if (!isMissingOnChainSelectorError(error)) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Error desconocido en blockchain';
+        throw new ServiceUnavailableException(
+          `No se pudieron obtener las estadísticas de re-voto on-chain: ${message}`,
+        );
+      }
+
+      this.logger.warn(
+        `getRevoteStats ausente en AuditView ${addresses.auditView} (elección ${idEleccion}); derivando desde índice transaccion_blockchain.`,
+      );
+
+      try {
+        return await this.transaccionBlockchainService.buildRevoteStatsFromIndex(
+          idEleccion,
+        );
+      } catch (fallbackError) {
+        const message =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : 'Error desconocido en blockchain';
+        throw new ServiceUnavailableException(
+          `No se pudieron obtener las estadísticas de re-voto on-chain: ${message}`,
+        );
+      }
+    }
   }
 
   /**

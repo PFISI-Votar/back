@@ -12,6 +12,14 @@ import { BlockchainService } from '@/blockchain/blockchain.service';
 import type { BlockchainTransactionAuditEntry } from '@/blockchain/blockchain-transaction.types';
 import { TransaccionBlockchain } from '@/blockchain/entities/transaccion-blockchain.entity';
 import { normalizeDescripcionLegible } from '@/blockchain/utils/audit-transaction-description.util';
+import {
+  buildRevoteOverwriteTimelineFromIndexedVotes,
+  buildRevoteStatsFromIndexedVotes,
+  isIndexedRevote,
+  isIndexedVoteTransaction,
+  type RevoteOverwriteTimelinePoint,
+  type RevoteStatsFromIndex,
+} from '@/blockchain/utils/revote-overwrite-timeline.util';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 
@@ -109,6 +117,58 @@ export class TransaccionBlockchainService {
       descripcionLegible: normalizeDescripcionLegible(row.descripcionLegible),
       explorerUrl: this.blockchainService.buildExplorerUrl(row.hashTransaccion),
     }));
+  }
+
+  /**
+   * VOTAR-329 — hourly overwrite-ratio series from the VOTAR-373 transaction index.
+   */
+  async buildRevoteOverwriteTimeline(
+    idEleccion: number,
+    horasVentana = 12,
+  ): Promise<RevoteOverwriteTimelinePoint[]> {
+    const voteEvents = await this.loadIndexedVoteEvents(idEleccion);
+    return buildRevoteOverwriteTimelineFromIndexedVotes(
+      voteEvents,
+      horasVentana,
+    );
+  }
+
+  /**
+   * VOTAR-329 — aggregate revote metrics from the transaction index when
+   * AuditViewContract.getRevoteStats is not present on the deployed bytecode.
+   */
+  async buildRevoteStatsFromIndex(
+    idEleccion: number,
+  ): Promise<RevoteStatsFromIndex> {
+    const voteEvents = await this.loadIndexedVoteEvents(idEleccion);
+    return buildRevoteStatsFromIndexedVotes(voteEvents);
+  }
+
+  private async loadIndexedVoteEvents(
+    idEleccion: number,
+  ): Promise<Array<{ timestampMs: number; isRevote: boolean }>> {
+    const rows = await this.transaccionRepository.find({
+      where: { idEleccion },
+      order: { marcaTiempo: 'ASC', numeroBloque: 'ASC', logIndex: 'ASC' },
+    });
+
+    return rows
+      .filter((row) =>
+        isIndexedVoteTransaction({
+          nombreEvento: row.nombreEvento,
+          descripcionLegible: normalizeDescripcionLegible(
+            row.descripcionLegible,
+          ),
+        }),
+      )
+      .map((row) => ({
+        timestampMs: row.marcaTiempo.getTime(),
+        isRevote: isIndexedRevote({
+          descripcionLegible: normalizeDescripcionLegible(
+            row.descripcionLegible,
+          ),
+        }),
+      }));
   }
 
   /**
