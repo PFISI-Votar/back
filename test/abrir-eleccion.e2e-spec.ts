@@ -91,6 +91,16 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
         blockNumber: 1,
         alreadySealed: false,
       }),
+      lockElectionWindow: jest.fn().mockResolvedValue({
+        txHash: '0xlockwin',
+        blockNumber: 1,
+        alreadyLocked: false,
+      }),
+      lockRevoteConfig: jest.fn().mockResolvedValue({
+        txHash: '0xlockrevote',
+        blockNumber: 1,
+        alreadyLocked: false,
+      }),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({

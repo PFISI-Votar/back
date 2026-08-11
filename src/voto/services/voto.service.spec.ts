@@ -135,6 +135,9 @@ const createRepositories = () => {
 const createService = (
   repositories = createRepositories(),
   auditLogger = { logVotoEmitido: jest.fn().mockResolvedValue({}) },
+  transaccionBlockchainService = {
+    registrarVotoPublico: jest.fn().mockResolvedValue(undefined),
+  },
 ) =>
   new VotoService(
     repositories.eleccionRepository as never,
@@ -143,6 +146,7 @@ const createService = (
     repositories.ofertaElectoralQueryService as never,
     auditLogger as never,
     repositories.blockchainService as never,
+    transaccionBlockchainService as never,
   );
 
 describe('VotoService', () => {
@@ -218,6 +222,25 @@ describe('VotoService', () => {
       idEleccion: 1,
       endpoint: 'POST /elecciones/1/votos/emitido-anonimo',
     });
+  });
+
+  it('VOTAR-373: registra transacción pública tras validación on-chain', async () => {
+    const transaccionBlockchainService = {
+      registrarVotoPublico: jest.fn().mockResolvedValue(undefined),
+    };
+    const service = createService(
+      createRepositories(),
+      { logVotoEmitido: jest.fn() },
+      transaccionBlockchainService,
+    );
+    const txHash = '0x' + 'cd'.repeat(32);
+
+    const actual = await service.registrarTransaccionPublica(1, txHash);
+
+    expect(actual).toEqual({ registrado: true, idEleccion: 1 });
+    expect(
+      transaccionBlockchainService.registrarVotoPublico,
+    ).toHaveBeenCalledWith(1, txHash);
   });
 
   it('UAT-05: rechaza registro anónimo si el comicio no existe', async () => {
