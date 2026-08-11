@@ -11,6 +11,8 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 const mockPublishRoot = jest.fn();
 const mockSetElectionState = jest.fn();
+const mockSetElectionWindow = jest.fn();
+const mockCreateElection = jest.fn();
 const mockWait = jest.fn();
 const mockGetBlock = jest.fn();
 const mockGetTransactionReceipt = jest.fn();
@@ -25,6 +27,8 @@ const mockRegistryQueryFilter = jest.fn();
 const mockMerkleQueryFilter = jest.fn();
 const mockVoteCastFilter = jest.fn();
 const mockRegisterCandidates = jest.fn();
+const mockLockConfigMerkle = jest.fn();
+const mockLockConfigFactory = jest.fn();
 
 jest.mock('ethers', () => {
   const actual = jest.requireActual<typeof import('ethers')>('ethers');
@@ -50,6 +54,8 @@ jest.mock('ethers', () => {
         return {
           publishRoot: mockPublishRoot,
           setElectionState: mockSetElectionState,
+          setElectionWindow: mockSetElectionWindow,
+          lockConfig: mockLockConfigMerkle,
           getMerkleRoot: jest.fn(),
           isPublished: jest.fn(),
           filters: {
@@ -98,11 +104,21 @@ jest.mock('ethers', () => {
         };
       }
       if (hasGetElection) {
-        return { getElection: mockGetElection };
+        return {
+          getElection: mockGetElection,
+          createElection: mockCreateElection,
+          // ELECTION_FACTORY_CONTRACT_ABI (VOTAR-327): also exposes lockConfig,
+          // used by BlockchainService.lockRevoteConfig.
+          lockConfig: mockLockConfigFactory,
+        };
       }
       return {
         publishRoot: mockPublishRoot,
         setElectionState: mockSetElectionState,
+        setElectionWindow: mockSetElectionWindow,
+        // MERKLE_ROOT_STORE_ABI (VOTAR-327): lockConfig, used by
+        // BlockchainService.lockElectionWindow.
+        lockConfig: mockLockConfigMerkle,
       };
     }),
     Wallet: jest.fn().mockImplementation(() => ({})),
@@ -112,7 +128,7 @@ jest.mock('ethers', () => {
     })),
     Interface: jest.fn().mockImplementation((abi: unknown) => ({
       parseLog: mockParseLog,
-      // Delegate to the real ethers Interface so decodeVoteRegistryErrorName's
+      // Delegate to the real ethers Interface so decodeContractErrorName's
       // custom-error decoding is exercised faithfully in tests, not stubbed.
       parseError: (data: string) =>
         new actual.Interface(abi as never).parseError(data),
@@ -154,7 +170,12 @@ describe('BlockchainService', () => {
     });
     mockPublishRoot.mockResolvedValue({ wait: mockWait });
     mockSetElectionState.mockResolvedValue({ wait: mockWait });
+    mockSetElectionWindow.mockResolvedValue({ wait: mockWait });
+    mockCreateElection.mockResolvedValue({ wait: mockWait });
     mockRegisterCandidates.mockResolvedValue({ wait: mockWait });
+    mockSetElectionWindow.mockResolvedValue({ wait: mockWait });
+    mockLockConfigMerkle.mockResolvedValue({ wait: mockWait });
+    mockLockConfigFactory.mockResolvedValue({ wait: mockWait });
     mockWait.mockResolvedValue({
       hash: '0xabc',
       blockNumber: 100,
@@ -173,6 +194,15 @@ describe('BlockchainService', () => {
     mockBallotQueryFilter.mockResolvedValue([]);
     mockRegistryQueryFilter.mockResolvedValue([]);
     mockMerkleQueryFilter.mockResolvedValue([]);
+    mockGetElection.mockResolvedValue({
+      ballot: '0x4444444444444444444444444444444444444444',
+      voteRegistry: '0x5555555555555555555555555555555555555555',
+      auditView: '0x6666666666666666666666666666666666666666',
+      exists: false,
+    });
+    mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+      direccionContrato: '0x3333333333333333333333333333333333333333',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -217,6 +247,33 @@ describe('BlockchainService', () => {
     await expect(
       service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
     ).rejects.toThrow(/MERKLE_UPDATER_ROLE/);
+  });
+
+  it('publishMerkleRoot maps RootLocked revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: RootLocked(42)'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/sello hermético/);
+  });
+
+  it('publishMerkleRoot maps RootIsZero revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: RootIsZero()'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/raíz Merkle calculada es inválida/);
+  });
+
+  it('publishMerkleRoot maps InvalidElectionWindow revert to a helpful message', async () => {
+    mockPublishRoot.mockRejectedValue(
+      new Error('execution reverted: InvalidElectionWindow()'),
+    );
+    await expect(
+      service.publishMerkleRoot(42, '0x' + 'a'.repeat(64)),
+    ).rejects.toThrow(/ventana de votación configurada/);
   });
 
   it('buildExplorerUrl returns Etherscan link', () => {
@@ -381,6 +438,20 @@ describe('BlockchainService', () => {
       ).rejects.toThrow(/ELECTION_ADMIN_ROLE/);
     });
 
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockSetElectionState.mockRejectedValue(rawError);
+
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(/ELECTION_ADMIN_ROLE/);
+    });
+
     it('throws when receipt is null', async () => {
       mockWait.mockResolvedValue(null);
 
@@ -395,6 +466,134 @@ describe('BlockchainService', () => {
       await expect(
         service.syncElectionState(42, EleccionEstado.ABIERTA),
       ).rejects.toThrow(/No se pudo sincronizar el estado on-chain/);
+    });
+  });
+
+  describe('syncElectionWindow — VOTAR-434', () => {
+    const start = new Date('2026-08-10T10:00:00.000Z');
+    const end = new Date('2026-08-10T18:00:00.000Z');
+
+    it('syncs election window to blockchain successfully', async () => {
+      const actual = await service.syncElectionWindow(42, start, end);
+
+      expect(actual.txHash).toBe('0xabc');
+      expect(actual.blockNumber).toBe(100);
+      expect(mockSetElectionWindow).toHaveBeenCalledWith(
+        42,
+        Math.floor(start.getTime() / 1000),
+        Math.floor(end.getTime() / 1000),
+      );
+    });
+
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockSetElectionWindow.mockRejectedValue(rawError);
+
+      await expect(service.syncElectionWindow(42, start, end)).rejects.toThrow(
+        /ELECTION_ADMIN_ROLE/,
+      );
+    });
+
+    it('maps InvalidElectionWindow from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        { data: '0xff6efeb1' },
+      );
+      mockSetElectionWindow.mockRejectedValue(rawError);
+
+      await expect(service.syncElectionWindow(42, start, end)).rejects.toThrow(
+        /ventana de votación configurada/,
+      );
+    });
+  });
+
+  describe('deployElectionStack — VOTAR-434', () => {
+    const revoteConfig = {
+      enabled: false,
+      maxVotesPerVoter: 1,
+      minIntervalSeconds: 0,
+      policy: 0,
+    };
+
+    it('deploys the election stack and returns addresses', async () => {
+      mockGetElection
+        .mockResolvedValueOnce({
+          ballot: '0x0000000000000000000000000000000000000000',
+          voteRegistry: '0x0000000000000000000000000000000000000000',
+          auditView: '0x0000000000000000000000000000000000000000',
+          exists: false,
+        })
+        .mockResolvedValueOnce({
+          ballot: '0x4444444444444444444444444444444444444444',
+          voteRegistry: '0x5555555555555555555555555555555555555555',
+          auditView: '0x6666666666666666666666666666666666666666',
+          exists: true,
+        });
+
+      const actual = await service.deployElectionStack(42, revoteConfig);
+
+      expect(actual).toEqual({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyDeployed: false,
+      });
+      expect(mockCreateElection).toHaveBeenCalledWith(42, revoteConfig);
+    });
+
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockCreateElection.mockRejectedValue(rawError);
+
+      await expect(
+        service.deployElectionStack(42, revoteConfig),
+      ).rejects.toThrow(/DEFAULT_ADMIN_ROLE/);
+    });
+
+    it('treats ElectionAlreadyExists from raw revert .data as alreadyDeployed', async () => {
+      mockGetElection
+        .mockResolvedValueOnce({
+          ballot: '0x0000000000000000000000000000000000000000',
+          voteRegistry: '0x0000000000000000000000000000000000000000',
+          auditView: '0x0000000000000000000000000000000000000000',
+          exists: false,
+        })
+        .mockResolvedValueOnce({
+          ballot: '0x4444444444444444444444444444444444444444',
+          voteRegistry: '0x5555555555555555555555555555555555555555',
+          auditView: '0x6666666666666666666666666666666666666666',
+          exists: true,
+        });
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0x2f684674000000000000000000000000000000000000000000000000000000000000002a',
+        },
+      );
+      mockCreateElection.mockRejectedValue(rawError);
+
+      const actual = await service.deployElectionStack(42, revoteConfig);
+
+      expect(actual).toEqual({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        txHash: '',
+        blockNumber: 0,
+        alreadyDeployed: true,
+      });
     });
   });
 
@@ -483,6 +682,158 @@ describe('BlockchainService', () => {
 
       await expect(service.registerCandidates(42, [101])).rejects.toThrow(
         UnprocessableEntityException,
+      );
+    });
+  });
+
+  describe('syncElectionWindow — VOTAR-321', () => {
+    const startTime = new Date('2026-07-15T10:00:00Z');
+    const endTime = new Date('2026-07-15T18:00:00Z');
+
+    it('syncs the voting window on success', async () => {
+      const actual = await service.syncElectionWindow(42, startTime, endTime);
+
+      expect(actual.txHash).toBe('0xabc');
+      expect(actual.blockNumber).toBe(100);
+      expect(mockSetElectionWindow).toHaveBeenCalledWith(
+        42,
+        Math.floor(startTime.getTime() / 1000),
+        Math.floor(endTime.getTime() / 1000),
+      );
+    });
+
+    it('treats a ConfigLocked revert as a no-op (idempotent retry, VOTAR-327)', async () => {
+      mockSetElectionWindow.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.syncElectionWindow(42, startTime, endTime);
+
+      expect(actual).toEqual({ txHash: '', blockNumber: 0 });
+    });
+  });
+
+  describe('lockElectionWindow — VOTAR-327', () => {
+    it('locks the voting window and returns tx metadata on success', async () => {
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyLocked: false,
+      });
+      expect(mockLockConfigMerkle).toHaveBeenCalledWith(42);
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(service.lockElectionWindow(42)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('treats ConfigLocked as idempotent, not an error', async () => {
+      mockLockConfigMerkle.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('treats ConfigLocked as idempotent when only raw revert .data is present (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          // ConfigLocked(uint256) encoded with electionId=42.
+          data: '0x9b4a661a000000000000000000000000000000000000000000000000000000000000002a',
+        },
+      );
+      mockLockConfigMerkle.mockRejectedValue(rawError);
+
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('maps AccessControl revert to a helpful role message', async () => {
+      mockLockConfigMerkle.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(service.lockElectionWindow(42)).rejects.toThrow(
+        /ELECTION_ADMIN_ROLE/,
+      );
+    });
+  });
+
+  describe('lockRevoteConfig — VOTAR-327', () => {
+    beforeEach(() => {
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+    });
+
+    it('locks the RevoteConfig audit trail and returns tx metadata on success', async () => {
+      const actual = await service.lockRevoteConfig(42);
+
+      expect(actual).toEqual({
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyLocked: false,
+      });
+      expect(mockLockConfigFactory).toHaveBeenCalledWith(42);
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('treats ConfigLocked as idempotent, not an error', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.lockRevoteConfig(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('maps ElectionDoesNotExist to a 422 with a helpful message', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('execution reverted: ElectionDoesNotExist(42)'),
+      );
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('maps AccessControl revert to a helpful role message', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        /DEFAULT_ADMIN_ROLE/,
       );
     });
   });
