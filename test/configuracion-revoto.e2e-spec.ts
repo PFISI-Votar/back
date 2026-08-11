@@ -298,4 +298,19 @@ describe('ConfiguracionRevoto (e2e) — VOTAR-323', () => {
       estado: EleccionEstado.BORRADOR,
     });
   });
+
+  it('PUT en comicio ABIERTA retorna 409 (VOTAR-327 UAT-02)', async () => {
+    await dataSource.getRepository(Eleccion).update(idEleccion, {
+      estado: EleccionEstado.ABIERTA,
+    });
+
+    await req
+      .put(`/elecciones/${idEleccion}/configuracion-revoto`)
+      .send({ permitirVotoMultiple: true, maxVotosPorVotante: 3 })
+      .expect(409);
+
+    await dataSource.getRepository(Eleccion).update(idEleccion, {
+      estado: EleccionEstado.BORRADOR,
+    });
+  });
 });

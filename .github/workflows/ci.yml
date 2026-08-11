@@ -38,7 +38,7 @@ jobs:
       DB_PASSWORD: votar
       DB_NAME: votar_test
       JWT_SECRET: test-secret-for-ci-min-16-chars
-      DEVELOPMENT: "true"
+      DEVELOPMENT: 'true'
 
     steps:
       - name: Checkout code

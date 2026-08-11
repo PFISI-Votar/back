@@ -22,7 +22,18 @@ export const envValidationSchema = Joi.object({
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
   UPLOADS_DIR: Joi.string().default('uploads'),
+
+  LOAD_BLOCKCHAIN_LOCAL: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(false),
+
   /**
+   * @deprecated Usar RS256 + JWKS (VOTAR-314).
+   * Los access tokens ya no se firman ni verifican con este secret.
+   * Mantenido como opcional para no romper entornos que aún lo tengan seteado.
+   * Remover en cuanto se confirme que ningún deploy activo lo referencia.
+   *
    * Legacy / opcional. Los access tokens usan RS256 + JWKS (VOTAR-314);
    * ya no se firma ni verifica con JWT_SECRET.
    */
@@ -51,17 +62,15 @@ export const envValidationSchema = Joi.object({
     .default('https://webservice.frvm.utn.edu.ar/autogestion'),
   SEPOLIA_RPC_URL: Joi.string().uri().optional(),
   MERKLE_ROOT_STORE_ADDRESS: Joi.string().optional(),
-  MERKLE_UPDATER_PRIVATE_KEY: Joi.string().optional(),
-  ELECTION_ADMIN_PRIVATE_KEY: Joi.string().optional(),
+
+  PRIVATE_KEY: Joi.string().optional(),
+  ADMIN_MULTISIG_ADDRESS: Joi.string().optional(),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
-  ELECTION_FACTORY_ADDRESS: Joi.string().optional(),
-  /** Fallback AuditView when ElectionFactory has no deployment for the comicio (VOTAR-364). */
-  AUDIT_VIEW_ADDRESS: Joi.string().optional(),
   /** Env-first AuditView/VoteRegistry override read by resolveContractsFromEnv (VOTAR-365). */
   AUDIT_VIEW_CONTRACT_ADDRESS: Joi.string().optional(),
   VOTE_REGISTRY_CONTRACT_ADDRESS: Joi.string().optional(),
   BLOCKCHAIN_NETWORK_NAME: Joi.string().optional(),
-  RECIBO_SIGNING_PRIVATE_KEY: Joi.string().optional(),
+
   CHAIN_ID: Joi.number().default(11155111),
   ETHERSCAN_BASE_URL: Joi.string()
     .uri()

@@ -1,6 +1,6 @@
 {
   "contractName": "BallotContract",
-  "abiHash": "0xf2941f1873bf3ccac89bc4bb204dfe842b77eddc617211eeb1ba78c818fcd40f",
+  "abiHash": "0xf5f828bc1152862b6c709a9ef4c71fd4ba4cd4afb97d34bea94b0acfa0d16684",
   "abi": [
     {
       "inputs": [
@@ -62,22 +62,6 @@
     {
       "inputs": [],
       "name": "AdminIsZeroAddress",
-      "type": "error"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "electionId",
-          "type": "uint256"
-        },
-        {
-          "internalType": "uint256",
-          "name": "remainingSeconds",
-          "type": "uint256"
-        }
-      ],
-      "name": "CooldownActive",
       "type": "error"
     },
     {
@@ -188,6 +172,22 @@
     {
       "inputs": [],
       "name": "NullifierHasNotVoted",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "remainingSeconds",
+          "type": "uint256"
+        }
+      ],
+      "name": "RetryTooSoon",
       "type": "error"
     },
     {
@@ -866,6 +866,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-27T12:24:26.046Z",
+  "exportedAt": "2026-08-08T17:44:12.963Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

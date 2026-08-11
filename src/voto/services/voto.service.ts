@@ -25,6 +25,8 @@ import {
   CategoriaBoletaDigitalDto,
   CategoriaBoletaEstado,
 } from '@/voto/dto/boleta-digital-response.dto';
+import { TransaccionBlockchainService } from '@/blockchain/services/transaccion-blockchain.service';
+import { RegistrarTransaccionPublicaResponseDto } from '@/voto/dto/registrar-transaccion-publica.dto';
 import { VotoEmitidoAnonimoResponseDto } from '@/voto/dto/voto-emitido-anonimo-response.dto';
 
 const ESTADOS_ELECCION_APTOS = [EleccionEstado.ABIERTA];
@@ -45,6 +47,7 @@ export class VotoService {
     private readonly ofertaElectoralQueryService: OfertaElectoralQueryService,
     private readonly auditLogger: AuditLoggerService,
     private readonly blockchainService: BlockchainService,
+    private readonly transaccionBlockchainService: TransaccionBlockchainService,
   ) {}
 
   async obtenerConfiguracionBud(
@@ -98,6 +101,28 @@ export class VotoService {
     return { registrado: true, idEleccion };
   }
 
+  /**
+   * VOTAR-373 — indexes a confirmed vote tx for the public dashboard.
+   * Separate from VOTAR-379 emitido-anonimo (no txHash in audit log).
+   */
+  async registrarTransaccionPublica(
+    idEleccion: number,
+    txHash: string,
+  ): Promise<RegistrarTransaccionPublicaResponseDto> {
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      throw new NotFoundException('Comicio no encontrado');
+    }
+    this.assertEleccionAceptaVotos(eleccion);
+    await this.transaccionBlockchainService.registrarVotoPublico(
+      idEleccion,
+      txHash,
+    );
+    return { registrado: true, idEleccion };
+  }
+
   async obtenerBoletaDigital(
     idEleccion: number,
     votanteHash: string,
@@ -136,6 +161,7 @@ export class VotoService {
       idBoleta: oferta.boleta.idBoleta,
       titulo: oferta.boleta.titulo,
       permitirVotoEnBlanco: oferta.configuracion.permitirVotoEnBlanco,
+      permitirVotoNulo: oferta.configuracion.permitirVotoNulo,
       categorias: this.mapCategorias(oferta),
     };
   }

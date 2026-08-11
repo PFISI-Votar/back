@@ -1,4 +1,6 @@
 import {
+  forwardRef,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
@@ -11,6 +13,7 @@ import {
   ContractTransactionReceipt,
   ContractTransactionResponse,
   Interface,
+  type InterfaceAbi,
   JsonRpcProvider,
   Log,
   Wallet,
@@ -26,6 +29,13 @@ import { MERKLE_ROOT_STORE_ABI } from './constants/merkle-root-store.abi';
 import { VOTE_REGISTRY_CONTRACT_ABI } from './constants/vote-registry-contract.abi';
 import { PublishMerkleRootResult } from './interfaces/publish-merkle-root-result.interface';
 import { ContratoBlockchainService } from './services/contrato-blockchain.service';
+import {
+  describeVoteCastAudit,
+  describeVoteUpdatedAudit,
+  joinAuditDescriptions,
+} from './utils/audit-transaction-description.util';
+import type { BlockchainTransactionAuditEntry } from './blockchain-transaction.types';
+import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import type { RevoteConfigOnChain } from '@/eleccion/configuracion-comicio/mappers/revote-config.mapper';
 
@@ -55,6 +65,12 @@ export type ParticipationStatsOnChain = {
   nullVotes: number;
 };
 
+export type RevoteStatsOnChain = {
+  totalRevotes: number;
+  uniqueVoters: number;
+  overwriteRatio: number;
+};
+
 export type EscrutinioTalliesOnChain = {
   participation: ParticipationStatsOnChain;
   votesByCandidateId: Record<number, number>;
@@ -66,10 +82,84 @@ export type VoteCastTimelinePoint = {
   nuevos: number;
 };
 
+export type ContratoDireccionOnChain = {
+  direccion: string;
+  explorerUrl: string;
+};
+
+export type ContratoEstadoOnChain = {
+  estadoOnChain: {
+    codigo: number;
+    etiqueta: string;
+  };
+  merkleRoot: {
+    hash: string;
+    publicado: boolean;
+    publicadoEn: string | null;
+  };
+  revoto: {
+    habilitado: boolean;
+    maxVotosPorVotante: number;
+    minIntervaloSegundos: number;
+    politicaRevoto: 'LAST_VOTE_WINS' | 'DISABLED';
+  };
+  contratos: {
+    ballot: ContratoDireccionOnChain;
+    voteRegistry: ContratoDireccionOnChain;
+    auditView: ContratoDireccionOnChain;
+    merkleRootStore: ContratoDireccionOnChain;
+  };
+  red: string;
+  chainId: number;
+};
+
+export type { BlockchainTransactionAuditEntry } from './blockchain-transaction.types';
+
 const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
+
+const ZERO_MERKLE_ROOT =
+  '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+/**
+ * True when an eth_call failed because the selector is absent on the deployed
+ * bytecode (typical for non-upgradeable contracts predating a new view).
+ */
+const isMissingOnChainSelectorError = (error: unknown): boolean => {
+  const message = error instanceof Error ? error.message : String(error);
+  const code =
+    error && typeof error === 'object' && 'code' in error
+      ? String((error as { code?: unknown }).code)
+      : '';
+  return (
+    code === 'CALL_EXCEPTION' ||
+    message.includes('CALL_EXCEPTION') ||
+    message.includes('missing revert data') ||
+    /function selector was not recognized|no matching fragment|unknown function/i.test(
+      message,
+    )
+  );
+};
+
+const BLOCKCHAIN_STATE_LABELS: Record<number, string> = {
+  0: 'BORRADOR',
+  1: 'CONFIGURADA',
+  2: 'ABIERTA',
+  3: 'CERRADA',
+  4: 'ESCRUTADA',
+};
+
+const BALLOT_REVOTE_READ_ABI = [
+  'function maxVotesPerVoter() view returns (uint16)',
+  'function minIntervalSeconds() view returns (uint32)',
+] as const;
+
+const VOTE_REGISTRY_REVOTE_READ_ABI = [
+  'function revoteEnabled() view returns (bool)',
+] as const;
 
 interface AuditViewContract {
   getParticipationStats(electionId: number): Promise<[bigint, bigint, bigint]>;
+  getRevoteStats(electionId: number): Promise<[bigint, bigint, bigint]>;
   getVotesByCandidate(
     electionId: number,
     candidateId: bigint | number,
@@ -115,6 +205,8 @@ export class BlockchainService {
   constructor(
     private readonly configService: ConfigService,
     private readonly contratoBlockchainService: ContratoBlockchainService,
+    @Inject(forwardRef(() => TransaccionBlockchainService))
+    private readonly transaccionBlockchainService: TransaccionBlockchainService,
   ) {}
 
   /**
@@ -128,13 +220,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'MERKLE_UPDATER_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La publicación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, MERKLE_UPDATER_PRIVATE_KEY).',
+        'La publicación on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -155,7 +245,12 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
@@ -163,9 +258,30 @@ export class BlockchainService {
           'La cuenta configurada no posee MERKLE_UPDATER_ROLE en el contrato.',
         );
       }
-      if (message.includes('RootAlreadyPublished')) {
+      if (
+        decodedName === 'RootAlreadyPublished' ||
+        message.includes('RootAlreadyPublished')
+      ) {
         throw new ServiceUnavailableException(
           'La raíz Merkle ya fue publicada on-chain para este comicio.',
+        );
+      }
+      if (decodedName === 'RootLocked' || message.includes('RootLocked')) {
+        throw new ServiceUnavailableException(
+          'No se puede publicar el padrón porque el comicio ya está abierto, cerrado o escrutado (sello hermético).',
+        );
+      }
+      if (decodedName === 'RootIsZero' || message.includes('RootIsZero')) {
+        throw new ServiceUnavailableException(
+          'La raíz Merkle calculada es inválida (vacía).',
+        );
+      }
+      if (
+        decodedName === 'InvalidElectionWindow' ||
+        message.includes('InvalidElectionWindow')
+      ) {
+        throw new ServiceUnavailableException(
+          'La ventana de votación configurada para el comicio es inválida.',
         );
       }
       throw new ServiceUnavailableException(
@@ -211,6 +327,8 @@ export class BlockchainService {
     const publishedAt = block?.timestamp
       ? new Date(block.timestamp * 1000)
       : new Date();
+
+    this.indexTxSilently(electionId, receipt.hash);
 
     return {
       txHash: receipt.hash,
@@ -274,6 +392,25 @@ export class BlockchainService {
     return `${base}/tx/${txHash}`;
   }
 
+  buildExplorerAddressUrl(contractAddress: string): string {
+    const base =
+      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
+      'https://sepolia.etherscan.io';
+    return `${base}/address/${contractAddress}`;
+  }
+
+  getChainId(): number {
+    const configured = this.configService.get<number>('CHAIN_ID');
+    if (
+      typeof configured === 'number' &&
+      Number.isFinite(configured) &&
+      configured > 0
+    ) {
+      return configured;
+    }
+    return 11155111;
+  }
+
   /**
    * VOTAR-366: human-readable chain label for inclusion confirmation messages.
    */
@@ -302,16 +439,7 @@ export class BlockchainService {
   async getVoteParticipationByTxHash(
     txHash: string,
   ): Promise<VoteParticipationOnChain> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const ballotAddress = this.configService.get<string>(
-      'BALLOT_CONTRACT_ADDRESS',
-    );
-
-    if (!rpcUrl || !ballotAddress) {
-      throw new ServiceUnavailableException(
-        'La verificación on-chain no está configurada (SEPOLIA_RPC_URL, BALLOT_CONTRACT_ADDRESS).',
-      );
-    }
+    const rpcUrl = this.requireRpcUrl();
 
     const provider = new JsonRpcProvider(rpcUrl);
     let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
@@ -339,37 +467,48 @@ export class BlockchainService {
       );
     }
 
-    const toAddress = receipt.to?.toLowerCase();
-    if (!toAddress || toAddress !== ballotAddress.toLowerCase()) {
-      throw new NotFoundException(
-        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
-      );
-    }
-
+    // VOTAR-439: cada comicio tiene su propio BallotContract desplegado vía
+    // ElectionFactory (ver resolveElectionContracts), por lo que el idEleccion
+    // se decodifica del evento ANTES de validar la dirección del contrato —
+    // comparar contra un único BALLOT_CONTRACT_ADDRESS fijo rechazaba con 404
+    // cualquier voto de un comicio distinto al que ese valor apuntaba.
     const iface = new Interface(BALLOT_CONTRACT_ABI);
     const voteEvent = receipt.logs
       .map((log: Log) => {
         try {
-          return iface.parseLog({
-            topics: [...log.topics],
-            data: log.data,
-          });
+          return {
+            log,
+            parsed: iface.parseLog({
+              topics: [...log.topics],
+              data: log.data,
+            }),
+          };
         } catch {
           return null;
         }
       })
-      .find((parsed) => parsed?.name === 'SignedVoteCast');
+      .find((entry) => entry?.parsed?.name === 'SignedVoteCast');
 
-    if (!voteEvent) {
+    if (!voteEvent?.parsed) {
       throw new NotFoundException(
         'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
-    const idEleccion = Number(voteEvent.args[0]);
+    const idEleccion = Number(voteEvent.parsed.args[0]);
     if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
       throw new NotFoundException(
         'El evento SignedVoteCast no incluye un id de elección válido.',
+      );
+    }
+
+    const { ballot: ballotAddress } =
+      await this.resolveElectionContracts(idEleccion);
+
+    const eventAddress = voteEvent.log.address?.toLowerCase();
+    if (!eventAddress || eventAddress !== ballotAddress.toLowerCase()) {
+      throw new NotFoundException(
+        'El registro de sufragio no pudo ser encontrado en el sistema. Verifique el identificador ingresado.',
       );
     }
 
@@ -400,13 +539,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La sincronización de estado on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+        'La sincronización de estado on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -439,7 +576,12 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
@@ -458,10 +600,19 @@ export class BlockchainService {
       );
     }
 
+    this.indexTxSilently(electionId, receipt.hash);
+
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
     };
+  }
+
+  private indexTxSilently(idEleccion: number, txHash: string): void {
+    if (!txHash?.trim()) {
+      return;
+    }
+    this.transaccionBlockchainService.indexarSilencioso(idEleccion, txHash);
   }
 
   /**
@@ -473,13 +624,11 @@ export class BlockchainService {
     revoteConfig: RevoteConfigOnChain,
   ): Promise<DeployElectionStackResult> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
-        'El despliegue on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El despliegue on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
       );
     }
 
@@ -555,7 +704,12 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        ELECTION_FACTORY_CONTRACT_ABI,
+      );
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
@@ -563,7 +717,10 @@ export class BlockchainService {
           'La cuenta configurada no posee DEFAULT_ADMIN_ROLE en ElectionFactory.',
         );
       }
-      if (message.includes('ElectionAlreadyExists')) {
+      if (
+        decodedName === 'ElectionAlreadyExists' ||
+        message.includes('ElectionAlreadyExists')
+      ) {
         const redeployed = await readFactory.getElection(idEleccion);
         return {
           ballot: redeployed.ballot,
@@ -592,6 +749,8 @@ export class BlockchainService {
       );
     }
 
+    this.indexTxSilently(idEleccion, receipt.hash);
+
     return {
       ballot: deployed.ballot,
       voteRegistry: deployed.voteRegistry,
@@ -603,8 +762,106 @@ export class BlockchainService {
   }
 
   /**
+   * VOTAR-327: seals the RevoteConfig audit trail on ElectionFactory.
+   * RevoteConfig has no setter — it is frozen since {deployElectionStack}'s
+   * createElection call — so this is a declarative seal, not a functional
+   * guard; see ElectionFactory.lockConfig NatSpec. One-shot on-chain,
+   * idempotent on retry like {lockElectionWindow}.
+   */
+  async lockRevoteConfig(
+    idEleccion: number,
+  ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'El sellado de RevoteConfig on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
+      );
+    }
+
+    let factoryAddress: string;
+    try {
+      const factoryPayload =
+        await this.contratoBlockchainService.getElectionFactory();
+      factoryAddress = factoryPayload.direccionContrato;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        throw new ServiceUnavailableException(
+          'ElectionFactory no registrada en PostgreSQL. Ejecutá sync:election-factory tras el deploy.',
+        );
+      }
+      throw error;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    const contract = new Contract(
+      factoryAddress,
+      ELECTION_FACTORY_CONTRACT_ABI,
+      wallet,
+    ) as unknown as {
+      lockConfig(electionId: number): Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.lockConfig(idEleccion);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        ELECTION_FACTORY_CONTRACT_ABI,
+      );
+
+      if (decodedName === 'ConfigLocked' || message.includes('ConfigLocked')) {
+        this.logger.warn(
+          `La configuración de re-voto del comicio ${idEleccion} ya estaba sellada on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', blockNumber: 0, alreadyLocked: true };
+      }
+      if (
+        decodedName === 'ElectionDoesNotExist' ||
+        message.includes('ElectionDoesNotExist')
+      ) {
+        throw new UnprocessableEntityException(
+          `El comicio ${idEleccion} no tiene stack electoral desplegado on-chain (ElectionFactory.getElection sin deployment).`,
+        );
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee DEFAULT_ADMIN_ROLE en ElectionFactory.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo sellar la configuración de re-voto on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'El sellado de RevoteConfig no devolvió recibo de confirmación.',
+      );
+    }
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      alreadyLocked: false,
+    };
+  }
+
+  /**
    * VOTAR-364: resolves AuditView address for an election.
-   * Prefer ElectionFactory.getElection(...).auditView; fallback AUDIT_VIEW_ADDRESS.
+   * Prefer ElectionFactory.getElection(...).auditView; fallback ADMIN_MULTISIG_ADDRESS.
    */
   async resolveAuditViewAddress(electionId: number): Promise<string> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
@@ -633,15 +890,15 @@ export class BlockchainService {
           return deployment.auditView;
         }
       } catch {
-        // Fall through to AUDIT_VIEW_ADDRESS fallback.
+        // Fall through to ADMIN_MULTISIG_ADDRESS fallback.
       }
     }
-    const fallback = this.configService.get<string>('AUDIT_VIEW_ADDRESS');
+    const fallback = this.configService.get<string>('ADMIN_MULTISIG_ADDRESS');
     if (fallback && fallback.toLowerCase() !== ZERO_ADDRESS) {
       return fallback;
     }
     throw new ServiceUnavailableException(
-      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni AUDIT_VIEW_ADDRESS).',
+      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni ADMIN_MULTISIG_ADDRESS).',
     );
   }
 
@@ -761,13 +1018,11 @@ export class BlockchainService {
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !contractAddress || !privateKey) {
       throw new ServiceUnavailableException(
-        'La sincronización de ventana on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, ELECTION_ADMIN_PRIVATE_KEY).',
+        'La sincronización de ventana on-chain no está configurada (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
       );
     }
 
@@ -810,12 +1065,35 @@ export class BlockchainService {
         error instanceof Error
           ? error.message
           : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
+
+      // VOTAR-327: a retried transitionToAbierta may re-run this step after
+      // lockConfig already sealed the window — treat that as a no-op instead
+      // of failing the whole transition.
+      if (decodedName === 'ConfigLocked' || message.includes('ConfigLocked')) {
+        this.logger.warn(
+          `La ventana electoral del comicio ${electionId} ya está sellada on-chain; se omite la reescritura (VOTAR-327).`,
+        );
+        return { txHash: '', blockNumber: 0 };
+      }
       if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
         message.includes('missing role')
       ) {
         throw new ServiceUnavailableException(
           'La cuenta configurada no posee ELECTION_ADMIN_ROLE en el contrato.',
+        );
+      }
+      if (
+        decodedName === 'InvalidElectionWindow' ||
+        message.includes('InvalidElectionWindow')
+      ) {
+        throw new ServiceUnavailableException(
+          'La ventana de votación configurada para el comicio es inválida.',
         );
       }
       throw new ServiceUnavailableException(
@@ -829,9 +1107,90 @@ export class BlockchainService {
       );
     }
 
+    this.indexTxSilently(electionId, receipt.hash);
+
     return {
       txHash: receipt.hash,
       blockNumber: receipt.blockNumber,
+    };
+  }
+
+  /**
+   * VOTAR-327: seals the voting window on MerkleRootStore so setElectionWindow
+   * reverts with ConfigLocked afterwards. One-shot on-chain — a second call
+   * for the same election is treated as idempotent (already locked, not an
+   * error) so retrying `transitionToAbierta` never fails on this step alone
+   * (mirrors the registerCandidates/CandidateSetSealed pattern of VOTAR-345).
+   */
+  async lockElectionWindow(
+    electionId: number,
+  ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const contractAddress = this.configService.get<string>(
+      'MERKLE_ROOT_STORE_ADDRESS',
+    );
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+
+    if (!rpcUrl || !contractAddress || !privateKey) {
+      throw new ServiceUnavailableException(
+        'El sellado de la ventana electoral on-chain no está configurado (SEPOLIA_RPC_URL, MERKLE_ROOT_STORE_ADDRESS, PRIVATE_KEY).',
+      );
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+    const contract = new Contract(
+      contractAddress,
+      MERKLE_ROOT_STORE_ABI,
+      wallet,
+    ) as unknown as {
+      lockConfig(electionId: number): Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.lockConfig(electionId);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = this.decodeContractErrorName(
+        error,
+        MERKLE_ROOT_STORE_ABI,
+      );
+
+      if (decodedName === 'ConfigLocked' || message.includes('ConfigLocked')) {
+        this.logger.warn(
+          `La ventana electoral del comicio ${electionId} ya estaba sellada on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', blockNumber: 0, alreadyLocked: true };
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          'La cuenta configurada no posee ELECTION_ADMIN_ROLE en el contrato.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo sellar la ventana electoral on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        'El sellado de la ventana electoral no devolvió recibo de confirmación.',
+      );
+    }
+
+    return {
+      txHash: receipt.hash,
+      blockNumber: receipt.blockNumber,
+      alreadyLocked: false,
     };
   }
 
@@ -846,13 +1205,11 @@ export class BlockchainService {
     candidateIds: number[],
   ): Promise<{ txHash: string; blockNumber: number; alreadySealed: boolean }> {
     const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    const privateKey = this.configService.get<string>(
-      'ELECTION_ADMIN_PRIVATE_KEY',
-    );
 
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
-        'El sellado del set de candidatos on-chain no está configurado (SEPOLIA_RPC_URL, ELECTION_ADMIN_PRIVATE_KEY).',
+        'El sellado del set de candidatos on-chain no está configurado (SEPOLIA_RPC_URL, PRIVATE_KEY).',
       );
     }
 
@@ -886,7 +1243,10 @@ export class BlockchainService {
       // hit here) never populates error.message with the error name, only
       // the raw revert data. Decode that data ourselves so the string
       // fallbacks below aren't the only signal.
-      const decodedName = this.decodeVoteRegistryErrorName(error);
+      const decodedName = this.decodeContractErrorName(
+        error,
+        VOTE_REGISTRY_CONTRACT_ABI,
+      );
 
       if (
         decodedName === 'CandidateSetSealed' ||
@@ -924,6 +1284,8 @@ export class BlockchainService {
         'El sellado del set de candidatos no devolvió recibo de confirmación.',
       );
     }
+
+    this.indexTxSilently(idEleccion, receipt.hash);
 
     return {
       txHash: receipt.hash,
@@ -1005,6 +1367,101 @@ export class BlockchainService {
       ballot: deployment.ballot,
       voteRegistry: deployment.voteRegistry,
       auditView: deployment.auditView,
+    };
+  }
+
+  /**
+   * VOTAR-367 — public contract audit metadata for dashboard auditors.
+   */
+  async getContratoEstadoOnChain(
+    idEleccion: number,
+  ): Promise<ContratoEstadoOnChain> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      getElectionState: (electionId: number) => Promise<number | bigint>;
+      merkleRootStore: () => Promise<string>;
+    };
+
+    let stateCode: number;
+    let merkleRootStoreAddress: string;
+    try {
+      [stateCode, merkleRootStoreAddress] = await Promise.all([
+        auditView.getElectionState(idEleccion).then((value) => Number(value)),
+        auditView.merkleRootStore(),
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar el estado del contrato on-chain: ${message}`,
+      );
+    }
+
+    const merkleStore = new Contract(
+      merkleRootStoreAddress,
+      MERKLE_ROOT_STORE_ABI,
+      provider,
+    ) as unknown as MerkleRootStoreContract;
+
+    let root: string;
+    let timestamp: bigint;
+    let publicado: boolean;
+    try {
+      [[root, timestamp], publicado] = await Promise.all([
+        merkleStore.getMerkleRoot(idEleccion),
+        merkleStore.isPublished(idEleccion),
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar la raíz Merkle on-chain: ${message}`,
+      );
+    }
+
+    const revote = await this.resolveRevoteLimitsOnChain(idEleccion, addresses);
+
+    const toContratoDireccion = (
+      direccion: string,
+    ): ContratoDireccionOnChain => ({
+      direccion,
+      explorerUrl: this.buildExplorerAddressUrl(direccion),
+    });
+
+    const timestampSeconds = Number(timestamp);
+    const publicadoEn =
+      publicado && timestampSeconds > 0
+        ? new Date(timestampSeconds * 1000).toISOString()
+        : null;
+
+    return {
+      estadoOnChain: {
+        codigo: stateCode,
+        etiqueta: BLOCKCHAIN_STATE_LABELS[stateCode] ?? 'DESCONOCIDO',
+      },
+      merkleRoot: {
+        hash: root === ZERO_MERKLE_ROOT ? ZERO_MERKLE_ROOT : root,
+        publicado,
+        publicadoEn,
+      },
+      revoto: revote,
+      contratos: {
+        ballot: toContratoDireccion(addresses.ballot),
+        voteRegistry: toContratoDireccion(addresses.voteRegistry),
+        auditView: toContratoDireccion(addresses.auditView),
+        merkleRootStore: toContratoDireccion(merkleRootStoreAddress),
+      },
+      red: this.getNetworkDisplayName(),
+      chainId: this.getChainId(),
     };
   }
 
@@ -1201,13 +1658,554 @@ export class BlockchainService {
   }
 
   /**
-   * VOTAR-345 — decodes a VoteRegistry custom error name from the raw revert
-   * data on an ethers error. Needed because ethers only auto-decodes custom
-   * errors via the contract ABI on staticCall/call; a real send() (the path
-   * every write in this service takes) surfaces estimateGas failures as
-   * "unknown custom error" in .message, with only the raw hex in .data.
+   * VOTAR-329 — aggregate revote metrics via AuditViewContract.getRevoteStats.
+   * Falls back to the VOTAR-373 transaction index when the deployed AuditView
+   * predates getRevoteStats (non-upgradeable contracts; eth_getLogs is capped).
    */
-  private decodeVoteRegistryErrorName(error: unknown): string | undefined {
+  async getRevoteStats(idEleccion: number): Promise<RevoteStatsOnChain> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as AuditViewContract;
+
+    try {
+      const [totalRevotes, uniqueVoters, overwriteRatioWad] =
+        await auditView.getRevoteStats(idEleccion);
+      return {
+        totalRevotes: Number(totalRevotes),
+        uniqueVoters: Number(uniqueVoters),
+        overwriteRatio: Number(overwriteRatioWad) / 1e18,
+      };
+    } catch (error) {
+      if (!isMissingOnChainSelectorError(error)) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : 'Error desconocido en blockchain';
+        throw new ServiceUnavailableException(
+          `No se pudieron obtener las estadísticas de re-voto on-chain: ${message}`,
+        );
+      }
+
+      this.logger.warn(
+        `getRevoteStats ausente en AuditView ${addresses.auditView} (elección ${idEleccion}); derivando desde índice transaccion_blockchain.`,
+      );
+
+      try {
+        return await this.transaccionBlockchainService.buildRevoteStatsFromIndex(
+          idEleccion,
+        );
+      } catch (fallbackError) {
+        const message =
+          fallbackError instanceof Error
+            ? fallbackError.message
+            : 'Error desconocido en blockchain';
+        throw new ServiceUnavailableException(
+          `No se pudieron obtener las estadísticas de re-voto on-chain: ${message}`,
+        );
+      }
+    }
+  }
+
+  /**
+   * VOTAR-373 — parses a single confirmed tx receipt into one public audit row.
+   * Uses getTransactionReceipt (1 RPC), not eth_getLogs range scans.
+   */
+  async parseElectionTransactionAuditEntry(
+    txHash: string,
+    idEleccion: number,
+  ): Promise<(BlockchainTransactionAuditEntry & { logIndex: number }) | null> {
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
+    try {
+      receipt = await provider.getTransactionReceipt(txHash);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar la transacción on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt || receipt.status !== 1) {
+      return null;
+    }
+
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const merkleRootStoreAddress =
+      this.configService.get<string>('MERKLE_ROOT_STORE_ADDRESS') ??
+      ZERO_ADDRESS;
+
+    const ballotIface = new Interface(BALLOT_CONTRACT_ABI);
+    const registryIface = new Interface(VOTE_REGISTRY_CONTRACT_ABI);
+    const merkleIface = new Interface(MERKLE_ROOT_STORE_ABI);
+
+    const addressLabels = new Map<string, string>();
+    addressLabels.set(addresses.ballot.toLowerCase(), 'BallotContract');
+    addressLabels.set(addresses.voteRegistry.toLowerCase(), 'VoteRegistry');
+    if (merkleRootStoreAddress !== ZERO_ADDRESS) {
+      addressLabels.set(
+        merkleRootStoreAddress.toLowerCase(),
+        'MerkleRootStore',
+      );
+    }
+
+    type RawScannedEvent = {
+      logIndex: number;
+      contractLabel: string;
+      eventName: string;
+      description: string;
+    };
+
+    const rawEvents: RawScannedEvent[] = [];
+
+    for (const log of receipt.logs) {
+      const logAddress = log.address?.toLowerCase();
+      if (!logAddress) {
+        continue;
+      }
+
+      const contractLabel = addressLabels.get(logAddress);
+      if (!contractLabel) {
+        continue;
+      }
+
+      let parsed: ReturnType<Interface['parseLog']> | null = null;
+      try {
+        if (contractLabel === 'BallotContract') {
+          parsed = ballotIface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        } else if (contractLabel === 'VoteRegistry') {
+          parsed = registryIface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        } else if (contractLabel === 'MerkleRootStore') {
+          parsed = merkleIface.parseLog({
+            topics: [...log.topics],
+            data: log.data,
+          });
+        }
+      } catch {
+        parsed = null;
+      }
+
+      if (!parsed) {
+        continue;
+      }
+
+      const args = parsed.args as ReadonlyArray<unknown> &
+        Record<string, unknown>;
+      const eventElectionId = Number(args[0] ?? args.electionId);
+      if (
+        Number.isFinite(eventElectionId) &&
+        eventElectionId > 0 &&
+        eventElectionId !== idEleccion
+      ) {
+        continue;
+      }
+
+      const eventName = parsed.name;
+      let description: string | null;
+      switch (eventName) {
+        case 'SignedVoteCast':
+          description = this.describeSignedVoteCast(args);
+          break;
+        case 'VoteCast':
+          description = this.describeVoteCast(args);
+          break;
+        case 'VoteUpdated':
+          description = this.describeVoteUpdated(args);
+          break;
+        case 'CandidateSetRegistered':
+          description = this.describeCandidateSetRegistered(args);
+          break;
+        case 'RootPublished':
+          description = 'Raíz Merkle del padrón publicada on-chain';
+          break;
+        case 'ElectionStateChanged':
+          description = this.describeElectionStateChanged(args);
+          break;
+        case 'ElectionWindowSet':
+          description = this.describeElectionWindowSet(args);
+          break;
+        default:
+          description = `Evento ${eventName} registrado on-chain`;
+      }
+
+      if (!description) {
+        continue;
+      }
+
+      rawEvents.push({
+        logIndex: log.index,
+        contractLabel,
+        eventName,
+        description,
+      });
+    }
+
+    if (rawEvents.length === 0) {
+      return {
+        hashTransaccion: receipt.hash.toLowerCase(),
+        numeroBloque: receipt.blockNumber,
+        marcaTiempo: await this.resolveBlockTimestampIso(
+          provider,
+          receipt.blockNumber,
+        ),
+        contratoEtiqueta: 'ElectionFactory',
+        nombreEvento: 'OnChainOperation',
+        descripcionLegible: 'Operación electoral registrada on-chain',
+        explorerUrl: this.buildExplorerUrl(receipt.hash),
+        logIndex: 0,
+      };
+    }
+
+    const minLogIndex = Math.min(...rawEvents.map((event) => event.logIndex));
+    const primary = rawEvents.find((event) => event.logIndex === minLogIndex)!;
+    const eventNames = [...new Set(rawEvents.map((event) => event.eventName))];
+    const descriptions = joinAuditDescriptions(
+      rawEvents.map((event) => event.description),
+    );
+
+    return {
+      hashTransaccion: receipt.hash.toLowerCase(),
+      numeroBloque: receipt.blockNumber,
+      marcaTiempo: await this.resolveBlockTimestampIso(
+        provider,
+        receipt.blockNumber,
+      ),
+      contratoEtiqueta: primary.contractLabel,
+      nombreEvento: eventNames.join(', '),
+      descripcionLegible: descriptions,
+      explorerUrl: this.buildExplorerUrl(receipt.hash),
+      logIndex: minLogIndex,
+    };
+  }
+
+  private async resolveBlockTimestampIso(
+    provider: JsonRpcProvider,
+    blockNumber: number,
+  ): Promise<string> {
+    const block = await provider.getBlock(blockNumber);
+    return block?.timestamp
+      ? new Date(Number(block.timestamp) * 1000).toISOString()
+      : new Date().toISOString();
+  }
+
+  /**
+   * VOTAR-373 — scans election contract logs via RPC and returns a chronological,
+   * privacy-safe audit trail (no nullifiers, voter hashes or selection hashes).
+   * @deprecated Prefer TransaccionBlockchainService index + DB reads (Alchemy free tier).
+   */
+  async scanElectionTransactionHistory(
+    idEleccion: number,
+  ): Promise<BlockchainTransactionAuditEntry[]> {
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const merkleRootStoreAddress =
+      this.configService.get<string>('MERKLE_ROOT_STORE_ADDRESS') ??
+      ZERO_ADDRESS;
+
+    type EventContract = {
+      filters: Record<string, (electionId: number) => unknown>;
+      queryFilter: (filter: unknown) => Promise<
+        Array<{
+          transactionHash: string;
+          blockNumber: number;
+          index: number;
+          eventName?: string;
+          args: ReadonlyArray<unknown> & Record<string, unknown>;
+        }>
+      >;
+    };
+
+    const ballot = new Contract(
+      addresses.ballot,
+      BALLOT_CONTRACT_ABI,
+      provider,
+    ) as unknown as EventContract;
+    const voteRegistry = new Contract(
+      addresses.voteRegistry,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      provider,
+    ) as unknown as EventContract;
+    const merkleRootStore =
+      merkleRootStoreAddress !== ZERO_ADDRESS
+        ? (new Contract(
+            merkleRootStoreAddress,
+            MERKLE_ROOT_STORE_ABI,
+            provider,
+          ) as unknown as EventContract)
+        : null;
+
+    let signedVoteEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let voteCastEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let voteUpdatedEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let candidateSetEvents: Awaited<ReturnType<EventContract['queryFilter']>>;
+    let rootPublishedEvents: Awaited<ReturnType<EventContract['queryFilter']>> =
+      [];
+    let electionStateEvents: Awaited<ReturnType<EventContract['queryFilter']>> =
+      [];
+    let electionWindowEvents: Awaited<
+      ReturnType<EventContract['queryFilter']>
+    > = [];
+
+    try {
+      [
+        signedVoteEvents,
+        voteCastEvents,
+        voteUpdatedEvents,
+        candidateSetEvents,
+        rootPublishedEvents,
+        electionStateEvents,
+        electionWindowEvents,
+      ] = await Promise.all([
+        ballot.queryFilter(ballot.filters.SignedVoteCast(idEleccion)),
+        voteRegistry.queryFilter(voteRegistry.filters.VoteCast(idEleccion)),
+        voteRegistry.queryFilter(voteRegistry.filters.VoteUpdated(idEleccion)),
+        voteRegistry.queryFilter(
+          voteRegistry.filters.CandidateSetRegistered(idEleccion),
+        ),
+        merkleRootStore
+          ? merkleRootStore.queryFilter(
+              merkleRootStore.filters.RootPublished(idEleccion),
+            )
+          : Promise.resolve([]),
+        merkleRootStore
+          ? merkleRootStore.queryFilter(
+              merkleRootStore.filters.ElectionStateChanged(idEleccion),
+            )
+          : Promise.resolve([]),
+        merkleRootStore
+          ? merkleRootStore.queryFilter(
+              merkleRootStore.filters.ElectionWindowSet(idEleccion),
+            )
+          : Promise.resolve([]),
+      ]);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo escanear la actividad on-chain del comicio: ${message}`,
+      );
+    }
+
+    type RawScannedEvent = {
+      txHash: string;
+      blockNumber: number;
+      logIndex: number;
+      contractLabel: string;
+      eventName: string;
+      description: string;
+    };
+
+    const mapEvents = (
+      events: Awaited<ReturnType<EventContract['queryFilter']>>,
+      contractLabel: string,
+      mapper: (
+        eventName: string,
+        args: ReadonlyArray<unknown> & Record<string, unknown>,
+      ) => string | null,
+    ): RawScannedEvent[] =>
+      events
+        .map((event) => {
+          const eventName = String(event.eventName ?? 'Unknown');
+          const description = mapper(eventName, event.args);
+          if (!description) {
+            return null;
+          }
+          return {
+            txHash: event.transactionHash.toLowerCase(),
+            blockNumber: event.blockNumber,
+            logIndex: event.index,
+            contractLabel,
+            eventName,
+            description,
+          };
+        })
+        .filter((event): event is RawScannedEvent => event !== null);
+
+    const rawEvents: RawScannedEvent[] = [
+      ...mapEvents(signedVoteEvents, 'BallotContract', (_, args) =>
+        this.describeSignedVoteCast(args),
+      ),
+      ...mapEvents(voteCastEvents, 'VoteRegistry', (_, args) =>
+        this.describeVoteCast(args),
+      ),
+      ...mapEvents(voteUpdatedEvents, 'VoteRegistry', (_, args) =>
+        this.describeVoteUpdated(args),
+      ),
+      ...mapEvents(candidateSetEvents, 'VoteRegistry', (_, args) =>
+        this.describeCandidateSetRegistered(args),
+      ),
+      ...mapEvents(
+        rootPublishedEvents,
+        'MerkleRootStore',
+        () => 'Raíz Merkle del padrón publicada on-chain',
+      ),
+      ...mapEvents(electionStateEvents, 'MerkleRootStore', (_, args) =>
+        this.describeElectionStateChanged(args),
+      ),
+      ...mapEvents(electionWindowEvents, 'MerkleRootStore', (_, args) =>
+        this.describeElectionWindowSet(args),
+      ),
+    ];
+
+    const grouped = new Map<
+      string,
+      {
+        blockNumber: number;
+        logIndex: number;
+        contractLabel: string;
+        eventNames: string[];
+        descriptions: string[];
+      }
+    >();
+
+    for (const event of rawEvents) {
+      const existing = grouped.get(event.txHash);
+      if (!existing) {
+        grouped.set(event.txHash, {
+          blockNumber: event.blockNumber,
+          logIndex: event.logIndex,
+          contractLabel: event.contractLabel,
+          eventNames: [event.eventName],
+          descriptions: [event.description],
+        });
+        continue;
+      }
+      existing.logIndex = Math.min(existing.logIndex, event.logIndex);
+      if (!existing.eventNames.includes(event.eventName)) {
+        existing.eventNames.push(event.eventName);
+      }
+      if (
+        event.description &&
+        !existing.descriptions.includes(event.description)
+      ) {
+        existing.descriptions.push(event.description);
+      }
+    }
+
+    const blockTimestampCache = new Map<number, string>();
+    const entries: Array<
+      BlockchainTransactionAuditEntry & {
+        sortBlock: number;
+        sortLogIndex: number;
+      }
+    > = [];
+
+    for (const [txHash, group] of grouped.entries()) {
+      let marcaTiempo = blockTimestampCache.get(group.blockNumber);
+      if (!marcaTiempo) {
+        const block = await provider.getBlock(group.blockNumber);
+        marcaTiempo = block?.timestamp
+          ? new Date(Number(block.timestamp) * 1000).toISOString()
+          : new Date().toISOString();
+        blockTimestampCache.set(group.blockNumber, marcaTiempo);
+      }
+
+      entries.push({
+        hashTransaccion: txHash,
+        numeroBloque: group.blockNumber,
+        marcaTiempo,
+        contratoEtiqueta: group.contractLabel,
+        nombreEvento: group.eventNames.join(', '),
+        descripcionLegible: joinAuditDescriptions(group.descriptions),
+        explorerUrl: this.buildExplorerUrl(txHash),
+        sortBlock: group.blockNumber,
+        sortLogIndex: group.logIndex,
+      });
+    }
+
+    return entries
+      .sort((a, b) =>
+        a.sortBlock !== b.sortBlock
+          ? b.sortBlock - a.sortBlock
+          : b.sortLogIndex - a.sortLogIndex,
+      )
+      .map(
+        (entry): BlockchainTransactionAuditEntry => ({
+          hashTransaccion: entry.hashTransaccion,
+          numeroBloque: entry.numeroBloque,
+          marcaTiempo: entry.marcaTiempo,
+          contratoEtiqueta: entry.contratoEtiqueta,
+          nombreEvento: entry.nombreEvento,
+          descripcionLegible: entry.descripcionLegible,
+          explorerUrl: entry.explorerUrl,
+        }),
+      );
+  }
+
+  private describeSignedVoteCast(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    void args;
+    return 'Sufragio firmado registrado en la urna digital';
+  }
+
+  private describeVoteCast(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    void args;
+    return describeVoteCastAudit();
+  }
+
+  private describeVoteUpdated(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string | null {
+    return describeVoteUpdatedAudit(args);
+  }
+
+  private describeCandidateSetRegistered(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    const candidateCount = Number(args.candidateCount);
+    return `Set de candidatos sellado (${candidateCount} candidatos)`;
+  }
+
+  private describeElectionStateChanged(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    const stateCode = Number(args.newState);
+    const label = BLOCKCHAIN_STATE_LABELS[stateCode] ?? 'DESCONOCIDO';
+    return `Estado electoral actualizado a ${label}`;
+  }
+
+  private describeElectionWindowSet(
+    args: ReadonlyArray<unknown> & Record<string, unknown>,
+  ): string {
+    const startTime = Number(args.startTime);
+    const endTime = Number(args.endTime);
+    const format = (unixSeconds: number): string =>
+      new Date(unixSeconds * 1000).toLocaleString('es-AR', {
+        timeZone: 'America/Argentina/Buenos_Aires',
+      });
+    return `Ventana electoral configurada (${format(startTime)} — ${format(endTime)})`;
+  }
+
+  /**
+   * Decodes a contract custom error name from the raw revert data on an
+   * ethers error. Needed because ethers only auto-decodes custom errors via
+   * the contract ABI on staticCall/call; a real send() (the path every write
+   * in this service takes) surfaces estimateGas failures as "unknown custom
+   * error" in .message, with only the raw hex in .data. Generalized from
+   * VOTAR-345's VoteRegistry-only version to cover any contract ABI,
+   * including MerkleRootStore/ElectionFactory's ConfigLocked (VOTAR-327).
+   */
+  private decodeContractErrorName(
+    error: unknown,
+    abi: InterfaceAbi,
+  ): string | undefined {
     const err = error as {
       data?: unknown;
       info?: { error?: { data?: unknown } };
@@ -1217,7 +2215,7 @@ export class BlockchainService {
       return undefined;
     }
     try {
-      return new Interface(VOTE_REGISTRY_CONTRACT_ABI).parseError(data)?.name;
+      return new Interface(abi).parseError(data)?.name;
     } catch {
       return undefined;
     }
@@ -1231,6 +2229,105 @@ export class BlockchainService {
       );
     }
     return rpcUrl;
+  }
+
+  private async resolveRevoteLimitsOnChain(
+    idEleccion: number,
+    addresses: ElectionContractAddresses,
+  ): Promise<ContratoEstadoOnChain['revoto']> {
+    const fromFactory = await this.fetchRevoteConfigFromFactory(idEleccion);
+    if (fromFactory) {
+      return {
+        habilitado: fromFactory.enabled,
+        maxVotosPorVotante: fromFactory.maxVotesPerVoter,
+        minIntervaloSegundos: fromFactory.minIntervalSeconds,
+        politicaRevoto: fromFactory.enabled ? 'LAST_VOTE_WINS' : 'DISABLED',
+      };
+    }
+
+    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const ballot = new Contract(
+      addresses.ballot,
+      BALLOT_REVOTE_READ_ABI,
+      provider,
+    ) as unknown as {
+      maxVotesPerVoter: () => Promise<number | bigint>;
+      minIntervalSeconds: () => Promise<number | bigint>;
+    };
+    const voteRegistry = new Contract(
+      addresses.voteRegistry,
+      VOTE_REGISTRY_REVOTE_READ_ABI,
+      provider,
+    ) as unknown as {
+      revoteEnabled: () => Promise<boolean>;
+    };
+
+    try {
+      const [habilitado, maxVotosPorVotante, minIntervaloSegundos] =
+        await Promise.all([
+          voteRegistry.revoteEnabled(),
+          ballot.maxVotesPerVoter().then((value) => Number(value)),
+          ballot.minIntervalSeconds().then((value) => Number(value)),
+        ]);
+
+      return {
+        habilitado,
+        maxVotosPorVotante,
+        minIntervaloSegundos,
+        politicaRevoto: habilitado ? 'LAST_VOTE_WINS' : 'DISABLED',
+      };
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudieron consultar los límites de re-voto on-chain: ${message}`,
+      );
+    }
+  }
+
+  private async fetchRevoteConfigFromFactory(
+    idEleccion: number,
+  ): Promise<RevoteConfigOnChain | null> {
+    if (this.resolveContractsFromEnv()) {
+      return null;
+    }
+
+    const rpcUrl = this.requireRpcUrl();
+    let factory: { direccionContrato: string };
+    try {
+      factory = await this.contratoBlockchainService.getElectionFactory();
+    } catch {
+      return null;
+    }
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const contract = new Contract(
+      factory.direccionContrato,
+      ELECTION_FACTORY_GET_ELECTION_ABI,
+      provider,
+    ) as unknown as {
+      getElection: (electionId: number) => Promise<{
+        revoteConfig: RevoteConfigOnChain;
+        exists: boolean;
+      }>;
+    };
+
+    try {
+      const deployment = await contract.getElection(idEleccion);
+      if (!deployment.exists) {
+        return null;
+      }
+      return {
+        enabled: deployment.revoteConfig.enabled,
+        maxVotesPerVoter: Number(deployment.revoteConfig.maxVotesPerVoter),
+        minIntervalSeconds: Number(deployment.revoteConfig.minIntervalSeconds),
+        policy: Number(deployment.revoteConfig.policy),
+      };
+    } catch {
+      return null;
+    }
   }
 
   private resolveContractsFromEnv(): ElectionContractAddresses | null {

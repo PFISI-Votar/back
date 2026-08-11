@@ -122,6 +122,16 @@ describe('Audit Log institucional (e2e) — VOTAR-370', () => {
         blockNumber: 1,
         alreadySealed: false,
       }),
+      lockElectionWindow: jest.fn().mockResolvedValue({
+        txHash: '0xlockwin',
+        blockNumber: 1,
+        alreadyLocked: false,
+      }),
+      lockRevoteConfig: jest.fn().mockResolvedValue({
+        txHash: '0xlockrevote',
+        blockNumber: 1,
+        alreadyLocked: false,
+      }),
     };
 
     const moduleFixture: TestingModule = await Test.createTestingModule({

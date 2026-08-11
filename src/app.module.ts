@@ -20,7 +20,7 @@ import { AuditModule } from '@/audit/audit.module';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.blockchain.local', '.env'],
+      envFilePath: ['.env'],
       validationSchema: envValidationSchema,
       validationOptions: { allowUnknown: true, abortEarly: true },
     }),

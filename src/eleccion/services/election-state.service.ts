@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -14,11 +15,21 @@ import { BlockchainService } from '@/blockchain/blockchain.service';
  * Service responsible for managing election state transitions
  * and synchronizing state changes with the blockchain.
  * @dev VOTAR-336: Hermetic seal integration point.
+ * @dev VOTAR-327: Seals the voting window (MerkleRootStore) and the
+ * RevoteConfig audit trail (ElectionFactory) before opening.
  * Transitions sync on-chain first, then persist off-chain to avoid
  * a window where the DB is ABIERTA before the hermetic seal activates.
  */
 @Injectable()
 export class ElectionStateService {
+  /**
+   * VOTAR-434: evita que dos transiciones concurrentes para el mismo comicio
+   * (ej. apertura automática del scheduler + apertura manual del admin)
+   * compitan por la misma wallet on-chain, causando colisión de nonce y
+   * reverts sin motivo legible.
+   */
+  private readonly transicionesEnCurso = new Set<number>();
+
   constructor(
     @InjectRepository(Eleccion)
     private readonly eleccionRepository: Repository<Eleccion>,
@@ -34,20 +45,26 @@ export class ElectionStateService {
    * the published boleta plus VOTO_BLANCO/VOTO_NULO.
    */
   async transitionToAbierta(idEleccion: number): Promise<Eleccion> {
-    const eleccion = await this.findEleccionOrFail(idEleccion);
-    if (eleccion.estado !== EleccionEstado.CONFIGURADA) {
-      throw new UnprocessableEntityException(
-        `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
+    return this.withTransitionLock(idEleccion, async () => {
+      const eleccion = await this.findEleccionOrFail(idEleccion);
+      if (eleccion.estado !== EleccionEstado.CONFIGURADA) {
+        throw new UnprocessableEntityException(
+          `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
+        );
+      }
+      const candidateIds = await this.resolveCandidateIds(idEleccion);
+      await this.blockchainService.registerCandidates(idEleccion, candidateIds);
+      await this.blockchainService.syncElectionWindow(
+        eleccion.idEleccion,
+        eleccion.fechaInicio,
+        eleccion.fechaFin,
       );
-    }
-    const candidateIds = await this.resolveCandidateIds(idEleccion);
-    await this.blockchainService.registerCandidates(idEleccion, candidateIds);
-    await this.blockchainService.syncElectionWindow(
-      eleccion.idEleccion,
-      eleccion.fechaInicio,
-      eleccion.fechaFin,
-    );
-    return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
+      // VOTAR-327: seal RevoteConfig + voting window before the DB flips to
+      // ABIERTA, same hermetic-seal-before-persist principle as VOTAR-336.
+      await this.blockchainService.lockElectionWindow(idEleccion);
+      await this.blockchainService.lockRevoteConfig(idEleccion);
+      return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
+    });
   }
 
   /**
@@ -108,5 +125,22 @@ export class ElectionStateService {
     );
     eleccion.estado = nextEstado;
     return this.eleccionRepository.save(eleccion);
+  }
+
+  private async withTransitionLock<T>(
+    idEleccion: number,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    if (this.transicionesEnCurso.has(idEleccion)) {
+      throw new ConflictException(
+        `Ya hay una transición de estado en curso para la elección ${idEleccion}. Reintentá en unos segundos.`,
+      );
+    }
+    this.transicionesEnCurso.add(idEleccion);
+    try {
+      return await fn();
+    } finally {
+      this.transicionesEnCurso.delete(idEleccion);
+    }
   }
 }

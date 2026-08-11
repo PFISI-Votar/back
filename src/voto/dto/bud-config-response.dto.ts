@@ -5,29 +5,29 @@ import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 
 export class BudConfigResponseDto {
   @ApiProperty()
-  idEleccion: number;
+  idEleccion!: number;
 
   @ApiProperty()
-  nombre: string;
+  nombre!: string;
 
   @ApiProperty({ enum: EleccionEstado })
-  estado: EleccionEstado;
+  estado!: EleccionEstado;
 
   @ApiProperty({ enum: TipoVotacion })
-  tipoVotacion: TipoVotacion;
+  tipoVotacion!: TipoVotacion;
 
   @ApiProperty({ enum: MetodoAutenticacion, isArray: true })
-  metodosAutenticacion: MetodoAutenticacion[];
+  metodosAutenticacion!: MetodoAutenticacion[];
 
   @ApiProperty({
     description:
       'True cuando el comicio está CERRADA/ESCRUTADA (resultados definitivos e inmutables)',
   })
-  resultadosDefinitivos: boolean;
+  resultadosDefinitivos!: boolean;
 
   @ApiProperty({
     description:
       'True cuando el Portal de Transparencia debe dejar de actualizar dinámicamente',
   })
-  snapshotCongelado: boolean;
+  snapshotCongelado!: boolean;
 }

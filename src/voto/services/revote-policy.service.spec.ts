@@ -227,6 +227,54 @@ describe('RevotePolicyService (VOTAR-328)', () => {
     expect(estado.votosConsumidos).toBe(2);
   });
 
+  it('VOTAR-449: el cooldown de un legajo no bloquea a otro claveIntento distinto', async () => {
+    const otroHash = 'c'.repeat(64);
+    const intentoRepository = {
+      findOne: jest.fn(
+        ({
+          where,
+        }: {
+          where: { idEleccion: number; claveIntento: string };
+        }) => {
+          if (where.claveIntento === VOTANTE_HASH) {
+            return Promise.resolve({
+              idEleccion: 1,
+              claveIntento: VOTANTE_HASH,
+              votosConsumidos: 1,
+              ultimoIntentoAt: new Date(),
+            });
+          }
+          return Promise.resolve(null);
+        },
+      ),
+      create: jest.fn((data: unknown) => data),
+      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
+    };
+    const service = new RevotePolicyService(
+      {
+        findOne: jest
+          .fn()
+          .mockResolvedValue({ idEleccion: 1, estado: EleccionEstado.ABIERTA }),
+      } as never,
+      {
+        findOne: jest.fn().mockResolvedValue({
+          ...baseConfig,
+          minIntervaloSegundos: 900,
+        }),
+      } as never,
+      intentoRepository as never,
+    );
+
+    const bloqueado = await service.obtenerEstado(1, VOTANTE_HASH);
+    const libre = await service.obtenerEstado(1, otroHash);
+
+    expect(bloqueado.puedeVotar).toBe(false);
+    expect(bloqueado.proximoReintentoEnSegundos).toBeGreaterThan(0);
+    expect(libre.puedeVotar).toBe(true);
+    expect(libre.proximoReintentoEnSegundos).toBeUndefined();
+    expect(libre.votosConsumidos).toBe(0);
+  });
+
   it('no incrementa consumos por encima del máximo', async () => {
     const { service, saved } = createService({
       registro: { votosConsumidos: 3, ultimoIntentoAt: new Date() },

@@ -30,7 +30,12 @@ const getCookieHeader = (response) => {
     return raw.map((cookie) => cookie.split(';')[0]).join('; ');
   }
   const single = response.headers.get('set-cookie');
-  return single ? single.split(',').map((c) => c.split(';')[0].trim()).join('; ') : '';
+  return single
+    ? single
+        .split(',')
+        .map((c) => c.split(';')[0].trim())
+        .join('; ')
+    : '';
 };
 
 const api = async (path, options = {}, cookies = '') => {
@@ -87,7 +92,9 @@ const main = async () => {
     cookies,
   );
   if (!create.response.ok) {
-    fail(`crear comicio ${create.response.status} — ${JSON.stringify(create.body)}`);
+    fail(
+      `crear comicio ${create.response.status} — ${JSON.stringify(create.body)}`,
+    );
   }
   const idEleccion = create.body.idEleccion;
   console.log(`[flow] ✓ idEleccion=${idEleccion}`);
@@ -97,17 +104,29 @@ const main = async () => {
     'dni,email\n30111222,votante1@frvm.utn.edu.ar\n30222333,votante2@frvm.utn.edu.ar\n';
   const form = new FormData();
   form.append('file', new Blob([csv], { type: 'text/csv' }), 'padron.csv');
-  const imported = await api(`/elecciones/${idEleccion}/padron/import`, {
-    method: 'POST',
-    body: form,
-  }, cookies);
+  const imported = await api(
+    `/elecciones/${idEleccion}/padron/import`,
+    {
+      method: 'POST',
+      body: form,
+    },
+    cookies,
+  );
   if (!imported.response.ok) {
-    fail(`importar padrón ${imported.response.status} — ${JSON.stringify(imported.body)}`);
+    fail(
+      `importar padrón ${imported.response.status} — ${JSON.stringify(imported.body)}`,
+    );
   }
-  console.log(`[flow] ✓ ${imported.body.totalProcesados ?? imported.body.totalVotantes ?? '?'} votantes`);
+  console.log(
+    `[flow] ✓ ${imported.body.totalProcesados ?? imported.body.totalVotantes ?? '?'} votantes`,
+  );
 
   log('4/6 Consultar Merkle');
-  const merkle = await api(`/elecciones/${idEleccion}/padron/merkle`, {}, cookies);
+  const merkle = await api(
+    `/elecciones/${idEleccion}/padron/merkle`,
+    {},
+    cookies,
+  );
   if (!merkle.response.ok) {
     fail(`merkle ${merkle.response.status} — ${JSON.stringify(merkle.body)}`);
   }
@@ -124,7 +143,9 @@ const main = async () => {
     cookies,
   );
   if (!publish.response.ok) {
-    fail(`publicar ${publish.response.status} — ${JSON.stringify(publish.body)}`);
+    fail(
+      `publicar ${publish.response.status} — ${JSON.stringify(publish.body)}`,
+    );
   }
   console.log(`[flow] ✓ txHash=${publish.body.txHash}`);
   console.log(`[flow]   block=${publish.body.numeroBloque}`);

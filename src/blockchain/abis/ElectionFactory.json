@@ -1,6 +1,6 @@
 {
   "contractName": "ElectionFactory",
-  "abiHash": "0xd12374873034c50168b0b37cc8b9260792fd6ba56fb0af061b365df80f92f6b0",
+  "abiHash": "0x6f9daf25f9bc6f032f30c06ea72bd77eace4d5b13ab380f871845f843fc081dc",
   "abi": [
     {
       "inputs": [
@@ -52,7 +52,29 @@
           "type": "uint256"
         }
       ],
+      "name": "ConfigLocked",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
       "name": "ElectionAlreadyExists",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ElectionDoesNotExist",
       "type": "error"
     },
     {
@@ -69,6 +91,19 @@
       "inputs": [],
       "name": "MerkleRootStoreIsZeroAddress",
       "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ConfigurationLocked",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -526,6 +561,38 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "isConfigLocked",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "lockConfig",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "merkleRootStore",
       "outputs": [
@@ -621,6 +688,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-27T12:24:26.065Z",
+  "exportedAt": "2026-08-08T17:44:12.964Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

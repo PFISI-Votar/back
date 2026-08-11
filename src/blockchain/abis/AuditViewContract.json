@@ -1,6 +1,6 @@
 {
   "contractName": "AuditViewContract",
-  "abiHash": "0xb7d42e476a868b115bf75265c1e701f6fbfceb99518d5c2c8f5b951bd8b8b476",
+  "abiHash": "0x734530fa1c216efbb9506c34f7f46c2e050c31c3d81a411be0a6f6535badff7a",
   "abi": [
     {
       "inputs": [
@@ -70,6 +70,35 @@
         {
           "internalType": "uint256",
           "name": "nullVotes",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getRevoteStats",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "totalRevotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "uniqueVoters",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "overwriteRatio",
           "type": "uint256"
         }
       ],
@@ -189,6 +218,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-07-27T12:24:26.054Z",
+  "exportedAt": "2026-08-08T17:44:12.964Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

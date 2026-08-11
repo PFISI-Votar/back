@@ -121,11 +121,7 @@ export const upsertElectionAdmin = async (autoridad) => {
           nombre,
           rol
       `,
-      [
-        autoridad.identificadorSso,
-        autoridad.email,
-        autoridad.nombre,
-      ],
+      [autoridad.identificadorSso, autoridad.email, autoridad.nombre],
     );
     return result.rows[0];
   } finally {
