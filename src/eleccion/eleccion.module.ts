@@ -18,6 +18,10 @@ import { AperturaAutomaticaScheduler } from '@/eleccion/services/apertura-automa
 import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
 import { CierreAutomaticoScheduler } from '@/eleccion/services/cierre-automatico.scheduler';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
+import { PausaComicioService } from '@/eleccion/pausa/services/pausa-comicio.service';
+import { SolicitudPausa } from '@/eleccion/pausa/entities/solicitud-pausa.entity';
+import { ConfirmacionPausa } from '@/eleccion/pausa/entities/confirmacion-pausa.entity';
+import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
@@ -33,6 +37,13 @@ import { AuditModule } from '@/audit/audit.module';
       PadronElectoral,
       MerkleTree,
       ParticipacionSnapshot,
+      SolicitudPausa,
+      ConfirmacionPausa,
+      // VOTAR-347 — PauserRoleGuard (global, vía AuthModule) es instanciado en el
+      // scope de este módulo; sin este forFeature, Nest no puede resolver el
+      // repositorio que el guard inyecta (mismo motivo por el que AuditModule
+      // está importado abajo, para RolesGuard/AuditLoggerService).
+      AutoridadElectoral,
     ]),
     ListaModule,
     CandidatoModule,
@@ -49,6 +60,7 @@ import { AuditModule } from '@/audit/audit.module';
     AperturaAutomaticaScheduler,
     CierreComicioService,
     CierreAutomaticoScheduler,
+    PausaComicioService,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,
@@ -58,6 +70,7 @@ import { AuditModule } from '@/audit/audit.module';
     ELECCION_REPOSITORY,
     AperturaComicioService,
     CierreComicioService,
+    PausaComicioService,
     EleccionGateway,
   ],
 })

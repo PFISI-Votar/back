@@ -1,6 +1,6 @@
 {
   "contractName": "MerkleRootStore",
-  "abiHash": "0x4deae45074057985448c8cb060c7ad74405dbef910d16da9212227f9182f3e39",
+  "abiHash": "0xfaa29f65ebd2ad569fa7e2f7530d1baf39c7ebf4d699bfaf5e4c1a78350afc3d",
   "abi": [
     {
       "inputs": [
@@ -157,6 +157,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -539,6 +558,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -680,6 +712,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-08T17:44:12.962Z",
+  "exportedAt": "2026-08-12T18:30:50.204Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

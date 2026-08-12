@@ -47,6 +47,30 @@ export interface LogComicioCerradoInput {
   ipOrigen?: string;
 }
 
+export interface LogComicioPausadoInput {
+  idEleccion: number;
+  actorId: string;
+  razon: string;
+  confirmaciones: number;
+  /** VOTAR-347 (follow-up) — vincula la decisión humana con la tx on-chain. */
+  txHashBallot?: string | null;
+  txHashVoteRegistry?: string | null;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogComicioReanudadoInput {
+  idEleccion: number;
+  actorId: string;
+  /** VOTAR-347 (follow-up) — justificación obligatoria de la reanudación. */
+  razon: string;
+  confirmaciones: number;
+  txHashBallot?: string | null;
+  txHashVoteRegistry?: string | null;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
 export interface LogLoginInput {
   actorId: string;
   timestamp?: Date;
@@ -264,6 +288,79 @@ export class AuditLoggerService {
         idOperadorOfuscado: actorOfuscado,
         identificadorTerminal: terminal,
         horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-347 — pausa de emergencia ejecutada tras alcanzar el umbral de
+   * confirmaciones de autoridades PAUSER distintas. `actorId` es quien aportó
+   * la confirmación que cruzó el umbral; `confirmaciones` deja explícito en
+   * el log que no fue una decisión unilateral.
+   */
+  async logComicioPausado(input: LogComicioPausadoInput): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const txHash = input.txHashBallot || input.txHashVoteRegistry || null;
+    const descripcion =
+      `Comicio ${input.idEleccion} pausado por incidente ("${input.razon}") tras ${input.confirmaciones} ` +
+      `confirmaciones de autoridades PAUSER distintas. Última confirmación por ID Ofuscado ${actorOfuscado} ` +
+      `desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}` +
+      (txHash ? `. Hash de transacción on-chain: ${txHash}` : '');
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_PAUSADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/pausar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        razon: input.razon,
+        confirmaciones: input.confirmaciones,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+        hashTransaccion: txHash,
+        txHashBallot: input.txHashBallot ?? null,
+        txHashVoteRegistry: input.txHashVoteRegistry ?? null,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /** VOTAR-347 — reanudación de emergencia, mismo umbral de confirmaciones que la pausa. */
+  async logComicioReanudado(
+    input: LogComicioReanudadoInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const txHash = input.txHashBallot || input.txHashVoteRegistry || null;
+    const descripcion =
+      `Comicio ${input.idEleccion} reanudado ("${input.razon}") tras ${input.confirmaciones} confirmaciones de ` +
+      `autoridades PAUSER distintas. Última confirmación por ID Ofuscado ${actorOfuscado} desde el identificador ` +
+      `de terminal criptográfico ${terminal} a la hora UTC ${utc}` +
+      (txHash ? `. Hash de transacción on-chain: ${txHash}` : '');
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_REANUDADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/reanudar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        razon: input.razon,
+        confirmaciones: input.confirmaciones,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+        hashTransaccion: txHash,
+        txHashBallot: input.txHashBallot ?? null,
+        txHashVoteRegistry: input.txHashVoteRegistry ?? null,
       },
       timestamp: input.timestamp,
     });

@@ -7,7 +7,6 @@ import { LoginDto } from '@/auth/dto/login.dto';
 import { AuthUserDto } from '@/auth/dto/auth-response.dto';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
-import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 import { JwtPayload } from '@/auth/interfaces/jwt-payload.interface';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { JwksService } from '@/auth/services/jwks.service';
@@ -134,8 +133,17 @@ export class AuthService {
     });
   }
 
+  /**
+   * `RolAutoridad` (ELECTION_ADMIN/PAUSER/MERKLE_UPDATER) es un permiso fino
+   * dentro del panel, no el filtro de acceso al panel en sí: cualquier fila
+   * registrada en autoridad_electoral entra como JwtRole.ELECTION_ADMIN
+   * (acceso HTTP al panel); guards específicos (p. ej. PauserRoleGuard,
+   * VOTAR-347) exigen además el valor puntual de `rol` para acciones
+   * sensibles como pausar. Antes de este fix, una cuenta PAUSER-only nunca
+   * alcanzaba JwtRole.ELECTION_ADMIN y por lo tanto era inalcanzable.
+   */
   private resolveJwtRole(autoridad: AutoridadElectoral | null): JwtRole {
-    if (autoridad?.rol === RolAutoridad.ELECTION_ADMIN) {
+    if (autoridad) {
       return JwtRole.ELECTION_ADMIN;
     }
     return JwtRole.VOTER;
