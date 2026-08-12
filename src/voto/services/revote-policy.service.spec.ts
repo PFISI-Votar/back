@@ -72,12 +72,14 @@ const createService = (options?: {
     findOne: jest.fn().mockResolvedValue(config),
   };
   const intentoRepository = {
-    findOne: jest.fn().mockImplementation(async () =>
-      store
-        ? {
-            ...store,
-          }
-        : null,
+    findOne: jest.fn().mockImplementation(() =>
+      Promise.resolve(
+        store
+          ? {
+              ...store,
+            }
+          : null,
+      ),
     ),
     create: jest.fn((data: (typeof saved)[number]) => ({ ...data })),
     save: jest.fn((entity: (typeof saved)[number]) => {
@@ -88,23 +90,25 @@ const createService = (options?: {
   };
 
   const transactionalRepo = {
-    findOne: jest.fn().mockImplementation(async () =>
-      store
-        ? {
-            ...store,
-          }
-        : null,
+    findOne: jest.fn().mockImplementation(() =>
+      Promise.resolve(
+        store
+          ? {
+              ...store,
+            }
+          : null,
+      ),
     ),
-    findOneOrFail: jest.fn().mockImplementation(async () => {
+    findOneOrFail: jest.fn().mockImplementation(() => {
       if (!store) {
-        throw new Error('missing registro');
+        return Promise.reject(new Error('missing registro'));
       }
-      return { ...store };
+      return Promise.resolve({ ...store });
     }),
     create: jest.fn((data: Partial<RegistroIntentoSufragio>) => ({
       ...data,
     })),
-    save: jest.fn(async (entity: (typeof saved)[number]) => {
+    save: jest.fn((entity: (typeof saved)[number]) => {
       store = {
         idEleccion: entity.idEleccion,
         claveIntento: entity.claveIntento,
@@ -112,7 +116,7 @@ const createService = (options?: {
         ultimoIntentoAt: entity.ultimoIntentoAt,
       };
       saved.push({ ...store });
-      return store;
+      return Promise.resolve(store);
     }),
   };
 
@@ -237,32 +241,33 @@ describe('RevotePolicyService (VOTAR-328)', () => {
   it('VOTAR-325: cooldown es por claveIntento (otro votante no queda bloqueado)', async () => {
     const otroHash = 'c'.repeat(64);
     const intentoRepository = {
-      findOne: jest.fn().mockImplementation(
-        async ({
-          where,
-        }: {
-          where: { claveIntento: string };
-        }) => {
-          if (where.claveIntento === VOTANTE_HASH) {
-            return {
-              idEleccion: 1,
-              claveIntento: VOTANTE_HASH,
-              votosConsumidos: 1,
-              ultimoIntentoAt: new Date(),
-            };
-          }
-          return null;
-        },
-      ),
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          ({ where }: { where: { claveIntento: string } }) => {
+            if (where.claveIntento === VOTANTE_HASH) {
+              return Promise.resolve({
+                idEleccion: 1,
+                claveIntento: VOTANTE_HASH,
+                votosConsumidos: 1,
+                ultimoIntentoAt: new Date(),
+              });
+            }
+            return Promise.resolve(null);
+          },
+        ),
       create: jest.fn((data: unknown) => data),
       save: jest.fn((entity: unknown) => Promise.resolve(entity)),
     };
-    const stores = new Map<string, {
-      idEleccion: number;
-      claveIntento: string;
-      votosConsumidos: number;
-      ultimoIntentoAt: Date | null;
-    }>();
+    const stores = new Map<
+      string,
+      {
+        idEleccion: number;
+        claveIntento: string;
+        votosConsumidos: number;
+        ultimoIntentoAt: Date | null;
+      }
+    >();
     stores.set(VOTANTE_HASH, {
       idEleccion: 1,
       claveIntento: VOTANTE_HASH,
@@ -270,27 +275,27 @@ describe('RevotePolicyService (VOTAR-328)', () => {
       ultimoIntentoAt: new Date(),
     });
     const transactionalRepo = {
-      findOne: jest.fn().mockImplementation(
-        async ({
-          where,
-        }: {
-          where: { claveIntento: string };
-        }) => {
-          const row = stores.get(where.claveIntento);
-          return row ? { ...row } : null;
-        },
-      ),
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          ({ where }: { where: { claveIntento: string } }) => {
+            const row = stores.get(where.claveIntento);
+            return Promise.resolve(row ? { ...row } : null);
+          },
+        ),
       findOneOrFail: jest.fn(),
-      create: jest.fn((data: Partial<RegistroIntentoSufragio>) => ({ ...data })),
+      create: jest.fn((data: Partial<RegistroIntentoSufragio>) => ({
+        ...data,
+      })),
       save: jest.fn(
-        async (entity: {
+        (entity: {
           idEleccion: number;
           claveIntento: string;
           votosConsumidos: number;
           ultimoIntentoAt: Date | null;
         }) => {
           stores.set(entity.claveIntento, { ...entity });
-          return entity;
+          return Promise.resolve(entity);
         },
       ),
     };
@@ -352,7 +357,10 @@ describe('RevotePolicyService (VOTAR-328)', () => {
 
   it('VOTAR-451: votosObjetivo sincroniza hacia el conteo on-chain sin pasarse del max', async () => {
     const { service, storeRef } = createService({
-      registro: { votosConsumidos: 1, ultimoIntentoAt: new Date(Date.now() - 120_000) },
+      registro: {
+        votosConsumidos: 1,
+        ultimoIntentoAt: new Date(Date.now() - 120_000),
+      },
       config: { minIntervaloSegundos: 0, maxVotosPorVotante: 3 },
     });
 
