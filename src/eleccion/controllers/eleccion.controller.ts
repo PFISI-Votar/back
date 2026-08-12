@@ -9,14 +9,22 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Query,
   Req,
 } from '@nestjs/common';
-import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import {
+  ApiOperation,
+  ApiParam,
+  ApiQuery,
+  ApiResponse,
+  ApiTags,
+} from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { PauserAuth } from '@/auth/decorators/pauser-auth.decorator';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
@@ -25,6 +33,7 @@ import { PausaComicioService } from '@/eleccion/pausa/services/pausa-comicio.ser
 import { PausarComicioDto } from '@/eleccion/pausa/dto/pausar-comicio.dto';
 import { ReanudarComicioDto } from '@/eleccion/pausa/dto/reanudar-comicio.dto';
 import { EstadoSolicitudPausaResponseDto } from '@/eleccion/pausa/dto/estado-solicitud-pausa-response.dto';
+import { ArchivarComicioService } from '@/eleccion/services/archivar-comicio.service';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 
@@ -37,13 +46,21 @@ export class EleccionesController implements IEleccionController {
     private readonly aperturaComicioService: AperturaComicioService,
     private readonly cierreComicioService: CierreComicioService,
     private readonly pausaComicioService: PausaComicioService,
+    private readonly archivarComicioService: ArchivarComicioService,
   ) {}
 
   @Get()
-  @ApiOperation({ summary: 'Listar todos los comicios' })
+  @ApiOperation({
+    summary: 'Listar comicios',
+    description:
+      'Sin filtro devuelve el panel de gestión activa (excluye ARCHIVADA). Con estado=ARCHIVADA devuelve la pestaña Históricos (VOTAR-322).',
+  })
+  @ApiQuery({ name: 'estado', enum: EleccionEstado, required: false })
   @ApiResponse({ status: 200, description: 'OK', type: [EleccionResponseDto] })
-  async listarElecciones(): Promise<EleccionResponseDto[]> {
-    return this.eleccionesService.listarElecciones();
+  async listarElecciones(
+    @Query('estado') estado?: EleccionEstado,
+  ): Promise<EleccionResponseDto[]> {
+    return this.eleccionesService.listarElecciones(estado);
   }
 
   @Get(':idEleccion')
@@ -277,6 +294,37 @@ export class EleccionesController implements IEleccionController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<EstadoSolicitudPausaResponseDto | null> {
     return this.pausaComicioService.obtenerEstadoPendiente(idEleccion);
+  }
+
+  @Post(':idEleccion/archivar')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Archivar comicio cerrado (VOTAR-322)',
+    description:
+      'Transiciona el comicio CERRADA → ARCHIVADA. Operación estrictamente local: no realiza ninguna transacción ni interacción con la red Ethereum Sepolia. Remueve el comicio del panel de gestión activa; los endpoints públicos del Portal de Transparencia siguen sirviendo la evidencia on-chain sin cambios.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'Comicio archivado exitosamente',
+    type: EleccionResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 422,
+    description: 'Comicio no está en estado CERRADA',
+  })
+  async archivarComicio(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<EleccionResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    await this.archivarComicioService.archivarManual(
+      idEleccion,
+      user.sub,
+      this.resolveClientIp(req),
+    );
+    return this.eleccionesService.obtenerPorId(idEleccion);
   }
 
   private resolveClientIp(request: AuthenticatedRequest): string {

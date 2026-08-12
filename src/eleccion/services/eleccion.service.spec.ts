@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { Not } from 'typeorm';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { ELECCION_REPOSITORY } from '@/eleccion/interfaces/eleccion.repository.interface';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -204,6 +205,18 @@ describe('EleccionesService', () => {
 
     expect(result).toHaveLength(1);
     expect(mockEleccionOrmRepository.find).toHaveBeenCalledWith({
+      where: { estado: Not(EleccionEstado.ARCHIVADA) },
+      order: { idEleccion: 'DESC' },
+    });
+  });
+
+  it('debe filtrar por estado cuando se pasa un estado explícito (VOTAR-322)', async () => {
+    mockEleccionOrmRepository.find.mockResolvedValue([]);
+
+    await service.listarElecciones(EleccionEstado.ARCHIVADA);
+
+    expect(mockEleccionOrmRepository.find).toHaveBeenCalledWith({
+      where: { estado: EleccionEstado.ARCHIVADA },
       order: { idEleccion: 'DESC' },
     });
   });

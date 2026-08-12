@@ -22,6 +22,7 @@ import { PausaComicioService } from '@/eleccion/pausa/services/pausa-comicio.ser
 import { SolicitudPausa } from '@/eleccion/pausa/entities/solicitud-pausa.entity';
 import { ConfirmacionPausa } from '@/eleccion/pausa/entities/confirmacion-pausa.entity';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
+import { ArchivarComicioService } from '@/eleccion/services/archivar-comicio.service';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
@@ -61,6 +62,7 @@ import { AuditModule } from '@/audit/audit.module';
     CierreComicioService,
     CierreAutomaticoScheduler,
     PausaComicioService,
+    ArchivarComicioService,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,

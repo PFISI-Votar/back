@@ -19,6 +19,17 @@ Objetivo: elección funcional extremo a extremo. Alcance cubierto en esta versi�
 
 Además de lo planificado, esta versión incorpora funcionalidades adicionales no previstas originalmente para v1, como auditoría (audit log inmutable) y re-voto (política de último voto cuenta), entre otras.
 
+## Estado del proyecto — v2.0.0
+
+**Versión 2 — APIs públicas, trazabilidad y política electoral** (agosto de 2026).
+
+Incremento post-MVP (Sprint 4). Alcance cubierto en esta versión:
+
+- **Dashboard público:** metadatos técnicos del contrato, estadísticas de re-voto e historial on-chain auditable
+- **Política electoral:** `lockConfig` on-chain al abrir comicio, voto nulo configurable e intervalo mínimo entre sufragios
+- **Blockchain:** decodificación de custom errors on-chain, índice append-only de transacciones y sincronización de ABIs
+- **Correcciones:** resultados en dashboard, comprobante de voto por contrato Ballot por elección y creación de listas duplicadas
+
 ## Requisitos
 
 - Node.js 24+

@@ -71,6 +71,13 @@ export interface LogComicioReanudadoInput {
   ipOrigen?: string;
 }
 
+export interface LogComicioArchivadoInput {
+  idEleccion: number;
+  actorId: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
 export interface LogLoginInput {
   actorId: string;
   timestamp?: Date;
@@ -361,6 +368,31 @@ export class AuditLoggerService {
         hashTransaccion: txHash,
         txHashBallot: input.txHashBallot ?? null,
         txHashVoteRegistry: input.txHashVoteRegistry ?? null,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /** VOTAR-322: archivado off-chain de un comicio CERRADA. */
+  async logComicioArchivado(
+    input: LogComicioArchivadoInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const descripcion = `Usuario Administrador con ID Ofuscado ${actorOfuscado} archivó el comicio ${input.idEleccion} desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_ARCHIVADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/archivar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
       },
       timestamp: input.timestamp,
     });

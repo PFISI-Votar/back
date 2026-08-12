@@ -33,6 +33,7 @@ const ESTADOS_ELECCION_APTOS = [EleccionEstado.ABIERTA];
 const ESTADOS_ELECCION_CERRADOS = [
   EleccionEstado.CERRADA,
   EleccionEstado.ESCRUTADA,
+  EleccionEstado.ARCHIVADA,
 ];
 
 @Injectable()

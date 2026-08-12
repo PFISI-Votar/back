@@ -450,4 +450,55 @@ describe('ElectionStateService', () => {
       expect(eleccionRepository.save).not.toHaveBeenCalled();
     });
   });
+
+  describe('transitionToArchivada', () => {
+    it('should persist ARCHIVADA without touching the blockchain (VOTAR-322)', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.CERRADA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      eleccionRepository.save.mockResolvedValue({
+        ...eleccion,
+        estado: EleccionEstado.ARCHIVADA,
+      });
+
+      const result = await service.transitionToArchivada(1);
+
+      expect(eleccionRepository.findOne).toHaveBeenCalledWith({
+        where: { idEleccion: 1 },
+      });
+      expect(eleccionRepository.save).toHaveBeenCalledWith({
+        ...eleccion,
+        estado: EleccionEstado.ARCHIVADA,
+      });
+      expect(result.estado).toBe(EleccionEstado.ARCHIVADA);
+
+      // AC2: aislamiento estricto de la capa blockchain — costo cero de gas.
+      expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionWindow).not.toHaveBeenCalled();
+      expect(blockchainService.registerCandidates).not.toHaveBeenCalled();
+      expect(blockchainService.lockElectionWindow).not.toHaveBeenCalled();
+      expect(blockchainService.lockRevoteConfig).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when election does not exist', async () => {
+      eleccionRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.transitionToArchivada(999)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw UnprocessableEntityException when election is not in CERRADA state', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.ABIERTA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+
+      await expect(service.transitionToArchivada(1)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      await expect(service.transitionToArchivada(1)).rejects.toThrow(
+        /debe estar en estado CERRADA/,
+      );
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
+    });
+  });
 });

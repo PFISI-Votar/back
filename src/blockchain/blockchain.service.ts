@@ -185,6 +185,9 @@ const ESTADO_TO_BLOCKCHAIN_STATE: Record<EleccionEstado, number> = {
   [EleccionEstado.ABIERTA]: 2, // OPEN
   [EleccionEstado.CERRADA]: 3, // CLOSED
   [EleccionEstado.ESCRUTADA]: 4, // TALLIED
+  // VOTAR-322: archivado es puramente off-chain; este valor nunca se envía
+  // a syncElectionState (el contrato queda inmutable en CLOSED).
+  [EleccionEstado.ARCHIVADA]: 3, // CLOSED
 };
 
 interface MerkleRootStoreContract {
