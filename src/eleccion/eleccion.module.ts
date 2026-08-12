@@ -18,6 +18,7 @@ import { AperturaAutomaticaScheduler } from '@/eleccion/services/apertura-automa
 import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
 import { CierreAutomaticoScheduler } from '@/eleccion/services/cierre-automatico.scheduler';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
+import { ArchivarComicioService } from '@/eleccion/services/archivar-comicio.service';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
@@ -49,6 +50,7 @@ import { AuditModule } from '@/audit/audit.module';
     AperturaAutomaticaScheduler,
     CierreComicioService,
     CierreAutomaticoScheduler,
+    ArchivarComicioService,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,

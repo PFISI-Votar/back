@@ -332,6 +332,7 @@ export class PadronService implements IPadronService {
       EleccionEstado.ABIERTA,
       EleccionEstado.CERRADA,
       EleccionEstado.ESCRUTADA,
+      EleccionEstado.ARCHIVADA,
     ];
     if (estadosBloqueados.includes(eleccion.estado)) {
       throw new UnprocessableEntityException(
