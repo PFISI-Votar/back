@@ -336,9 +336,50 @@ describe('BlockchainService', () => {
     expect(actual.estadoOnChain).toEqual({ codigo: 2, etiqueta: 'ABIERTA' });
     expect(actual.merkleRoot.publicado).toBe(true);
     expect(actual.merkleRoot.hash).toBe('0x' + 'a'.repeat(64));
+    expect(actual.merkleRoot.consistente).toBe(true);
     expect(actual.contratos.auditView.explorerUrl).toContain('/address/');
     expect(actual.revoto.maxVotosPorVotante).toBe(3);
     expect(actual.red).toBe('Sepolia');
+  });
+
+  describe('getContratoEstadoOnChain — merkleRoot.consistente (VOTAR-453)', () => {
+    it('flags inconsistent state when published with a zero root', async () => {
+      mockIsPublished.mockResolvedValue(true);
+      mockGetMerkleRoot.mockResolvedValue([
+        '0x' + '0'.repeat(64),
+        1700000000n,
+      ]);
+
+      const actual = await service.getContratoEstadoOnChain(7);
+
+      expect(actual.merkleRoot.publicado).toBe(true);
+      expect(actual.merkleRoot.hash).toBe('0x' + '0'.repeat(64));
+      expect(actual.merkleRoot.consistente).toBe(false);
+    });
+
+    it('stays consistent when the root is zero but not published', async () => {
+      mockIsPublished.mockResolvedValue(false);
+      mockGetMerkleRoot.mockResolvedValue([
+        '0x' + '0'.repeat(64),
+        0n,
+      ]);
+
+      const actual = await service.getContratoEstadoOnChain(7);
+
+      expect(actual.merkleRoot.publicado).toBe(false);
+      expect(actual.merkleRoot.consistente).toBe(true);
+    });
+  });
+
+  describe('getContratoEstadoOnChain — revoto.politicaRevoto (VOTAR-453 punto 2)', () => {
+    it('reports DISABLED policy when revoteEnabled is false on-chain', async () => {
+      mockRevoteEnabled.mockResolvedValue(false);
+
+      const actual = await service.getContratoEstadoOnChain(7);
+
+      expect(actual.revoto.habilitado).toBe(false);
+      expect(actual.revoto.politicaRevoto).toBe('DISABLED');
+    });
   });
 
   it('getNetworkDisplayName defaults to Sepolia', () => {
