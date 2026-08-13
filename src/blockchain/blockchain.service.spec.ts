@@ -345,10 +345,7 @@ describe('BlockchainService', () => {
   describe('getContratoEstadoOnChain — merkleRoot.consistente (VOTAR-453)', () => {
     it('flags inconsistent state when published with a zero root', async () => {
       mockIsPublished.mockResolvedValue(true);
-      mockGetMerkleRoot.mockResolvedValue([
-        '0x' + '0'.repeat(64),
-        1700000000n,
-      ]);
+      mockGetMerkleRoot.mockResolvedValue(['0x' + '0'.repeat(64), 1700000000n]);
 
       const actual = await service.getContratoEstadoOnChain(7);
 
@@ -359,10 +356,7 @@ describe('BlockchainService', () => {
 
     it('stays consistent when the root is zero but not published', async () => {
       mockIsPublished.mockResolvedValue(false);
-      mockGetMerkleRoot.mockResolvedValue([
-        '0x' + '0'.repeat(64),
-        0n,
-      ]);
+      mockGetMerkleRoot.mockResolvedValue(['0x' + '0'.repeat(64), 0n]);
 
       const actual = await service.getContratoEstadoOnChain(7);
 

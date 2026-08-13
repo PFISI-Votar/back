@@ -1,4 +1,10 @@
-import { Controller, Get, Param, ParseIntPipe, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  UseGuards,
+} from '@nestjs/common';
 import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
 import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
