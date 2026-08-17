@@ -37,6 +37,27 @@ export type ActaAperturaModo = 'SIMPLE' | 'PERSONALIZADO';
 export const ACTA_APERTURA_MODO_DEFAULT: ActaAperturaModo = 'SIMPLE';
 
 /**
+ * Toggles de contenido del Acta de Cierre (escrutinio final). Mismo rol
+ * que `ActaAperturaPlantilla`: gobiernan qué secciones arma el frontend en
+ * modo SIMPLE.
+ */
+export type ActaCierrePlantilla = {
+  incluirDescripcion: boolean;
+  incluirParticipacion: boolean;
+  incluirResultadosPorLista: boolean;
+  incluirVerificacionCriptografica: boolean;
+  incluirLogo: boolean;
+};
+
+export const ACTA_CIERRE_PLANTILLA_DEFAULT: ActaCierrePlantilla = {
+  incluirDescripcion: true,
+  incluirParticipacion: true,
+  incluirResultadosPorLista: true,
+  incluirVerificacionCriptografica: true,
+  incluirLogo: true,
+};
+
+/**
  * Fila singleton (id fijo = 1) con parámetros globales de la plataforma,
  * válidos para todos los comicios (ej. logo institucional y plantilla del
  * Acta de Apertura, VOTAR-374).
@@ -69,6 +90,22 @@ export class ConfiguracionSistema {
     nullable: true,
   })
   actaAperturaPlantillaTexto!: string | null;
+
+  @ApiProperty()
+  @Column({ name: 'acta_cierre_plantilla', type: 'jsonb' })
+  actaCierrePlantilla!: ActaCierrePlantilla;
+
+  @ApiProperty({ example: 'SIMPLE' })
+  @Column({ name: 'acta_cierre_modo', type: 'varchar' })
+  actaCierreModo!: ActaAperturaModo;
+
+  @ApiProperty({ nullable: true })
+  @Column({
+    name: 'acta_cierre_plantilla_texto',
+    type: 'text',
+    nullable: true,
+  })
+  actaCierrePlantillaTexto!: string | null;
 
   @ApiProperty()
   @UpdateDateColumn({ name: 'fecha_actualizacion', type: 'timestamptz' })

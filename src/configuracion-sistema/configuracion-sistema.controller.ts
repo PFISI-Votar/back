@@ -18,7 +18,9 @@ import {
 import { memoryStorage } from 'multer';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { ActualizarFormatoPersonalizadoActaAperturaDto } from '@/configuracion-sistema/dto/actualizar-formato-personalizado-acta-apertura.dto';
+import { ActualizarFormatoPersonalizadoActaCierreDto } from '@/configuracion-sistema/dto/actualizar-formato-personalizado-acta-cierre.dto';
 import { ActualizarPlantillaActaAperturaDto } from '@/configuracion-sistema/dto/actualizar-plantilla-acta-apertura.dto';
+import { ActualizarPlantillaActaCierreDto } from '@/configuracion-sistema/dto/actualizar-plantilla-acta-cierre.dto';
 import { ConfiguracionSistemaResponseDto } from '@/configuracion-sistema/dto/configuracion-sistema-response.dto';
 import { ConfiguracionSistemaService } from '@/configuracion-sistema/configuracion-sistema.service';
 
@@ -109,7 +111,8 @@ export class ConfiguracionSistemaController {
 
   @Patch('acta-apertura-formato')
   @ApiOperation({
-    summary: 'Actualizar el formato del Acta de Apertura (Simple/Personalizado)',
+    summary:
+      'Actualizar el formato del Acta de Apertura (Simple/Personalizado)',
     description:
       'Actualización parcial: `modo` cambia entre SIMPLE/PERSONALIZADO y ' +
       '`plantillaTexto` es el cuerpo con variables `{{token}}` usado en ' +
@@ -124,6 +127,44 @@ export class ConfiguracionSistemaController {
     @Body() dto: ActualizarFormatoPersonalizadoActaAperturaDto,
   ): Promise<ConfiguracionSistemaResponseDto> {
     return this.configuracionSistemaService.actualizarFormatoPersonalizadoActaApertura(
+      dto,
+    );
+  }
+
+  @Patch('acta-cierre-plantilla')
+  @ApiOperation({
+    summary: 'Actualizar la plantilla de contenido del Acta de Cierre',
+    description:
+      'Actualización parcial: solo se aplican los toggles presentes en el body.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'OK',
+    type: ConfiguracionSistemaResponseDto,
+  })
+  async actualizarPlantillaActaCierre(
+    @Body() dto: ActualizarPlantillaActaCierreDto,
+  ): Promise<ConfiguracionSistemaResponseDto> {
+    return this.configuracionSistemaService.actualizarPlantillaActaCierre(dto);
+  }
+
+  @Patch('acta-cierre-formato')
+  @ApiOperation({
+    summary: 'Actualizar el formato del Acta de Cierre (Simple/Personalizado)',
+    description:
+      'Actualización parcial: `modo` cambia entre SIMPLE/PERSONALIZADO y ' +
+      '`plantillaTexto` es el cuerpo con variables `{{token}}` usado en ' +
+      'modo PERSONALIZADO.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'OK',
+    type: ConfiguracionSistemaResponseDto,
+  })
+  async actualizarFormatoPersonalizadoActaCierre(
+    @Body() dto: ActualizarFormatoPersonalizadoActaCierreDto,
+  ): Promise<ConfiguracionSistemaResponseDto> {
+    return this.configuracionSistemaService.actualizarFormatoPersonalizadoActaCierre(
       dto,
     );
   }

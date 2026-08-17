@@ -3,11 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ElectoralImageService } from '@/common/images/electoral-image.service';
 import { ActualizarFormatoPersonalizadoActaAperturaDto } from '@/configuracion-sistema/dto/actualizar-formato-personalizado-acta-apertura.dto';
+import { ActualizarFormatoPersonalizadoActaCierreDto } from '@/configuracion-sistema/dto/actualizar-formato-personalizado-acta-cierre.dto';
 import { ActualizarPlantillaActaAperturaDto } from '@/configuracion-sistema/dto/actualizar-plantilla-acta-apertura.dto';
+import { ActualizarPlantillaActaCierreDto } from '@/configuracion-sistema/dto/actualizar-plantilla-acta-cierre.dto';
 import { ConfiguracionSistemaResponseDto } from '@/configuracion-sistema/dto/configuracion-sistema-response.dto';
 import {
   ACTA_APERTURA_MODO_DEFAULT,
   ACTA_APERTURA_PLANTILLA_DEFAULT,
+  ACTA_CIERRE_PLANTILLA_DEFAULT,
   ConfiguracionSistema,
 } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 
@@ -86,6 +89,32 @@ export class ConfiguracionSistemaService {
     return this.toResponse(saved);
   }
 
+  async actualizarPlantillaActaCierre(
+    dto: ActualizarPlantillaActaCierreDto,
+  ): Promise<ConfiguracionSistemaResponseDto> {
+    const configuracion = await this.getOrCreate();
+    configuracion.actaCierrePlantilla = {
+      ...configuracion.actaCierrePlantilla,
+      ...dto,
+    };
+    const saved = await this.repository.save(configuracion);
+    return this.toResponse(saved);
+  }
+
+  async actualizarFormatoPersonalizadoActaCierre(
+    dto: ActualizarFormatoPersonalizadoActaCierreDto,
+  ): Promise<ConfiguracionSistemaResponseDto> {
+    const configuracion = await this.getOrCreate();
+    if (dto.modo !== undefined) {
+      configuracion.actaCierreModo = dto.modo;
+    }
+    if (dto.plantillaTexto !== undefined) {
+      configuracion.actaCierrePlantillaTexto = dto.plantillaTexto;
+    }
+    const saved = await this.repository.save(configuracion);
+    return this.toResponse(saved);
+  }
+
   private async getOrCreate(): Promise<ConfiguracionSistema> {
     const existente = await this.repository.findOne({
       where: { id: CONFIGURACION_ID },
@@ -100,6 +129,9 @@ export class ConfiguracionSistemaService {
         actaAperturaPlantilla: ACTA_APERTURA_PLANTILLA_DEFAULT,
         actaAperturaModo: ACTA_APERTURA_MODO_DEFAULT,
         actaAperturaPlantillaTexto: null,
+        actaCierrePlantilla: ACTA_CIERRE_PLANTILLA_DEFAULT,
+        actaCierreModo: ACTA_APERTURA_MODO_DEFAULT,
+        actaCierrePlantillaTexto: null,
       }),
     );
   }
@@ -112,6 +144,9 @@ export class ConfiguracionSistemaService {
       actaAperturaPlantilla: configuracion.actaAperturaPlantilla,
       actaAperturaModo: configuracion.actaAperturaModo,
       actaAperturaPlantillaTexto: configuracion.actaAperturaPlantillaTexto,
+      actaCierrePlantilla: configuracion.actaCierrePlantilla,
+      actaCierreModo: configuracion.actaCierreModo,
+      actaCierrePlantillaTexto: configuracion.actaCierrePlantillaTexto,
       fechaActualizacion: configuracion.fechaActualizacion.toISOString(),
     };
   }

@@ -9,4 +9,6 @@ export enum TipoEventoAudit {
   COMICIO_ARCHIVADO = 'COMICIO_ARCHIVADO',
   /** Sufragio anónimo: sin IP/UA/session/votanteHash (VOTAR-379). */
   VOTO_EMITIDO = 'VOTO_EMITIDO',
+  /** Hash SHA-256 del PDF del Acta de Cierre emitido, para verificación de integridad. */
+  ACTA_CIERRE_GENERADA = 'ACTA_CIERRE_GENERADA',
 }

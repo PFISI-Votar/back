@@ -16,6 +16,7 @@ import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { EleccionRepository } from '@/eleccion/repositories/eleccion.repository';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { ActaAperturaService } from '@/eleccion/services/acta-apertura.service';
+import { ActaCierreService } from '@/eleccion/services/acta-cierre.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
 import { AperturaAutomaticaScheduler } from '@/eleccion/services/apertura-automatica.scheduler';
 import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
@@ -27,6 +28,7 @@ import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { PadronModule } from '@/padron/padron.module';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
 import { AuditModule } from '@/audit/audit.module';
+import { EscrutinioModule } from '@/escrutinio/escrutinio.module';
 
 @Module({
   imports: [
@@ -47,6 +49,7 @@ import { AuditModule } from '@/audit/audit.module';
     BlockchainModule,
     AuditModule,
     forwardRef(() => PadronModule),
+    forwardRef(() => EscrutinioModule),
   ],
   controllers: [EleccionesController],
   providers: [
@@ -59,6 +62,7 @@ import { AuditModule } from '@/audit/audit.module';
     CierreAutomaticoScheduler,
     ArchivarComicioService,
     ActaAperturaService,
+    ActaCierreService,
     {
       provide: ELECCION_REPOSITORY,
       useClass: EleccionRepository,

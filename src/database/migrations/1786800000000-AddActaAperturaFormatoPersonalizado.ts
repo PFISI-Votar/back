@@ -5,9 +5,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
  * escribir un texto libre con variables `{{token}}` que se interpolan con
  * los datos del comicio; convive con el modo Simple (toggles) ya existente.
  */
-export class AddActaAperturaFormatoPersonalizado1786800000000
-  implements MigrationInterface
-{
+export class AddActaAperturaFormatoPersonalizado1786800000000 implements MigrationInterface {
   name = 'AddActaAperturaFormatoPersonalizado1786800000000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {

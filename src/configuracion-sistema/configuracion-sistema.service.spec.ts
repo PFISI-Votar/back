@@ -6,6 +6,7 @@ import { ConfiguracionSistemaService } from '@/configuracion-sistema/configuraci
 import {
   ACTA_APERTURA_MODO_DEFAULT,
   ACTA_APERTURA_PLANTILLA_DEFAULT,
+  ACTA_CIERRE_PLANTILLA_DEFAULT,
   ConfiguracionSistema,
 } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 
@@ -26,6 +27,9 @@ describe('ConfiguracionSistemaService', () => {
     actaAperturaPlantilla: ACTA_APERTURA_PLANTILLA_DEFAULT,
     actaAperturaModo: ACTA_APERTURA_MODO_DEFAULT,
     actaAperturaPlantillaTexto: null,
+    actaCierrePlantilla: ACTA_CIERRE_PLANTILLA_DEFAULT,
+    actaCierreModo: ACTA_APERTURA_MODO_DEFAULT,
+    actaCierrePlantillaTexto: null,
     fechaActualizacion: new Date('2026-08-12T12:00:00Z'),
     ...overrides,
   });
@@ -77,6 +81,9 @@ describe('ConfiguracionSistemaService', () => {
         actaAperturaPlantilla: ACTA_APERTURA_PLANTILLA_DEFAULT,
         actaAperturaModo: ACTA_APERTURA_MODO_DEFAULT,
         actaAperturaPlantillaTexto: null,
+        actaCierrePlantilla: ACTA_CIERRE_PLANTILLA_DEFAULT,
+        actaCierreModo: ACTA_APERTURA_MODO_DEFAULT,
+        actaCierrePlantillaTexto: null,
         fechaActualizacion: '2026-08-12T12:00:00.000Z',
       });
     });
@@ -179,9 +186,10 @@ describe('ConfiguracionSistemaService', () => {
         Promise.resolve(mockConfiguracion(entity)),
       );
 
-      const result = await service.actualizarFormatoPersonalizadoActaApertura(
-        { modo: 'PERSONALIZADO', plantillaTexto: 'Acta de {{nombreEleccion}}' },
-      );
+      const result = await service.actualizarFormatoPersonalizadoActaApertura({
+        modo: 'PERSONALIZADO',
+        plantillaTexto: 'Acta de {{nombreEleccion}}',
+      });
 
       expect(repository.save).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -206,13 +214,85 @@ describe('ConfiguracionSistemaService', () => {
         Promise.resolve(mockConfiguracion(entity)),
       );
 
-      const result =
-        await service.actualizarFormatoPersonalizadoActaApertura({
-          modo: 'SIMPLE',
-        });
+      const result = await service.actualizarFormatoPersonalizadoActaApertura({
+        modo: 'SIMPLE',
+      });
 
       expect(result.actaAperturaModo).toBe('SIMPLE');
       expect(result.actaAperturaPlantillaTexto).toBe('texto existente');
+    });
+  });
+
+  describe('actualizarPlantillaActaCierre', () => {
+    it('merges the partial patch onto the existing plantilla', async () => {
+      repository.findOne.mockResolvedValue(mockConfiguracion());
+      repository.save.mockImplementation((entity) =>
+        Promise.resolve(mockConfiguracion(entity)),
+      );
+
+      const result = await service.actualizarPlantillaActaCierre({
+        incluirResultadosPorLista: false,
+        incluirLogo: false,
+      });
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actaCierrePlantilla: {
+            ...ACTA_CIERRE_PLANTILLA_DEFAULT,
+            incluirResultadosPorLista: false,
+            incluirLogo: false,
+          },
+        }),
+      );
+      expect(result.actaCierrePlantilla).toEqual({
+        ...ACTA_CIERRE_PLANTILLA_DEFAULT,
+        incluirResultadosPorLista: false,
+        incluirLogo: false,
+      });
+    });
+  });
+
+  describe('actualizarFormatoPersonalizadoActaCierre', () => {
+    it('updates only the fields present in the patch', async () => {
+      repository.findOne.mockResolvedValue(mockConfiguracion());
+      repository.save.mockImplementation((entity) =>
+        Promise.resolve(mockConfiguracion(entity)),
+      );
+
+      const result = await service.actualizarFormatoPersonalizadoActaCierre({
+        modo: 'PERSONALIZADO',
+        plantillaTexto: 'Escrutinio de {{nombreEleccion}}',
+      });
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          actaCierreModo: 'PERSONALIZADO',
+          actaCierrePlantillaTexto: 'Escrutinio de {{nombreEleccion}}',
+        }),
+      );
+      expect(result.actaCierreModo).toBe('PERSONALIZADO');
+      expect(result.actaCierrePlantillaTexto).toBe(
+        'Escrutinio de {{nombreEleccion}}',
+      );
+    });
+
+    it('leaves fields unset when omitted from the patch', async () => {
+      repository.findOne.mockResolvedValue(
+        mockConfiguracion({
+          actaCierreModo: 'PERSONALIZADO',
+          actaCierrePlantillaTexto: 'texto existente',
+        }),
+      );
+      repository.save.mockImplementation((entity) =>
+        Promise.resolve(mockConfiguracion(entity)),
+      );
+
+      const result = await service.actualizarFormatoPersonalizadoActaCierre({
+        modo: 'SIMPLE',
+      });
+
+      expect(result.actaCierreModo).toBe('SIMPLE');
+      expect(result.actaCierrePlantillaTexto).toBe('texto existente');
     });
   });
 });
