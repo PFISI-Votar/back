@@ -1,3 +1,4 @@
+// src/app.module.ts
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -15,6 +16,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { VotoModule } from '@/voto/voto.module';
 import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.module';
 import { AuditModule } from '@/audit/audit.module';
+import { FaucetModule } from '@/faucet/faucet.module';
 
 @Module({
   imports: [
@@ -39,6 +41,7 @@ import { AuditModule } from '@/audit/audit.module';
     DashboardPublicoModule,
     CategoriasModule,
     AuditModule,
+    FaucetModule,
   ],
   controllers: [AppController],
   providers: [AppService],
