@@ -96,6 +96,7 @@ export type ContratoEstadoOnChain = {
     hash: string;
     publicado: boolean;
     publicadoEn: string | null;
+    consistente: boolean;
   };
   revoto: {
     habilitado: boolean;
@@ -389,17 +390,11 @@ export class BlockchainService {
   }
 
   buildExplorerUrl(txHash: string): string {
-    const base =
-      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
-      'https://sepolia.etherscan.io';
-    return `${base}/tx/${txHash}`;
+    return `${this.explorerBaseUrl()}/tx/${txHash}`;
   }
 
   buildExplorerAddressUrl(contractAddress: string): string {
-    const base =
-      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
-      'https://sepolia.etherscan.io';
-    return `${base}/address/${contractAddress}`;
+    return `${this.explorerBaseUrl()}/address/${contractAddress}`;
   }
 
   getChainId(): number {
@@ -1688,6 +1683,7 @@ export class BlockchainService {
         hash: root === ZERO_MERKLE_ROOT ? ZERO_MERKLE_ROOT : root,
         publicado,
         publicadoEn,
+        consistente: !(publicado && root === ZERO_MERKLE_ROOT),
       },
       revoto: revote,
       contratos: {
@@ -2530,6 +2526,13 @@ export class BlockchainService {
       );
     }
     return rpcUrl;
+  }
+
+  private explorerBaseUrl(): string {
+    return (
+      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
+      'https://sepolia.etherscan.io'
+    );
   }
 
   private async resolveRevoteLimitsOnChain(
