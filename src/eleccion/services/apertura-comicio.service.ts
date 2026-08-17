@@ -16,6 +16,7 @@ import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
+import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
 import { ElectionStateService } from '@/eleccion/services/election-state.service';
 
@@ -32,11 +33,38 @@ export class AperturaComicioService {
     private readonly merkleRepository: Repository<MerkleTree>,
     @InjectRepository(ConfiguracionComicio)
     private readonly configuracionRepository: Repository<ConfiguracionComicio>,
+    @InjectRepository(AutoridadElectoral)
+    private readonly autoridadRepository: Repository<AutoridadElectoral>,
     private readonly blockchainService: BlockchainService,
     private readonly auditLoggerService: AuditLoggerService,
     private readonly eleccionGateway: EleccionGateway,
     private readonly electionStateService: ElectionStateService,
   ) {}
+
+  /**
+   * Snapshot de "quién y cuándo" abrió el comicio, para el Acta de
+   * Apertura (VOTAR-374). No usa el audit_log porque ese ofusca el actor
+   * (SHA-256) por diseño; acá tomamos el nombre/rol reales de
+   * AUTORIDAD_ELECTORAL, que no está sujeta al anonimato de Ley 25.326.
+   */
+  private async registrarSnapshotApertura(
+    eleccion: Eleccion,
+    modo: 'MANUAL' | 'AUTOMATICO',
+    actorId: string | null,
+    timestamp: Date,
+  ): Promise<void> {
+    const autoridad = actorId
+      ? await this.autoridadRepository.findOne({
+          where: { identificadorSso: actorId },
+        })
+      : null;
+
+    eleccion.aperturaRealEn = timestamp;
+    eleccion.aperturaModo = modo;
+    eleccion.aperturaActorNombre = autoridad?.nombre ?? null;
+    eleccion.aperturaActorRol = autoridad?.rol ?? null;
+    await this.eleccionRepository.save(eleccion);
+  }
 
   /**
    * Valida las precondiciones para abrir un comicio:
@@ -145,6 +173,12 @@ export class AperturaComicioService {
       await this.electionStateService.transitionToAbierta(idEleccion);
 
     await this.habilitarResultadosTiempoReal(idEleccion);
+    await this.registrarSnapshotApertura(
+      eleccionAbierta,
+      'MANUAL',
+      actorId,
+      now,
+    );
 
     // Auditoría pública (UAT-01)
     await this.auditLoggerService.logComicioAbierto({
@@ -193,6 +227,12 @@ export class AperturaComicioService {
       await this.electionStateService.transitionToAbierta(idEleccion);
 
     await this.habilitarResultadosTiempoReal(idEleccion);
+    await this.registrarSnapshotApertura(
+      eleccionAbierta,
+      'AUTOMATICO',
+      null,
+      now,
+    );
 
     // Auditoría pública (UAT-03)
     await this.auditLoggerService.logComicioAbierto({

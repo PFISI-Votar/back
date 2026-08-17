@@ -20,12 +20,14 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
+import { ActaAperturaResponseDto } from '@/eleccion/dto/acta-apertura-response.dto';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
+import { ActaAperturaService } from '@/eleccion/services/acta-apertura.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
 import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
 import { ArchivarComicioService } from '@/eleccion/services/archivar-comicio.service';
@@ -41,6 +43,7 @@ export class EleccionesController implements IEleccionController {
     private readonly aperturaComicioService: AperturaComicioService,
     private readonly cierreComicioService: CierreComicioService,
     private readonly archivarComicioService: ArchivarComicioService,
+    private readonly actaAperturaService: ActaAperturaService,
   ) {}
 
   @Get()
@@ -66,6 +69,32 @@ export class EleccionesController implements IEleccionController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<EleccionResponseDto> {
     return this.eleccionesService.obtenerPorId(idEleccion);
+  }
+
+  @Get(':idEleccion/acta-apertura')
+  @ApiOperation({
+    summary: 'Compilar el Acta de Apertura del comicio (VOTAR-374)',
+    description:
+      'Consolida el volumen de votantes del padrón, los candidatos postulados, ' +
+      'la raíz de Merkle anclada y la dirección del Smart Contract. El PDF ' +
+      'institucional se genera client-side a partir de esta respuesta.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'OK',
+    type: ActaAperturaResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'El comicio aún no fue abierto (estado BORRADOR o CONFIGURADA)',
+  })
+  async obtenerActaApertura(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<ActaAperturaResponseDto> {
+    return this.actaAperturaService.generar(idEleccion);
   }
 
   @Post()

@@ -26,6 +26,8 @@ lerna-debug.log*
 !/uploads/
 !/uploads/candidatos/
 !/uploads/listas/
+!/uploads/sistema/
+!/uploads/sistema/.gitkeep
 
 # IDEs and editors
 /.idea

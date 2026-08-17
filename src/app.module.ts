@@ -6,6 +6,7 @@ import { AppService } from '@/app.service';
 import { CommonRateLimitModule } from '@/common/rate-limit/common-rate-limit.module';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
 import { CategoriasModule } from '@/categoria/categoria.module';
+import { ConfiguracionSistemaModule } from '@/configuracion-sistema/configuracion-sistema.module';
 import { getDatabaseConfig } from '@/config/database.config';
 import { envValidationSchema } from '@/config/env.validation';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
@@ -39,6 +40,7 @@ import { AuditModule } from '@/audit/audit.module';
     DashboardPublicoModule,
     CategoriasModule,
     AuditModule,
+    ConfiguracionSistemaModule,
   ],
   controllers: [AppController],
   providers: [AppService],
