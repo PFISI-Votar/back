@@ -28,6 +28,7 @@ const createService = (deps?: {
       deps?.configuracion ?? {
         idEleccion: 7,
         mostrarResultadosTiempoReal: true,
+        permitirVotoNulo: true,
       },
     ),
   };
@@ -123,8 +124,23 @@ describe('ParticipacionPublicService — VOTAR-433', () => {
     expect(actual.formula.porcentajeParticipacion).toBe(25);
     expect(actual.formula.expresion).toBe('(25 + 0 + 0) / 100 × 100 = 25%');
     expect(actual.formula.totalSufragios).toBe(25);
+    expect(actual.permitirVotoNulo).toBe(true);
     expect(actual.serieTemporal.length).toBeGreaterThan(0);
     expect(actual.serieTemporal.at(-1)?.acumulado).toBe(25);
+  });
+
+  it('VOTAR-447: propaga permitirVotoNulo desde la configuración del comicio', async () => {
+    const { service } = createService({
+      configuracion: {
+        idEleccion: 7,
+        mostrarResultadosTiempoReal: true,
+        permitirVotoNulo: false,
+      },
+    });
+
+    const actual = await service.obtenerParticipacionPublica(7);
+
+    expect(actual.permitirVotoNulo).toBe(false);
   });
 
   it('UAT-01: incluye curva temporal de afluencia desde snapshot DB', async () => {
