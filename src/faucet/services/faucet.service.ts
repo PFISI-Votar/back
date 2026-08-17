@@ -1,4 +1,8 @@
-import { Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JsonRpcProvider, Wallet, formatEther, parseEther } from 'ethers';
 import { MailService } from '@/common/mail/mail.service';
@@ -67,7 +71,9 @@ export class FaucetService {
 
     const wallets = this.getTestWalletAddresses();
     if (wallets.length === 0) {
-      this.logger.warn('No hay wallets de prueba configuradas (TEST_WALLET_ADDRESSES).');
+      this.logger.warn(
+        'No hay wallets de prueba configuradas (TEST_WALLET_ADDRESSES).',
+      );
       return;
     }
 
@@ -82,8 +88,12 @@ export class FaucetService {
         );
       } catch (error) {
         const message =
-          error instanceof Error ? error.message : 'Error desconocido en recarga de faucet';
-        this.logger.error(`Error al procesar recarga de ${address}: ${message}`);
+          error instanceof Error
+            ? error.message
+            : 'Error desconocido en recarga de faucet';
+        this.logger.error(
+          `Error al procesar recarga de ${address}: ${message}`,
+        );
       }
     }
   }

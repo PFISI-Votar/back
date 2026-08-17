@@ -3,11 +3,11 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { MailService } from './mail.service';
 
-const sendMailMock = jest.fn();
+const sendMailMock = jest.fn<Promise<{ messageId: string }>, [unknown]>();
 
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(() => ({
-    sendMail: (...args: unknown[]) => sendMailMock(...args),
+    sendMail: (options: unknown) => sendMailMock(options),
   })),
 }));
 

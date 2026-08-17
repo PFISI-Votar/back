@@ -1,10 +1,9 @@
-// src/faucet/services/faucet.service.spec.ts
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
 import { parseEther } from 'ethers';
 import { FaucetService } from './faucet.service';
-import { MailService } from '@/common/mail/mail.service';
+import { MailService, MailOptions } from '@/common/mail/mail.service';
 
 const mockGetBalance = jest.fn();
 const mockSendTransaction = jest.fn();
@@ -25,7 +24,7 @@ jest.mock('ethers', () => {
 
 describe('FaucetService', () => {
   let service: FaucetService;
-  let mailService: { sendMail: jest.Mock };
+  let mailService: { sendMail: jest.Mock<Promise<boolean>, [MailOptions]> };
   let balances: Record<string, bigint>;
 
   const configValues: Record<string, string> = {
@@ -49,9 +48,11 @@ describe('FaucetService', () => {
       '0x222': parseEther('0.1'), // ya en el mínimo, no debe tocarse
     };
 
-    mockGetBalance.mockImplementation(async (address: string) => balances[address] ?? 0n);
+    mockGetBalance.mockImplementation(
+      (address: string) => balances[address] ?? 0n,
+    );
     mockSendTransaction.mockImplementation(
-      async ({ to, value }: { to: string; value: bigint }) => {
+      ({ to, value }: { to: string; value: bigint }) => {
         balances['0xMASTERADDRESS'] -= value;
         balances[to] = (balances[to] ?? 0n) + value;
         return {
@@ -61,7 +62,11 @@ describe('FaucetService', () => {
       },
     );
 
-    mailService = { sendMail: jest.fn().mockResolvedValue(true) };
+    mailService = {
+      sendMail: jest
+        .fn<Promise<boolean>, [MailOptions]>()
+        .mockResolvedValue(true),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -103,7 +108,7 @@ describe('FaucetService', () => {
       expect(mailService.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'auditor@utn.edu.ar',
-          subject: expect.stringContaining('Faucet Maestro'),
+          subject: expect.stringContaining('Faucet Maestro') as string,
         }),
       );
     });
@@ -114,7 +119,9 @@ describe('FaucetService', () => {
       await service.checkAndTopUpWallets();
 
       expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('0xTXHASH'));
-      expect(logSpy).toHaveBeenCalledWith(expect.stringContaining('faucet maestro restante'));
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('faucet maestro restante'),
+      );
 
       logSpy.mockRestore();
     });

@@ -10,6 +10,10 @@ export interface MailOptions {
   html?: string;
 }
 
+interface SendMailResult {
+  messageId: string;
+}
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -35,18 +39,22 @@ export class MailService {
   async sendMail(options: MailOptions): Promise<boolean> {
     try {
       const from = this.configService.get<string>('SMTP_FROM');
-      const info = await this.transporter.sendMail({
+      const info = (await this.transporter.sendMail({
         from,
         to: options.to,
         subject: options.subject,
         text: options.text,
         html: options.html,
-      });
-      this.logger.log(`Mail enviado a ${options.to} (messageId: ${info.messageId})`);
+      })) as SendMailResult;
+      this.logger.log(
+        `Mail enviado a ${options.to} (messageId: ${info.messageId})`,
+      );
       return true;
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Error desconocido al enviar mail';
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido al enviar mail';
       this.logger.error(`Error al enviar mail a ${options.to}: ${message}`);
       return false;
     }

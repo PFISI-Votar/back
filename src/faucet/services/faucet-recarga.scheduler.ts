@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { FaucetService } from './faucet.service';
 
 /**
@@ -23,7 +28,9 @@ export class FaucetRecargaScheduler implements OnModuleInit, OnModuleDestroy {
 
   private async runCheck(): Promise<void> {
     if (this.isRunning) {
-      this.logger.warn('Tick de faucet omitido: la corrida anterior sigue en curso.');
+      this.logger.warn(
+        'Tick de faucet omitido: la corrida anterior sigue en curso.',
+      );
       return;
     }
     this.isRunning = true;
@@ -31,8 +38,12 @@ export class FaucetRecargaScheduler implements OnModuleInit, OnModuleDestroy {
       await this.faucetService.checkAndTopUpWallets();
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Error desconocido en scheduler de faucet';
-      this.logger.error(`Error en scheduler de aprovisionamiento de gas: ${message}`);
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en scheduler de faucet';
+      this.logger.error(
+        `Error en scheduler de aprovisionamiento de gas: ${message}`,
+      );
     } finally {
       this.isRunning = false;
     }
