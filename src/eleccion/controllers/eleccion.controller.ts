@@ -20,6 +20,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
+import { PauserAuth } from '@/auth/decorators/pauser-auth.decorator';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { ActaAperturaResponseDto } from '@/eleccion/dto/acta-apertura-response.dto';
 import { ActaCierreResponseDto } from '@/eleccion/dto/acta-cierre-response.dto';
@@ -35,6 +36,10 @@ import { ActaAperturaService } from '@/eleccion/services/acta-apertura.service';
 import { ActaCierreService } from '@/eleccion/services/acta-cierre.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
 import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
+import { PausaComicioService } from '@/eleccion/pausa/services/pausa-comicio.service';
+import { PausarComicioDto } from '@/eleccion/pausa/dto/pausar-comicio.dto';
+import { ReanudarComicioDto } from '@/eleccion/pausa/dto/reanudar-comicio.dto';
+import { EstadoSolicitudPausaResponseDto } from '@/eleccion/pausa/dto/estado-solicitud-pausa-response.dto';
 import { ArchivarComicioService } from '@/eleccion/services/archivar-comicio.service';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
@@ -47,6 +52,7 @@ export class EleccionesController implements IEleccionController {
     private readonly eleccionesService: EleccionesService,
     private readonly aperturaComicioService: AperturaComicioService,
     private readonly cierreComicioService: CierreComicioService,
+    private readonly pausaComicioService: PausaComicioService,
     private readonly archivarComicioService: ArchivarComicioService,
     private readonly actaAperturaService: ActaAperturaService,
     private readonly actaCierreService: ActaCierreService,
@@ -291,6 +297,102 @@ export class EleccionesController implements IEleccionController {
       this.resolveClientIp(req),
     );
     return this.eleccionesService.obtenerPorId(idEleccion);
+  }
+
+  @Post(':idEleccion/pausar')
+  @PauserAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Solicitar/confirmar la pausa de emergencia del comicio (VOTAR-347)',
+    description:
+      'Requiere rol PAUSER. La primera autoridad crea la solicitud y queda confirmada automáticamente; ' +
+      'se ejecuta on-chain (pause(reason) en BallotContract + VoteRegistry) recién cuando PAUSE_CONFIRMATIONS_REQUIRED ' +
+      'autoridades PAUSER distintas confirmaron. Ninguna cuenta individual puede pausar en solitario.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Confirmación registrada (y ejecutada on-chain si se alcanzó el umbral)',
+    type: EstadoSolicitudPausaResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya confirmaste esta solicitud, o hay una operación en curso',
+  })
+  @ApiResponse({
+    status: 422,
+    description: 'El comicio no está ABIERTA, o ya está pausado',
+  })
+  async pausarComicio(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Body() dto: PausarComicioDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<EstadoSolicitudPausaResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    return this.pausaComicioService.solicitarPausa(
+      idEleccion,
+      user.sub,
+      dto.razon,
+      this.resolveClientIp(req),
+    );
+  }
+
+  @Post(':idEleccion/reanudar')
+  @PauserAuth()
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Solicitar/confirmar la reanudación del comicio pausado (VOTAR-347)',
+    description:
+      'Mismo esquema de confirmación de PAUSE_CONFIRMATIONS_REQUIRED autoridades PAUSER distintas que /pausar.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description:
+      'Confirmación registrada (y ejecutada on-chain si se alcanzó el umbral)',
+    type: EstadoSolicitudPausaResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 409,
+    description: 'Ya confirmaste esta solicitud, o hay una operación en curso',
+  })
+  @ApiResponse({ status: 422, description: 'El comicio no está pausado' })
+  async reanudarComicio(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Body() dto: ReanudarComicioDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<EstadoSolicitudPausaResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    return this.pausaComicioService.solicitarReanudacion(
+      idEleccion,
+      user.sub,
+      dto.razon,
+      this.resolveClientIp(req),
+    );
+  }
+
+  @Get(':idEleccion/pausar/estado')
+  @ApiOperation({
+    summary:
+      'Estado de la solicitud de pausa/reanudación pendiente (VOTAR-347)',
+    description:
+      'Devuelve null si no hay ninguna solicitud PENDIENTE para el comicio.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'OK',
+    type: EstadoSolicitudPausaResponseDto,
+  })
+  async estadoPausa(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<EstadoSolicitudPausaResponseDto | null> {
+    return this.pausaComicioService.obtenerEstadoPendiente(idEleccion);
   }
 
   @Post(':idEleccion/archivar')

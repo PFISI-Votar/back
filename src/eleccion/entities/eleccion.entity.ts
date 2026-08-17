@@ -52,6 +52,18 @@ export class Eleccion {
   @Column({ name: 'minimo_candidatos_por_lista', type: 'int', nullable: true })
   minimoCandidatosPorLista!: number | null;
 
+  @ApiProperty({
+    description:
+      'VOTAR-347: eje ortogonal a `estado` — el comicio puede estar ABIERTA y pausada a la vez.',
+    default: false,
+  })
+  @Column({ name: 'pausada', type: 'boolean', default: false })
+  pausada!: boolean;
+
+  @ApiProperty({ required: false })
+  @Column({ name: 'pausada_en', type: 'timestamptz', nullable: true })
+  pausadaEn!: Date | null;
+
   @ApiProperty()
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   fechaCreacion!: Date;
