@@ -65,6 +65,9 @@ export const envValidationSchema = Joi.object({
 
   PRIVATE_KEY: Joi.string().optional(),
   ADMIN_MULTISIG_ADDRESS: Joi.string().optional(),
+  PAUSER_OPERATOR_ADDRESS: Joi.string().optional(),
+  /** VOTAR-347 — confirmaciones de autoridades PAUSER distintas requeridas antes de emitir la tx. */
+  PAUSE_CONFIRMATIONS_REQUIRED: Joi.number().integer().min(1).default(2),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
   /** Env-first AuditView/VoteRegistry override read by resolveContractsFromEnv (VOTAR-365). */
   AUDIT_VIEW_CONTRACT_ADDRESS: Joi.string().optional(),

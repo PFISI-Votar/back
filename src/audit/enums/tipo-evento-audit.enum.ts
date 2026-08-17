@@ -9,4 +9,7 @@ export enum TipoEventoAudit {
   COMICIO_ARCHIVADO = 'COMICIO_ARCHIVADO',
   /** Sufragio anónimo: sin IP/UA/session/votanteHash (VOTAR-379). */
   VOTO_EMITIDO = 'VOTO_EMITIDO',
+  /** VOTAR-347: pausa/reanudación de emergencia del comicio. */
+  COMICIO_PAUSADO = 'COMICIO_PAUSADO',
+  COMICIO_REANUDADO = 'COMICIO_REANUDADO',
 }

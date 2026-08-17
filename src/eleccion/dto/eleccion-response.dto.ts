@@ -23,6 +23,15 @@ export class EleccionResponseDto {
   @ApiProperty({ enum: EleccionEstado })
   estado: EleccionEstado;
 
+  @ApiProperty({
+    description:
+      'VOTAR-347: eje ortogonal a `estado` — puede estar ABIERTA y pausada a la vez.',
+  })
+  pausada: boolean;
+
+  @ApiPropertyOptional()
+  pausadaEn?: Date | null;
+
   @ApiProperty({ enum: TipoVotacion })
   tipoVotacion: TipoVotacion;
 
