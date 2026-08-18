@@ -4,8 +4,9 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JsonRpcProvider, Wallet, formatEther, parseEther } from 'ethers';
+import { Wallet, formatEther, parseEther, type Provider } from 'ethers';
 import { MailService } from '@/common/mail/mail.service';
+import { RpcProviderFactory } from '@/blockchain/rpc/rpc-provider.factory';
 
 interface TopUpResult {
   address: string;
@@ -31,17 +32,8 @@ export class FaucetService {
   constructor(
     private readonly configService: ConfigService,
     private readonly mailService: MailService,
+    private readonly rpcProviderFactory: RpcProviderFactory,
   ) {}
-
-  private requireRpcUrl(): string {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
-    if (!rpcUrl) {
-      throw new ServiceUnavailableException(
-        'Aprovisionamiento de gas no configurado (SEPOLIA_RPC_URL).',
-      );
-    }
-    return rpcUrl;
-  }
 
   private requireMasterPrivateKey(): string {
     const key = this.configService.get<string>('FAUCET_MASTER_PRIVATE_KEY');
@@ -76,7 +68,7 @@ export class FaucetService {
    * único mail agregado al final, no uno por wallet afectada.
    */
   async checkAndTopUpWallets(): Promise<void> {
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.rpcProviderFactory.create();
     const masterWallet = new Wallet(this.requireMasterPrivateKey(), provider);
     const minBalance = parseEther(this.getMinBalanceEth());
     const topUpTarget = parseEther(this.getTopUpTargetEth());
@@ -124,7 +116,7 @@ export class FaucetService {
   }
 
   private async topUpWalletIfNeeded(
-    provider: JsonRpcProvider,
+    provider: Provider,
     masterWallet: Wallet,
     address: string,
     minBalance: bigint,
@@ -175,7 +167,7 @@ export class FaucetService {
   }
 
   private async notifyInsufficientFunds(
-    provider: JsonRpcProvider,
+    provider: Provider,
     masterWallet: Wallet,
     walletsSinFondos: InsufficientFundsResult[],
   ): Promise<void> {
