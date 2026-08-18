@@ -22,7 +22,7 @@ export class MailService {
   constructor(private readonly configService: ConfigService) {
     this.transporter = nodemailer.createTransport({
       host: this.configService.get<string>('SMTP_HOST'),
-      port: this.configService.get<number>('SMTP_PORT'),
+      port: Number(this.configService.get<string>('SMTP_PORT')),
       secure: false, // STARTTLS en 587, no SSL directo
       auth: {
         user: this.configService.get<string>('SMTP_USER'),

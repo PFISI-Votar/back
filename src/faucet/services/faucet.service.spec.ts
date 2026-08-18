@@ -105,12 +105,30 @@ describe('FaucetService', () => {
       await service.checkAndTopUpWallets();
 
       expect(mockSendTransaction).not.toHaveBeenCalled();
+      expect(mailService.sendMail).toHaveBeenCalledTimes(1);
       expect(mailService.sendMail).toHaveBeenCalledWith(
         expect.objectContaining({
           to: 'auditor@utn.edu.ar',
           subject: expect.stringContaining('Faucet Maestro') as string,
         }),
       );
+    });
+
+    it('manda un único mail agregado cuando hay múltiples wallets sin fondos suficientes', async () => {
+      // Forzamos que también 0x222 esté por debajo del mínimo, así hay
+      // dos wallets afectadas por la falta de fondos del maestro.
+      balances['0x222'] = parseEther('0.01');
+      balances['0xMASTERADDRESS'] = 0n;
+
+      await service.checkAndTopUpWallets();
+
+      expect(mockSendTransaction).not.toHaveBeenCalled();
+      // Un solo mail, no uno por wallet afectada.
+      expect(mailService.sendMail).toHaveBeenCalledTimes(1);
+      const [sentOptions] = mailService.sendMail.mock.calls[0];
+      expect(sentOptions.text).toContain('0x111');
+      expect(sentOptions.text).toContain('0x222');
+      expect(sentOptions.subject).toContain('2 wallet');
     });
 
     it('UAT-04: el log detalla el hash de la tx y el balance remanente del faucet', async () => {

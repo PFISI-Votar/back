@@ -88,4 +88,8 @@ export const envValidationSchema = Joi.object({
     then: Joi.string().min(16).required(),
     otherwise: Joi.string().min(8).optional(),
   }),
+  /** VOTAR-387 — habilita el scheduler de aprovisionamiento de gas. Default false para evitar que cada instancia local dispare contra el Faucet Maestro compartido. */
+  FAUCET_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  /** VOTAR-387 — private key del Faucet Maestro (aprovisionamiento de gas de test). */
+  FAUCET_MASTER_PRIVATE_KEY: Joi.string().optional(),
 });

@@ -14,6 +14,16 @@ interface TopUpResult {
   balanceDespuesEth: string;
 }
 
+interface InsufficientFundsResult {
+  address: string;
+  amountRequeridoEth: string;
+}
+
+type TopUpOutcome =
+  | { status: 'omitido' }
+  | { status: 'recargado'; result: TopUpResult }
+  | { status: 'fondos_insuficientes'; result: InsufficientFundsResult };
+
 @Injectable()
 export class FaucetService {
   private readonly logger = new Logger(FaucetService.name);
@@ -62,6 +72,8 @@ export class FaucetService {
   /**
    * Revisa el balance de cada wallet de prueba y recarga desde el Faucet
    * Maestro las que estén por debajo del mínimo operativo (VOTAR-387).
+   * Si el Faucet Maestro no alcanza para una o más wallets, se manda un
+   * único mail agregado al final, no uno por wallet afectada.
    */
   async checkAndTopUpWallets(): Promise<void> {
     const provider = new JsonRpcProvider(this.requireRpcUrl());
@@ -77,15 +89,20 @@ export class FaucetService {
       return;
     }
 
+    const walletsSinFondos: InsufficientFundsResult[] = [];
+
     for (const address of wallets) {
       try {
-        await this.topUpWalletIfNeeded(
+        const outcome = await this.topUpWalletIfNeeded(
           provider,
           masterWallet,
           address,
           minBalance,
           topUpTarget,
         );
+        if (outcome.status === 'fondos_insuficientes') {
+          walletsSinFondos.push(outcome.result);
+        }
       } catch (error) {
         const message =
           error instanceof Error
@@ -96,6 +113,14 @@ export class FaucetService {
         );
       }
     }
+
+    if (walletsSinFondos.length > 0) {
+      await this.notifyInsufficientFunds(
+        provider,
+        masterWallet,
+        walletsSinFondos,
+      );
+    }
   }
 
   private async topUpWalletIfNeeded(
@@ -104,24 +129,27 @@ export class FaucetService {
     address: string,
     minBalance: bigint,
     topUpTarget: bigint,
-  ): Promise<TopUpResult | null> {
+  ): Promise<TopUpOutcome> {
     const balance = await provider.getBalance(address);
     if (balance >= minBalance) {
-      return null;
+      return { status: 'omitido' };
     }
 
     const amountToSend = topUpTarget - balance;
     const masterBalance = await provider.getBalance(masterWallet.address);
 
     if (masterBalance < amountToSend) {
-      const message = `Faucet Maestro sin fondos suficientes. Balance: ${formatEther(masterBalance)} ETH, requerido: ${formatEther(amountToSend)} ETH para recargar ${address}.`;
-      this.logger.error(message);
-      await this.mailService.sendMail({
-        to: this.configService.get<string>('ALERT_EMAIL_TO') ?? '',
-        subject: '[VOTAR] Faucet Maestro sin fondos',
-        text: message,
-      });
-      return null;
+      this.logger.error(
+        `Faucet Maestro sin fondos suficientes para recargar ${address}. ` +
+          `Balance maestro: ${formatEther(masterBalance)} ETH, requerido: ${formatEther(amountToSend)} ETH.`,
+      );
+      return {
+        status: 'fondos_insuficientes',
+        result: {
+          address,
+          amountRequeridoEth: formatEther(amountToSend),
+        },
+      };
     }
 
     const tx = await masterWallet.sendTransaction({
@@ -136,10 +164,36 @@ export class FaucetService {
     );
 
     return {
-      address,
-      txHash: receipt?.hash ?? tx.hash,
-      balanceAntesEth: formatEther(balance),
-      balanceDespuesEth: formatEther(balanceDespues),
+      status: 'recargado',
+      result: {
+        address,
+        txHash: receipt?.hash ?? tx.hash,
+        balanceAntesEth: formatEther(balance),
+        balanceDespuesEth: formatEther(balanceDespues),
+      },
     };
+  }
+
+  private async notifyInsufficientFunds(
+    provider: JsonRpcProvider,
+    masterWallet: Wallet,
+    walletsSinFondos: InsufficientFundsResult[],
+  ): Promise<void> {
+    const masterBalance = await provider.getBalance(masterWallet.address);
+    const detalle = walletsSinFondos
+      .map((w) => `- ${w.address}: requiere ${w.amountRequeridoEth} ETH`)
+      .join('\n');
+
+    const text =
+      `El Faucet Maestro (${masterWallet.address}) no tiene fondos suficientes ` +
+      `para recargar ${walletsSinFondos.length} wallet(s) de prueba.\n\n` +
+      `Balance actual del Faucet Maestro: ${formatEther(masterBalance)} ETH\n\n` +
+      `Wallets afectadas:\n${detalle}`;
+
+    await this.mailService.sendMail({
+      to: this.configService.get<string>('ALERT_EMAIL_TO') ?? '',
+      subject: `[VOTAR] Faucet Maestro sin fondos (${walletsSinFondos.length} wallet(s) afectada(s))`,
+      text,
+    });
   }
 }
