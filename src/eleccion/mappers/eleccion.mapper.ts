@@ -14,6 +14,8 @@ export const mapEleccionToResponseDto = (
   fechaInicio: eleccion.fechaInicio,
   fechaFin: eleccion.fechaFin,
   estado: eleccion.estado,
+  pausada: eleccion.pausada,
+  pausadaEn: eleccion.pausadaEn,
   tipoVotacion: eleccion.tipoVotacion,
   roles: categorias
     .sort((a, b) => a.orden - b.orden)

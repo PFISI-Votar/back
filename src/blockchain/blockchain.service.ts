@@ -96,6 +96,7 @@ export type ContratoEstadoOnChain = {
     hash: string;
     publicado: boolean;
     publicadoEn: string | null;
+    consistente: boolean;
   };
   revoto: {
     habilitado: boolean;
@@ -389,17 +390,11 @@ export class BlockchainService {
   }
 
   buildExplorerUrl(txHash: string): string {
-    const base =
-      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
-      'https://sepolia.etherscan.io';
-    return `${base}/tx/${txHash}`;
+    return `${this.explorerBaseUrl()}/tx/${txHash}`;
   }
 
   buildExplorerAddressUrl(contractAddress: string): string {
-    const base =
-      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
-      'https://sepolia.etherscan.io';
-    return `${base}/address/${contractAddress}`;
+    return `${this.explorerBaseUrl()}/address/${contractAddress}`;
   }
 
   getChainId(): number {
@@ -1198,6 +1193,239 @@ export class BlockchainService {
   }
 
   /**
+   * VOTAR-347 — pauses BallotContract + VoteRegistry for a comicio (emergency
+   * stop). Deliberately does NOT touch MerkleRootStore/ElectionFactory (shared
+   * singletons across every election) — pausing those would freeze the whole
+   * platform, out of scope for a per-comicio pause. Idempotent: if a contract
+   * is already paused, that leg is reported via `alreadyPaused` rather than
+   * failing the whole operation (the caller — PausaComicioService — may retry
+   * after a partial failure on a prior confirmation).
+   */
+  async pauseElection(
+    idEleccion: number,
+    reason: string,
+  ): Promise<{
+    ballotTxHash: string;
+    voteRegistryTxHash: string;
+    ballotAlreadyPaused: boolean;
+    voteRegistryAlreadyPaused: boolean;
+  }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'La pausa on-chain no está configurada (SEPOLIA_RPC_URL, PRIVATE_KEY).',
+      );
+    }
+
+    const { ballot: ballotAddress, voteRegistry: voteRegistryAddress } =
+      await this.resolveElectionContracts(idEleccion);
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+
+    // Secuencial, no Promise.all: un mismo Wallet enviando dos txs en paralelo
+    // puede pedirle el nonce al provider dos veces antes de que la primera tx
+    // quede "pending" en el nodo, y la segunda llega con el mismo nonce →
+    // "replacement transaction underpriced". Esperar la confirmación de la
+    // primera antes de mandar la segunda evita la colisión.
+    const ballotResult = await this.pauseContract(
+      ballotAddress,
+      BALLOT_CONTRACT_ABI,
+      wallet,
+      reason,
+      'BallotContract',
+      idEleccion,
+    );
+    const voteRegistryResult = await this.pauseContract(
+      voteRegistryAddress,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      wallet,
+      reason,
+      'VoteRegistry',
+      idEleccion,
+    );
+
+    return {
+      ballotTxHash: ballotResult.txHash,
+      voteRegistryTxHash: voteRegistryResult.txHash,
+      ballotAlreadyPaused: ballotResult.alreadyPaused,
+      voteRegistryAlreadyPaused: voteRegistryResult.alreadyPaused,
+    };
+  }
+
+  /**
+   * VOTAR-347 — resumes BallotContract + VoteRegistry for a comicio. See
+   * {@link pauseElection} for the singleton-exclusion and idempotency notes.
+   */
+  async unpauseElection(idEleccion: number): Promise<{
+    ballotTxHash: string;
+    voteRegistryTxHash: string;
+    ballotAlreadyUnpaused: boolean;
+    voteRegistryAlreadyUnpaused: boolean;
+  }> {
+    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'La reanudación on-chain no está configurada (SEPOLIA_RPC_URL, PRIVATE_KEY).',
+      );
+    }
+
+    const { ballot: ballotAddress, voteRegistry: voteRegistryAddress } =
+      await this.resolveElectionContracts(idEleccion);
+
+    const provider = new JsonRpcProvider(rpcUrl);
+    const wallet = new Wallet(privateKey, provider);
+
+    // Secuencial — ver comentario equivalente en pauseElection.
+    const ballotResult = await this.unpauseContract(
+      ballotAddress,
+      BALLOT_CONTRACT_ABI,
+      wallet,
+      'BallotContract',
+      idEleccion,
+    );
+    const voteRegistryResult = await this.unpauseContract(
+      voteRegistryAddress,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      wallet,
+      'VoteRegistry',
+      idEleccion,
+    );
+
+    return {
+      ballotTxHash: ballotResult.txHash,
+      voteRegistryTxHash: voteRegistryResult.txHash,
+      ballotAlreadyUnpaused: ballotResult.alreadyUnpaused,
+      voteRegistryAlreadyUnpaused: voteRegistryResult.alreadyUnpaused,
+    };
+  }
+
+  private async pauseContract(
+    address: string,
+    abi: InterfaceAbi,
+    wallet: Wallet,
+    reason: string,
+    label: string,
+    idEleccion: number,
+  ): Promise<{ txHash: string; alreadyPaused: boolean }> {
+    const contract = new Contract(address, abi, wallet) as unknown as {
+      'pause(string)': (reason: string) => Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract['pause(string)'](reason);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = await this.decodeMinedRevertErrorName(error, abi);
+
+      if (
+        decodedName === 'EnforcedPause' ||
+        message.includes('EnforcedPause')
+      ) {
+        this.logger.warn(
+          `${label} del comicio ${idEleccion} ya estaba pausado on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', alreadyPaused: true };
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          `La cuenta configurada no posee PAUSER_ROLE en ${label}.`,
+        );
+      }
+      if (this.isReplacementUnderpricedError(error)) {
+        throw new ServiceUnavailableException(
+          `Ya hay otra transacción de la misma cuenta operativa en curso para ${label}. ` +
+            'Esperá un momento a que confirme en Sepolia y volvé a intentar la pausa.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo pausar ${label} on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        `La pausa de ${label} no devolvió recibo de confirmación.`,
+      );
+    }
+
+    this.indexTxSilently(idEleccion, receipt.hash);
+    return { txHash: receipt.hash, alreadyPaused: false };
+  }
+
+  private async unpauseContract(
+    address: string,
+    abi: InterfaceAbi,
+    wallet: Wallet,
+    label: string,
+    idEleccion: number,
+  ): Promise<{ txHash: string; alreadyUnpaused: boolean }> {
+    const contract = new Contract(address, abi, wallet) as unknown as {
+      unpause: () => Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.unpause();
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = await this.decodeMinedRevertErrorName(error, abi);
+
+      if (
+        decodedName === 'ExpectedPause' ||
+        message.includes('ExpectedPause')
+      ) {
+        this.logger.warn(
+          `${label} del comicio ${idEleccion} ya estaba activo on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', alreadyUnpaused: true };
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          `La cuenta configurada no posee PAUSER_ROLE en ${label}.`,
+        );
+      }
+      if (this.isReplacementUnderpricedError(error)) {
+        throw new ServiceUnavailableException(
+          `Ya hay otra transacción de la misma cuenta operativa en curso para ${label}. ` +
+            'Esperá un momento a que confirme en Sepolia y volvé a intentar la reanudación.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo reanudar ${label} on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        `La reanudación de ${label} no devolvió recibo de confirmación.`,
+      );
+    }
+
+    this.indexTxSilently(idEleccion, receipt.hash);
+    return { txHash: receipt.hash, alreadyUnpaused: false };
+  }
+
+  /**
    * VOTAR-345: seals the votable candidate set on VoteRegistry before an
    * election opens. One-shot on-chain — a second call for the same election
    * is treated as idempotent (the set is already sealed, not an error) so
@@ -1455,6 +1683,7 @@ export class BlockchainService {
         hash: root === ZERO_MERKLE_ROOT ? ZERO_MERKLE_ROOT : root,
         publicado,
         publicadoEn,
+        consistente: !(publicado && root === ZERO_MERKLE_ROOT),
       },
       revoto: revote,
       contratos: {
@@ -2209,12 +2438,8 @@ export class BlockchainService {
     error: unknown,
     abi: InterfaceAbi,
   ): string | undefined {
-    const err = error as {
-      data?: unknown;
-      info?: { error?: { data?: unknown } };
-    };
-    const data = err?.data ?? err?.info?.error?.data;
-    if (typeof data !== 'string' || !data.startsWith('0x')) {
+    const data = this.extractRevertData(error);
+    if (!data) {
       return undefined;
     }
     try {
@@ -2222,6 +2447,75 @@ export class BlockchainService {
     } catch {
       return undefined;
     }
+  }
+
+  private extractRevertData(error: unknown): string | undefined {
+    const err = error as {
+      data?: unknown;
+      info?: { error?: { data?: unknown } };
+    };
+    const data = err?.data ?? err?.info?.error?.data;
+    return typeof data === 'string' && data.startsWith('0x') ? data : undefined;
+  }
+
+  /**
+   * VOTAR-347 — {@link decodeContractErrorName} only works when ethers already
+   * attached the raw revert data to the error (true for pre-flight failures
+   * like a failed estimateGas). A transaction that was actually broadcast and
+   * MINED with `status: 0` does NOT carry revert data on its receipt — ethers
+   * surfaces it as a bare CALL_EXCEPTION with `reason`/`data` both null. To
+   * recover the reason (e.g. tell "already paused" apart from a real failure)
+   * we replay the exact call at the block it reverted in.
+   */
+  private async decodeMinedRevertErrorName(
+    error: unknown,
+    abi: InterfaceAbi,
+  ): Promise<string | undefined> {
+    const direct = this.decodeContractErrorName(error, abi);
+    if (direct) {
+      return direct;
+    }
+
+    const err = error as {
+      transaction?: { to?: string; from?: string; data?: string };
+      receipt?: { blockNumber?: number };
+    };
+    if (!err?.transaction?.to || !err?.transaction?.data) {
+      return undefined;
+    }
+
+    try {
+      const provider = new JsonRpcProvider(this.requireRpcUrl());
+      await provider.call({
+        to: err.transaction.to,
+        from: err.transaction.from,
+        data: err.transaction.data,
+        blockTag: err.receipt?.blockNumber,
+      });
+      return undefined;
+    } catch (replayError) {
+      const data = this.extractRevertData(replayError);
+      if (!data) {
+        return undefined;
+      }
+      try {
+        return new Interface(abi).parseError(data)?.name;
+      } catch {
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * VOTAR-347 — ethers surfaces a stuck/colliding nonce (two txs from the same
+   * wallet racing for the same nonce, or a prior tx still pending with a gas
+   * price the new one doesn't beat) as ethers error code REPLACEMENT_UNDERPRICED
+   * or NONCE_EXPIRED. Both mean "wait for the network, then retry" — not a
+   * contract-level failure — so they get a distinct, human-readable message.
+   */
+  private isReplacementUnderpricedError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code;
+    return code === 'REPLACEMENT_UNDERPRICED' || code === 'NONCE_EXPIRED';
   }
 
   private requireRpcUrl(): string {
@@ -2232,6 +2526,13 @@ export class BlockchainService {
       );
     }
     return rpcUrl;
+  }
+
+  private explorerBaseUrl(): string {
+    return (
+      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
+      'https://sepolia.etherscan.io'
+    );
   }
 
   private async resolveRevoteLimitsOnChain(

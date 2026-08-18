@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0x796e59e2ce2209e2fa5c4b55748cbaf22a7403bab23d1c6940e20122edbbaa4b",
+  "abiHash": "0x13f7e52cb35e8e69b84fa21d66a81561f31bbd9d497dbe67e3f1a121af1d3191",
   "abi": [
     {
       "inputs": [
@@ -156,6 +156,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -655,6 +674,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -810,6 +842,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-08T17:44:12.963Z",
+  "exportedAt": "2026-08-12T18:30:50.206Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
