@@ -1,6 +1,6 @@
 {
   "contractName": "ElectionFactory",
-  "abiHash": "0x6f9daf25f9bc6f032f30c06ea72bd77eace4d5b13ab380f871845f843fc081dc",
+  "abiHash": "0x00112af3a7a641785ee53ad6c6dfe8ccfa159de69de38602870b0e5cd67af944",
   "abi": [
     {
       "inputs": [
@@ -12,6 +12,11 @@
         {
           "internalType": "address",
           "name": "merkleRootStoreAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "pauserOperator_",
           "type": "address"
         }
       ],
@@ -90,6 +95,11 @@
     {
       "inputs": [],
       "name": "MerkleRootStoreIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PauserOperatorIsZeroAddress",
       "type": "error"
     },
     {
@@ -172,6 +182,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -606,6 +635,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -620,6 +662,19 @@
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pauserOperator",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         }
       ],
       "stateMutability": "view",
@@ -688,6 +743,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-08T17:44:12.964Z",
+  "exportedAt": "2026-08-12T18:30:50.208Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

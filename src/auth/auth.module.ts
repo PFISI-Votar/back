@@ -18,6 +18,7 @@ import { VoterElectionGuard } from '@/auth/guards/voter-election.guard';
 import { VoterJwtAuthGuard } from '@/auth/guards/voter-jwt-auth.guard';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
+import { PauserRoleGuard } from '@/auth/guards/pauser-role.guard';
 import { AuthService } from '@/auth/services/auth.service';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { JwtKeysService } from '@/auth/services/jwt-keys.service';
@@ -92,6 +93,7 @@ import { PadronModule } from '@/padron/padron.module';
     VoterJwtAuthGuard,
     VoterElectionGuard,
     RolesGuard,
+    PauserRoleGuard,
   ],
   exports: [
     AuthService,
@@ -100,6 +102,7 @@ import { PadronModule } from '@/padron/padron.module';
     VoterJwtAuthGuard,
     VoterElectionGuard,
     RolesGuard,
+    PauserRoleGuard,
     JwtModule,
     AuditModule,
     JwtKeysService,

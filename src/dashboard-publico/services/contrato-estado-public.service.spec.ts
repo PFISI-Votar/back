@@ -8,6 +8,7 @@ const onChainMock = {
     hash: '0x' + 'ab'.repeat(32),
     publicado: true,
     publicadoEn: '2026-08-08T12:00:00.000Z',
+    consistente: true,
   },
   revoto: {
     habilitado: true,
@@ -92,6 +93,7 @@ describe('ContratoEstadoPublicService — VOTAR-367', () => {
 
     expect(actual.estadoOnChain.etiqueta).toBe('ABIERTA');
     expect(actual.merkleRoot.hash).toBe(onChainMock.merkleRoot.hash);
+    expect(actual.merkleRoot.consistente).toBe(true);
     expect(actual.contratos.auditView.explorerUrl).toContain('etherscan.io');
     expect(actual.revoto.maxVotosPorVotante).toBe(3);
     expect(actual.fuenteDatos).toContain('getElectionState');
