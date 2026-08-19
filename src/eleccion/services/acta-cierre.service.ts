@@ -5,9 +5,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { ConfiguracionSistemaService } from '@/configuracion-sistema/configuracion-sistema.service';
 import { ActaCierreResponseDto } from '@/eleccion/dto/acta-cierre-response.dto';
+import { RegistrarHashActaCierreResponseDto } from '@/eleccion/dto/registrar-hash-acta-cierre-response.dto';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { EscrutinioService } from '@/escrutinio/services/escrutinio.service';
@@ -33,9 +35,10 @@ export class ActaCierreService {
     private readonly escrutinioService: EscrutinioService,
     private readonly blockchainService: BlockchainService,
     private readonly configuracionSistemaService: ConfiguracionSistemaService,
+    private readonly auditLoggerService: AuditLoggerService,
   ) {}
 
-  async generar(idEleccion: number): Promise<ActaCierreResponseDto> {
+  private async obtenerEleccionCerrada(idEleccion: number): Promise<Eleccion> {
     const eleccion = await this.eleccionRepository.findOne({
       where: { idEleccion },
     });
@@ -45,6 +48,11 @@ export class ActaCierreService {
     if (ESTADOS_SIN_CIERRE.includes(eleccion.estado)) {
       throw new UnprocessableEntityException('El comicio aún no fue cerrado');
     }
+    return eleccion;
+  }
+
+  async generar(idEleccion: number): Promise<ActaCierreResponseDto> {
+    const eleccion = await this.obtenerEleccionCerrada(idEleccion);
 
     const [escrutinio, onChain, configuracion] = await Promise.all([
       this.escrutinioService.obtenerResultados(idEleccion),
@@ -73,6 +81,30 @@ export class ActaCierreService {
         modo: configuracion.actaCierreModo,
         plantillaTexto: configuracion.actaCierrePlantillaTexto,
       },
+    };
+  }
+
+  async registrarHash(input: {
+    idEleccion: number;
+    actorId: string;
+    hashPdf: string;
+    timestamp: Date;
+    ipOrigen?: string;
+  }): Promise<RegistrarHashActaCierreResponseDto> {
+    await this.obtenerEleccionCerrada(input.idEleccion);
+
+    const log = await this.auditLoggerService.logActaCierreGenerada({
+      idEleccion: input.idEleccion,
+      actorId: input.actorId,
+      hashPdf: input.hashPdf,
+      timestamp: input.timestamp,
+      ipOrigen: input.ipOrigen,
+    });
+
+    return {
+      idLog: log.idLog,
+      hashPdfSha256: input.hashPdf,
+      timestamp: input.timestamp.toISOString(),
     };
   }
 }

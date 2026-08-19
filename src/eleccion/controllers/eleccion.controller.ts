@@ -21,7 +21,6 @@ import {
 } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { PauserAuth } from '@/auth/decorators/pauser-auth.decorator';
-import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { ActaAperturaResponseDto } from '@/eleccion/dto/acta-apertura-response.dto';
 import { ActaCierreResponseDto } from '@/eleccion/dto/acta-cierre-response.dto';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
@@ -56,7 +55,6 @@ export class EleccionesController implements IEleccionController {
     private readonly archivarComicioService: ArchivarComicioService,
     private readonly actaAperturaService: ActaAperturaService,
     private readonly actaCierreService: ActaCierreService,
-    private readonly auditLoggerService: AuditLoggerService,
   ) {}
 
   @Get()
@@ -152,25 +150,25 @@ export class EleccionesController implements IEleccionController {
     description: 'Hash registrado en la bitácora de auditoría',
     type: RegistrarHashActaCierreResponseDto,
   })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'El comicio aún no fue cerrado (estado BORRADOR, CONFIGURADA o ABIERTA)',
+  })
   async registrarHashActaCierre(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
     @Body() dto: RegistrarHashActaCierreDto,
     @Req() req: AuthenticatedRequest,
   ): Promise<RegistrarHashActaCierreResponseDto> {
     const user = assertAuthenticatedUser(req.user);
-    const timestamp = new Date();
-    const log = await this.auditLoggerService.logActaCierreGenerada({
+    return this.actaCierreService.registrarHash({
       idEleccion,
       actorId: user.sub,
       hashPdf: dto.hashPdf,
-      timestamp,
+      timestamp: new Date(),
       ipOrigen: this.resolveClientIp(req),
     });
-    return {
-      idLog: log.idLog,
-      hashPdfSha256: dto.hashPdf,
-      timestamp: timestamp.toISOString(),
-    };
   }
 
   @Post()

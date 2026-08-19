@@ -113,6 +113,9 @@ const createService = (deps?: { eleccion?: unknown }) => {
       fechaActualizacion: '2026-08-01T00:00:00.000Z',
     }),
   };
+  const auditLoggerService = {
+    logActaCierreGenerada: jest.fn().mockResolvedValue({ idLog: 42 }),
+  };
 
   return {
     service: new ActaCierreService(
@@ -120,11 +123,13 @@ const createService = (deps?: { eleccion?: unknown }) => {
       escrutinioService as never,
       blockchainService as never,
       configuracionSistemaService as never,
+      auditLoggerService as never,
     ),
     eleccionRepository,
     escrutinioService,
     blockchainService,
     configuracionSistemaService,
+    auditLoggerService,
   };
 };
 
@@ -186,4 +191,71 @@ describe('ActaCierreService', () => {
 
     await expect(service.generar(7)).resolves.toBeDefined();
   });
+});
+
+describe('ActaCierreService.registrarHash', () => {
+  const hashPdf = 'a'.repeat(64);
+
+  it('registers the hash in the audit log when election is CERRADA (UAT-01)', async () => {
+    const { service, auditLoggerService } = createService();
+    const timestamp = new Date('2026-09-01T18:05:00.000Z');
+
+    const actual = await service.registrarHash({
+      idEleccion: 7,
+      actorId: 'autoridad-1',
+      hashPdf,
+      timestamp,
+      ipOrigen: '127.0.0.1',
+    });
+
+    expect(auditLoggerService.logActaCierreGenerada).toHaveBeenCalledWith({
+      idEleccion: 7,
+      actorId: 'autoridad-1',
+      hashPdf,
+      timestamp,
+      ipOrigen: '127.0.0.1',
+    });
+    expect(actual).toEqual({
+      idLog: 42,
+      hashPdfSha256: hashPdf,
+      timestamp: timestamp.toISOString(),
+    });
+  });
+
+  it('throws NotFoundException and does not log when election is missing', async () => {
+    const { service, auditLoggerService } = createService({ eleccion: null });
+
+    await expect(
+      service.registrarHash({
+        idEleccion: 99,
+        actorId: 'autoridad-1',
+        hashPdf,
+        timestamp: new Date(),
+      }),
+    ).rejects.toBeInstanceOf(NotFoundException);
+    expect(auditLoggerService.logActaCierreGenerada).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    EleccionEstado.BORRADOR,
+    EleccionEstado.CONFIGURADA,
+    EleccionEstado.ABIERTA,
+  ])(
+    'throws UnprocessableEntityException and does not log when election is %s',
+    async (estado) => {
+      const { service, auditLoggerService } = createService({
+        eleccion: { ...eleccionCerrada, estado },
+      });
+
+      await expect(
+        service.registrarHash({
+          idEleccion: 7,
+          actorId: 'autoridad-1',
+          hashPdf,
+          timestamp: new Date(),
+        }),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+      expect(auditLoggerService.logActaCierreGenerada).not.toHaveBeenCalled();
+    },
+  );
 });
