@@ -11,6 +11,8 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 
+export type AperturaModo = 'MANUAL' | 'AUTOMATICO';
+
 @Entity('eleccion')
 export class Eleccion {
   @ApiProperty({ example: 1, description: 'Identificador único del comicio' })
@@ -72,4 +74,31 @@ export class Eleccion {
 
   @OneToOne(() => ConfiguracionComicio, (config) => config.eleccion)
   configuracionComicio?: ConfiguracionComicio;
+
+  /**
+   * Snapshot de la apertura real del comicio (VOTAR-374, Acta de Apertura).
+   * `aperturaActorNombre`/`Rol` provienen de AUTORIDAD_ELECTORAL, que no
+   * está sujeta al anonimato de Ley 25.326 (eso aplica solo a VOTANTE/VOTO).
+   * En apertura automática (scheduler) quedan en null: no hay responsable
+   * humano que registrar.
+   */
+  @ApiProperty({ required: false, nullable: true })
+  @Column({ name: 'apertura_real_en', type: 'timestamptz', nullable: true })
+  aperturaRealEn!: Date | null;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    example: 'MANUAL',
+  })
+  @Column({ name: 'apertura_modo', type: 'varchar', nullable: true })
+  aperturaModo!: AperturaModo | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @Column({ name: 'apertura_actor_nombre', type: 'varchar', nullable: true })
+  aperturaActorNombre!: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @Column({ name: 'apertura_actor_rol', type: 'varchar', nullable: true })
+  aperturaActorRol!: string | null;
 }

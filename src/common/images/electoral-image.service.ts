@@ -4,7 +4,10 @@ import { randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import sharp from 'sharp';
 
-export type ElectoralImageKind = 'candidato-foto' | 'lista-logo';
+export type ElectoralImageKind =
+  | 'candidato-foto'
+  | 'lista-logo'
+  | 'logo-institucional';
 
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
@@ -12,19 +15,37 @@ const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
 
 const IMAGE_CONFIG: Record<
   ElectoralImageKind,
-  { directory: string; width: number; height: number; label: string }
+  {
+    directory: string;
+    width: number;
+    height: number;
+    label: string;
+    fit: 'cover' | 'contain';
+  }
 > = {
   'candidato-foto': {
     directory: 'candidatos',
     width: 400,
     height: 400,
     label: 'fotografía de candidato',
+    fit: 'cover',
   },
   'lista-logo': {
     directory: 'listas',
     width: 800,
     height: 400,
     label: 'logotipo de lista',
+    fit: 'cover',
+  },
+  'logo-institucional': {
+    directory: 'sistema',
+    width: 600,
+    height: 600,
+    label: 'logotipo institucional',
+    // 'contain' evita recortar logos con proporciones no cuadradas
+    // (se embeben en el encabezado de reportes institucionales, ej. Acta
+    // de Apertura VOTAR-374).
+    fit: 'contain',
   },
 };
 
@@ -48,9 +69,10 @@ export class ElectoralImageService {
     await sharp(file.buffer, { failOn: 'error' })
       .rotate()
       .resize(config.width, config.height, {
-        fit: 'cover',
+        fit: config.fit,
         position: 'center',
       })
+      .flatten({ background: '#ffffff' })
       .jpeg({ quality: 88, mozjpeg: true })
       .toFile(targetPath);
 
