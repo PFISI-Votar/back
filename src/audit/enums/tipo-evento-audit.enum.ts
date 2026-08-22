@@ -12,4 +12,6 @@ export enum TipoEventoAudit {
   /** VOTAR-347: pausa/reanudación de emergencia del comicio. */
   COMICIO_PAUSADO = 'COMICIO_PAUSADO',
   COMICIO_REANUDADO = 'COMICIO_REANUDADO',
+  /** Hash SHA-256 del PDF del Acta de Cierre emitido, para verificación de integridad. */
+  ACTA_CIERRE_GENERADA = 'ACTA_CIERRE_GENERADA',
 }

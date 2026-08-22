@@ -78,6 +78,14 @@ export interface LogComicioArchivadoInput {
   ipOrigen?: string;
 }
 
+export interface LogActaCierreGeneradaInput {
+  idEleccion: number;
+  actorId: string;
+  hashPdf: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
 export interface LogLoginInput {
   actorId: string;
   timestamp?: Date;
@@ -390,6 +398,38 @@ export class AuditLoggerService {
       endpoint: '/elecciones/:id/archivar',
       ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
       datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * Registra de forma permanente el hash SHA-256 del PDF del Acta de
+   * Cierre emitido (verificación de integridad del documento). El hash va
+   * en `datosAdicionales` — `hashRegistro`/`hashAnterior` son el
+   * encadenamiento interno de la bitácora, no deben confundirse con este.
+   */
+  async logActaCierreGenerada(
+    input: LogActaCierreGeneradaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const descripcion = `Usuario Administrador con ID Ofuscado ${actorOfuscado} generó el Acta de Cierre del comicio ${input.idEleccion} (hash SHA-256 ${input.hashPdf}) desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.ACTA_CIERRE_GENERADA,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/acta-cierre/hash',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        hashPdfSha256: input.hashPdf,
+        algoritmo: 'SHA-256',
         idOperadorOfuscado: actorOfuscado,
         identificadorTerminal: terminal,
         horaUtc: utc,
