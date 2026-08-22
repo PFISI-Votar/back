@@ -14,11 +14,13 @@ import {
   ContractTransactionResponse,
   Interface,
   type InterfaceAbi,
-  JsonRpcProvider,
   Log,
+  type Provider,
+  type TransactionReceipt,
   Wallet,
   ZeroAddress,
 } from 'ethers';
+import { RpcProviderFactory } from './rpc/rpc-provider.factory';
 import {
   AUDIT_VIEW_CONTRACT_ABI,
   ELECTION_FACTORY_GET_ELECTION_ABI,
@@ -211,6 +213,7 @@ export class BlockchainService {
     private readonly contratoBlockchainService: ContratoBlockchainService,
     @Inject(forwardRef(() => TransaccionBlockchainService))
     private readonly transaccionBlockchainService: TransaccionBlockchainService,
+    private readonly rpcProviderFactory: RpcProviderFactory,
   ) {}
 
   /**
@@ -220,7 +223,7 @@ export class BlockchainService {
     electionId: number,
     merkleRoot: string,
   ): Promise<PublishMerkleRootResult> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -232,7 +235,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -352,7 +355,7 @@ export class BlockchainService {
     electionId: number,
     expectedRoot: string,
   ): Promise<boolean> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -363,7 +366,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       contractAddress,
       MERKLE_ROOT_STORE_ABI,
@@ -437,10 +440,8 @@ export class BlockchainService {
   async getVoteParticipationByTxHash(
     txHash: string,
   ): Promise<VoteParticipationOnChain> {
-    const rpcUrl = this.requireRpcUrl();
-
-    const provider = new JsonRpcProvider(rpcUrl);
-    let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
+    const provider = this.createProvider();
+    let receipt: TransactionReceipt | null;
     try {
       receipt = await provider.getTransactionReceipt(txHash);
     } catch (error) {
@@ -533,7 +534,7 @@ export class BlockchainService {
     electionId: number,
     estado: EleccionEstado,
   ): Promise<{ txHash: string; blockNumber: number }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -552,7 +553,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -621,7 +622,7 @@ export class BlockchainService {
     idEleccion: number,
     revoteConfig: RevoteConfigOnChain,
   ): Promise<DeployElectionStackResult> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
 
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
@@ -644,7 +645,7 @@ export class BlockchainService {
       throw error;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const readFactory = new Contract(
       factoryAddress,
       ELECTION_FACTORY_CONTRACT_ABI,
@@ -769,7 +770,7 @@ export class BlockchainService {
   async lockRevoteConfig(
     idEleccion: number,
   ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
 
     if (!rpcUrl || !privateKey) {
@@ -792,7 +793,7 @@ export class BlockchainService {
       throw error;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       factoryAddress,
@@ -862,7 +863,7 @@ export class BlockchainService {
    * Prefer ElectionFactory.getElection(...).auditView; fallback ADMIN_MULTISIG_ADDRESS.
    */
   async resolveAuditViewAddress(electionId: number): Promise<string> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
@@ -873,7 +874,7 @@ export class BlockchainService {
     );
     if (factoryAddress) {
       try {
-        const provider = new JsonRpcProvider(rpcUrl);
+        const provider = this.createProvider();
         const factory = new Contract(
           factoryAddress,
           ELECTION_FACTORY_GET_ELECTION_ABI,
@@ -907,13 +908,13 @@ export class BlockchainService {
     auditViewAddress: string,
     electionId: number,
   ): Promise<ParticipationStatsOnChain> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
       );
     }
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       auditViewAddress,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -946,13 +947,13 @@ export class BlockchainService {
     electionId: number,
     candidateId: number | bigint,
   ): Promise<number> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
       );
     }
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       auditViewAddress,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1012,7 +1013,7 @@ export class BlockchainService {
     startTime: Date,
     endTime: Date,
   ): Promise<{ txHash: string; blockNumber: number }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -1036,7 +1037,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -1123,7 +1124,7 @@ export class BlockchainService {
   async lockElectionWindow(
     electionId: number,
   ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -1135,7 +1136,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -1210,7 +1211,7 @@ export class BlockchainService {
     ballotAlreadyPaused: boolean;
     voteRegistryAlreadyPaused: boolean;
   }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
@@ -1221,7 +1222,7 @@ export class BlockchainService {
     const { ballot: ballotAddress, voteRegistry: voteRegistryAddress } =
       await this.resolveElectionContracts(idEleccion);
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
 
     // Secuencial, no Promise.all: un mismo Wallet enviando dos txs en paralelo
@@ -1264,7 +1265,7 @@ export class BlockchainService {
     ballotAlreadyUnpaused: boolean;
     voteRegistryAlreadyUnpaused: boolean;
   }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
       throw new ServiceUnavailableException(
@@ -1275,7 +1276,7 @@ export class BlockchainService {
     const { ballot: ballotAddress, voteRegistry: voteRegistryAddress } =
       await this.resolveElectionContracts(idEleccion);
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
 
     // Secuencial — ver comentario equivalente en pauseElection.
@@ -1435,7 +1436,7 @@ export class BlockchainService {
     idEleccion: number,
     candidateIds: number[],
   ): Promise<{ txHash: string; blockNumber: number; alreadySealed: boolean }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
 
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
@@ -1447,7 +1448,7 @@ export class BlockchainService {
     const { voteRegistry: voteRegistryAddress } =
       await this.resolveElectionContracts(idEleccion);
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       voteRegistryAddress,
@@ -1537,7 +1538,7 @@ export class BlockchainService {
       return fromEnv;
     }
 
-    const rpcUrl = this.requireRpcUrl();
+    this.requireRpcUrl();
     let factory: { direccionContrato: string };
     try {
       factory = await this.contratoBlockchainService.getElectionFactory();
@@ -1550,7 +1551,7 @@ export class BlockchainService {
       throw error;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       factory.direccionContrato,
       ELECTION_FACTORY_CONTRACT_ABI,
@@ -1608,7 +1609,7 @@ export class BlockchainService {
     idEleccion: number,
   ): Promise<ContratoEstadoOnChain> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1704,7 +1705,7 @@ export class BlockchainService {
     idEleccion: number,
   ): Promise<ParticipationStatsOnChain> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1742,7 +1743,7 @@ export class BlockchainService {
     candidateId: number,
   ): Promise<number> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1781,7 +1782,7 @@ export class BlockchainService {
   ): Promise<VoteCastTimelinePoint[]> {
     const hours = Math.max(1, Math.min(72, Math.floor(horasVentana)));
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const registry = new Contract(
       addresses.voteRegistry,
       VOTE_REGISTRY_CONTRACT_ABI,
@@ -1896,7 +1897,7 @@ export class BlockchainService {
    */
   async getRevoteStats(idEleccion: number): Promise<RevoteStatsOnChain> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1950,8 +1951,8 @@ export class BlockchainService {
     txHash: string,
     idEleccion: number,
   ): Promise<(BlockchainTransactionAuditEntry & { logIndex: number }) | null> {
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
-    let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
+    const provider = this.createProvider();
+    let receipt: TransactionReceipt | null;
     try {
       receipt = await provider.getTransactionReceipt(txHash);
     } catch (error) {
@@ -2123,7 +2124,7 @@ export class BlockchainService {
   }
 
   private async resolveBlockTimestampIso(
-    provider: JsonRpcProvider,
+    provider: Provider,
     blockNumber: number,
   ): Promise<string> {
     const block = await provider.getBlock(blockNumber);
@@ -2141,7 +2142,7 @@ export class BlockchainService {
     idEleccion: number,
   ): Promise<BlockchainTransactionAuditEntry[]> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const merkleRootStoreAddress =
       this.configService.get<string>('MERKLE_ROOT_STORE_ADDRESS') ??
       ZERO_ADDRESS;
@@ -2485,7 +2486,7 @@ export class BlockchainService {
     }
 
     try {
-      const provider = new JsonRpcProvider(this.requireRpcUrl());
+      const provider = this.createProvider();
       await provider.call({
         to: err.transaction.to,
         from: err.transaction.from,
@@ -2519,13 +2520,17 @@ export class BlockchainService {
   }
 
   private requireRpcUrl(): string {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La consulta on-chain no está configurada (SEPOLIA_RPC_URL).',
       );
     }
     return rpcUrl;
+  }
+
+  private createProvider(): Provider {
+    return this.rpcProviderFactory.create();
   }
 
   private explorerBaseUrl(): string {
@@ -2549,7 +2554,7 @@ export class BlockchainService {
       };
     }
 
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const ballot = new Contract(
       addresses.ballot,
       BALLOT_REVOTE_READ_ABI,
@@ -2598,7 +2603,7 @@ export class BlockchainService {
       return null;
     }
 
-    const rpcUrl = this.requireRpcUrl();
+    this.requireRpcUrl();
     let factory: { direccionContrato: string };
     try {
       factory = await this.contratoBlockchainService.getElectionFactory();
@@ -2606,7 +2611,7 @@ export class BlockchainService {
       return null;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       factory.direccionContrato,
       ELECTION_FACTORY_GET_ELECTION_ABI,

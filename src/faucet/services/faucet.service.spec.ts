@@ -4,6 +4,7 @@ import { Logger } from '@nestjs/common';
 import { parseEther } from 'ethers';
 import { FaucetService } from './faucet.service';
 import { MailService, MailOptions } from '@/common/mail/mail.service';
+import { RpcProviderFactory } from '@/blockchain/rpc/rpc-provider.factory';
 
 const mockGetBalance = jest.fn();
 const mockSendTransaction = jest.fn();
@@ -76,6 +77,7 @@ describe('FaucetService', () => {
           useValue: { get: jest.fn((key: string) => configValues[key]) },
         },
         { provide: MailService, useValue: mailService },
+        RpcProviderFactory,
       ],
     }).compile();
 

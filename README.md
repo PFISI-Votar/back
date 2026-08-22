@@ -135,4 +135,4 @@ npm run lint
 
 ## Producción / Sepolia
 
-Para testnet, configurá manualmente en `.env` las variables `SEPOLIA_RPC_URL`, `MERKLE_ROOT_STORE_ADDRESS` y `MERKLE_UPDATER_PRIVATE_KEY`. Ver `docs/US-335-sepolia-uat.md`.
+Para testnet, configurá manualmente en `.env` las variables `SEPOLIA_RPC_URL`, `SEPOLIA_RPC_FALLBACK_URLS` (opcional, VOTAR-386), `MERKLE_ROOT_STORE_ADDRESS` y `MERKLE_UPDATER_PRIVATE_KEY`. Ver `docs/US-335-sepolia-uat.md`.
