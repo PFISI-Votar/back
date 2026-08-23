@@ -127,7 +127,7 @@ describe('sendJsonRpcWithFailover — VOTAR-386', () => {
       .mockResolvedValueOnce({ status: 200, json: { result: '0x1' } });
     const logger = { warn: jest.fn() };
     const onReferenceBlock = jest.fn();
-    const readBlockNumber = jest.fn(async (url) => {
+    const readBlockNumber = jest.fn(async (url: string) => {
       if (url.includes('infura')) {
         return 100;
       }

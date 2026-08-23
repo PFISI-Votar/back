@@ -117,8 +117,8 @@ describe('FailoverJsonRpcProvider — VOTAR-386', () => {
     expect(
       logger.warn.mock.calls.some((args) => String(args[0]).includes('skew=')),
     ).toBe(true);
-    expect(fetchImpl.mock.calls.some(([url]) => String(url).includes('quiknode'))).toBe(
-      true,
-    );
+    expect(
+      fetchImpl.mock.calls.some(([url]) => String(url).includes('quiknode')),
+    ).toBe(true);
   });
 });
