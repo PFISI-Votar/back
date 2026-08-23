@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Get,
   HttpCode,
@@ -28,6 +29,7 @@ import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
 import { PadronService } from '@/padron/padron.service';
 import { BoletaDigitalResponseDto } from '@/voto/dto/boleta-digital-response.dto';
 import { EstadoRevotoResponseDto } from '@/voto/dto/estado-revoto-response.dto';
+import { RegistrarConsumoDto } from '@/voto/dto/registrar-consumo.dto';
 import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
 import { RevotePolicyService } from '@/voto/services/revote-policy.service';
 import { VotoService } from '@/voto/services/voto.service';
@@ -112,7 +114,7 @@ export class VotoController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Registrar consumo de un intento tras cast on-chain exitoso (VOTAR-328)',
+      'Registrar consumo de un intento tras cast on-chain exitoso (VOTAR-328 / VOTAR-451)',
   })
   @ApiParam({ name: 'idEleccion', type: Number })
   @ApiResponse({ status: 200, type: EstadoRevotoResponseDto })
@@ -127,10 +129,12 @@ export class VotoController {
   registrarConsumoIntento(
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
     @Req() request: VoterAuthenticatedRequest,
+    @Body() body?: RegistrarConsumoDto,
   ): Promise<EstadoRevotoResponseDto> {
     return this.revotePolicyService.registrarConsumo(
       idEleccion,
       request.user.votanteHash,
+      body?.votosObjetivo,
     );
   }
 }
