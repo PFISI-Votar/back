@@ -1,6 +1,6 @@
 {
   "contractName": "BallotContract",
-  "abiHash": "0xf5f828bc1152862b6c709a9ef4c71fd4ba4cd4afb97d34bea94b0acfa0d16684",
+  "abiHash": "0xecf28424093bdba123aec6c5643579b56e5ec17651263e0d076004260779371c",
   "abi": [
     {
       "inputs": [
@@ -225,6 +225,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -758,6 +777,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -866,6 +898,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-08T17:44:12.963Z",
+  "exportedAt": "2026-08-12T18:30:50.207Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

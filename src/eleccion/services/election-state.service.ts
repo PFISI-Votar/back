@@ -93,6 +93,24 @@ export class ElectionStateService {
     return this.syncOnChainThenPersist(eleccion, EleccionEstado.ESCRUTADA);
   }
 
+  /**
+   * Transitions an election to the ARCHIVADA state.
+   * @dev VOTAR-322: a diferencia de las demás transiciones, esta es
+   * estrictamente off-chain — no llama a `blockchainService` bajo ninguna
+   * circunstancia. El contrato ya quedó inmutable en CLOSED al cerrarse
+   * (transitionToCerrada) y debe permanecer así (costo cero de gas).
+   */
+  async transitionToArchivada(idEleccion: number): Promise<Eleccion> {
+    const eleccion = await this.findEleccionOrFail(idEleccion);
+    if (eleccion.estado !== EleccionEstado.CERRADA) {
+      throw new UnprocessableEntityException(
+        `El comicio debe estar en estado CERRADA para archivarse. Estado actual: ${eleccion.estado}`,
+      );
+    }
+    eleccion.estado = EleccionEstado.ARCHIVADA;
+    return this.eleccionRepository.save(eleccion);
+  }
+
   private async resolveCandidateIds(idEleccion: number): Promise<number[]> {
     const oferta =
       await this.ofertaElectoralQueryService.obtenerOfertaPublicada(idEleccion);

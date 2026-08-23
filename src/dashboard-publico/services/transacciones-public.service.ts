@@ -11,6 +11,9 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 const ESTADOS_ELECCION_CERRADOS = [
   EleccionEstado.CERRADA,
   EleccionEstado.ESCRUTADA,
+  // VOTAR-322: el archivado es off-chain; el acceso público a la evidencia
+  // on-chain debe permanecer intacto tras archivar.
+  EleccionEstado.ARCHIVADA,
 ];
 
 const FUENTE_DATOS = 'Índice append-only verificable on-chain (Etherscan)';

@@ -14,6 +14,9 @@ import { PadronService } from '@/padron/padron.service';
 const ESTADOS_ELECCION_CERRADOS = [
   EleccionEstado.CERRADA,
   EleccionEstado.ESCRUTADA,
+  // VOTAR-322: el archivado es off-chain; el acceso público a la evidencia
+  // on-chain debe permanecer intacto tras archivar.
+  EleccionEstado.ARCHIVADA,
 ];
 
 /**

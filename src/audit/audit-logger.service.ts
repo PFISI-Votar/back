@@ -47,6 +47,45 @@ export interface LogComicioCerradoInput {
   ipOrigen?: string;
 }
 
+export interface LogComicioPausadoInput {
+  idEleccion: number;
+  actorId: string;
+  razon: string;
+  confirmaciones: number;
+  /** VOTAR-347 (follow-up) — vincula la decisión humana con la tx on-chain. */
+  txHashBallot?: string | null;
+  txHashVoteRegistry?: string | null;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogComicioReanudadoInput {
+  idEleccion: number;
+  actorId: string;
+  /** VOTAR-347 (follow-up) — justificación obligatoria de la reanudación. */
+  razon: string;
+  confirmaciones: number;
+  txHashBallot?: string | null;
+  txHashVoteRegistry?: string | null;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogComicioArchivadoInput {
+  idEleccion: number;
+  actorId: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogActaCierreGeneradaInput {
+  idEleccion: number;
+  actorId: string;
+  hashPdf: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
 export interface LogLoginInput {
   actorId: string;
   timestamp?: Date;
@@ -261,6 +300,136 @@ export class AuditLoggerService {
       datosAdicionales: {
         modo: input.modo,
         snapshotCongelado: true,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-347 — pausa de emergencia ejecutada tras alcanzar el umbral de
+   * confirmaciones de autoridades PAUSER distintas. `actorId` es quien aportó
+   * la confirmación que cruzó el umbral; `confirmaciones` deja explícito en
+   * el log que no fue una decisión unilateral.
+   */
+  async logComicioPausado(input: LogComicioPausadoInput): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const txHash = input.txHashBallot || input.txHashVoteRegistry || null;
+    const descripcion =
+      `Comicio ${input.idEleccion} pausado por incidente ("${input.razon}") tras ${input.confirmaciones} ` +
+      `confirmaciones de autoridades PAUSER distintas. Última confirmación por ID Ofuscado ${actorOfuscado} ` +
+      `desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}` +
+      (txHash ? `. Hash de transacción on-chain: ${txHash}` : '');
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_PAUSADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/pausar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        razon: input.razon,
+        confirmaciones: input.confirmaciones,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+        hashTransaccion: txHash,
+        txHashBallot: input.txHashBallot ?? null,
+        txHashVoteRegistry: input.txHashVoteRegistry ?? null,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /** VOTAR-347 — reanudación de emergencia, mismo umbral de confirmaciones que la pausa. */
+  async logComicioReanudado(
+    input: LogComicioReanudadoInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const txHash = input.txHashBallot || input.txHashVoteRegistry || null;
+    const descripcion =
+      `Comicio ${input.idEleccion} reanudado ("${input.razon}") tras ${input.confirmaciones} confirmaciones de ` +
+      `autoridades PAUSER distintas. Última confirmación por ID Ofuscado ${actorOfuscado} desde el identificador ` +
+      `de terminal criptográfico ${terminal} a la hora UTC ${utc}` +
+      (txHash ? `. Hash de transacción on-chain: ${txHash}` : '');
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_REANUDADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/reanudar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        razon: input.razon,
+        confirmaciones: input.confirmaciones,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+        hashTransaccion: txHash,
+        txHashBallot: input.txHashBallot ?? null,
+        txHashVoteRegistry: input.txHashVoteRegistry ?? null,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /** VOTAR-322: archivado off-chain de un comicio CERRADA. */
+  async logComicioArchivado(
+    input: LogComicioArchivadoInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const descripcion = `Usuario Administrador con ID Ofuscado ${actorOfuscado} archivó el comicio ${input.idEleccion} desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_ARCHIVADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/archivar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * Registra de forma permanente el hash SHA-256 del PDF del Acta de
+   * Cierre emitido (verificación de integridad del documento). El hash va
+   * en `datosAdicionales` — `hashRegistro`/`hashAnterior` son el
+   * encadenamiento interno de la bitácora, no deben confundirse con este.
+   */
+  async logActaCierreGenerada(
+    input: LogActaCierreGeneradaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const descripcion = `Usuario Administrador con ID Ofuscado ${actorOfuscado} generó el Acta de Cierre del comicio ${input.idEleccion} (hash SHA-256 ${input.hashPdf}) desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.ACTA_CIERRE_GENERADA,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/acta-cierre/hash',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        hashPdfSha256: input.hashPdf,
+        algoritmo: 'SHA-256',
         idOperadorOfuscado: actorOfuscado,
         identificadorTerminal: terminal,
         horaUtc: utc,

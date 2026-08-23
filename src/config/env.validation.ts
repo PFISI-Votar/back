@@ -65,6 +65,9 @@ export const envValidationSchema = Joi.object({
 
   PRIVATE_KEY: Joi.string().optional(),
   ADMIN_MULTISIG_ADDRESS: Joi.string().optional(),
+  PAUSER_OPERATOR_ADDRESS: Joi.string().optional(),
+  /** VOTAR-347 — confirmaciones de autoridades PAUSER distintas requeridas antes de emitir la tx. */
+  PAUSE_CONFIRMATIONS_REQUIRED: Joi.number().integer().min(1).default(2),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
   /** Env-first AuditView/VoteRegistry override read by resolveContractsFromEnv (VOTAR-365). */
   AUDIT_VIEW_CONTRACT_ADDRESS: Joi.string().optional(),
@@ -88,4 +91,8 @@ export const envValidationSchema = Joi.object({
     then: Joi.string().min(16).required(),
     otherwise: Joi.string().min(8).optional(),
   }),
+  /** VOTAR-387 — habilita el scheduler de aprovisionamiento de gas. Default false para evitar que cada instancia local dispare contra el Faucet Maestro compartido. */
+  FAUCET_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  /** VOTAR-387 — private key del Faucet Maestro (aprovisionamiento de gas de test). */
+  FAUCET_MASTER_PRIVATE_KEY: Joi.string().optional(),
 });
