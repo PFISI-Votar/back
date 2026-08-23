@@ -61,6 +61,14 @@ export const envValidationSchema = Joi.object({
     .uri()
     .default('https://webservice.frvm.utn.edu.ar/autogestion'),
   SEPOLIA_RPC_URL: Joi.string().uri().optional(),
+  /** VOTAR-386 — extra Infura/Alchemy/QuickNode URLs, comma-separated. */
+  SEPOLIA_RPC_FALLBACK_URLS: Joi.string().allow('').optional(),
+  RPC_FAILOVER_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(100)
+    .max(15_000)
+    .default(800),
+  RPC_MAX_BLOCK_SKEW: Joi.number().integer().min(0).max(64).default(5),
   MERKLE_ROOT_STORE_ADDRESS: Joi.string().optional(),
 
   PRIVATE_KEY: Joi.string().optional(),
