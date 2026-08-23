@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { RegistroIntentoSufragio } from '@/voto/entities/registro-intento-sufragio.entity';
 import { RevotePolicyService } from '@/voto/services/revote-policy.service';
 
 const VOTANTE_HASH = 'b'.repeat(64);
@@ -48,6 +49,20 @@ const createService = (options?: {
     ultimoIntentoAt: Date | null;
   }> = [];
 
+  let store: {
+    idEleccion: number;
+    claveIntento: string;
+    votosConsumidos: number;
+    ultimoIntentoAt: Date | null;
+  } | null = registro
+    ? {
+        idEleccion: 1,
+        claveIntento: VOTANTE_HASH,
+        votosConsumidos: registro.votosConsumidos,
+        ultimoIntentoAt: registro.ultimoIntentoAt,
+      }
+    : null;
+
   const eleccionRepository = {
     findOne: jest
       .fn()
@@ -57,30 +72,70 @@ const createService = (options?: {
     findOne: jest.fn().mockResolvedValue(config),
   };
   const intentoRepository = {
-    findOne: jest.fn().mockResolvedValue(
-      registro
-        ? {
-            idEleccion: 1,
-            claveIntento: VOTANTE_HASH,
-            votosConsumidos: registro.votosConsumidos,
-            ultimoIntentoAt: registro.ultimoIntentoAt,
-          }
-        : null,
+    findOne: jest.fn().mockImplementation(() =>
+      Promise.resolve(
+        store
+          ? {
+              ...store,
+            }
+          : null,
+      ),
     ),
     create: jest.fn((data: (typeof saved)[number]) => ({ ...data })),
     save: jest.fn((entity: (typeof saved)[number]) => {
+      store = { ...entity };
       saved.push(entity);
       return Promise.resolve(entity);
     }),
+  };
+
+  const transactionalRepo = {
+    findOne: jest.fn().mockImplementation(() =>
+      Promise.resolve(
+        store
+          ? {
+              ...store,
+            }
+          : null,
+      ),
+    ),
+    findOneOrFail: jest.fn().mockImplementation(() => {
+      if (!store) {
+        return Promise.reject(new Error('missing registro'));
+      }
+      return Promise.resolve({ ...store });
+    }),
+    create: jest.fn((data: Partial<RegistroIntentoSufragio>) => ({
+      ...data,
+    })),
+    save: jest.fn((entity: (typeof saved)[number]) => {
+      store = {
+        idEleccion: entity.idEleccion,
+        claveIntento: entity.claveIntento,
+        votosConsumidos: entity.votosConsumidos,
+        ultimoIntentoAt: entity.ultimoIntentoAt,
+      };
+      saved.push({ ...store });
+      return Promise.resolve(store);
+    }),
+  };
+
+  const dataSource = {
+    transaction: jest.fn(async (cb: (manager: unknown) => Promise<unknown>) =>
+      cb({
+        getRepository: () => transactionalRepo,
+      }),
+    ),
   };
 
   const service = new RevotePolicyService(
     eleccionRepository as never,
     configuracionRepository as never,
     intentoRepository as never,
+    dataSource as never,
   );
 
-  return { service, saved };
+  return { service, saved, storeRef: () => store, transactionalRepo };
 };
 
 describe('RevotePolicyService (VOTAR-328)', () => {
@@ -108,7 +163,7 @@ describe('RevotePolicyService (VOTAR-328)', () => {
 
     const estado = await service.registrarConsumo(1, VOTANTE_HASH);
 
-    expect(saved[0].votosConsumidos).toBe(3);
+    expect(saved[saved.length - 1].votosConsumidos).toBe(3);
     expect(estado).toMatchObject({
       votosConsumidos: 3,
       intentosRestantes: 0,
@@ -223,32 +278,63 @@ describe('RevotePolicyService (VOTAR-328)', () => {
 
     const estado = await service.registrarConsumo(1, VOTANTE_HASH);
 
-    expect(saved[0].votosConsumidos).toBe(2);
+    expect(saved[saved.length - 1].votosConsumidos).toBe(2);
     expect(estado.votosConsumidos).toBe(2);
   });
 
-  it('VOTAR-449: el cooldown de un legajo no bloquea a otro claveIntento distinto', async () => {
+  it('VOTAR-449 / VOTAR-452: el cooldown de un legajo no bloquea a otro claveIntento distinto', async () => {
     const otroHash = 'c'.repeat(64);
+    const stores = new Map<
+      string,
+      {
+        idEleccion: number;
+        claveIntento: string;
+        votosConsumidos: number;
+        ultimoIntentoAt: Date | null;
+      }
+    >();
+    stores.set(VOTANTE_HASH, {
+      idEleccion: 1,
+      claveIntento: VOTANTE_HASH,
+      votosConsumidos: 1,
+      ultimoIntentoAt: new Date(),
+    });
     const intentoRepository = {
-      findOne: jest.fn(
-        ({
-          where,
-        }: {
-          where: { idEleccion: number; claveIntento: string };
-        }) => {
-          if (where.claveIntento === VOTANTE_HASH) {
-            return Promise.resolve({
-              idEleccion: 1,
-              claveIntento: VOTANTE_HASH,
-              votosConsumidos: 1,
-              ultimoIntentoAt: new Date(),
-            });
-          }
-          return Promise.resolve(null);
-        },
-      ),
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          ({ where }: { where: { claveIntento: string } }) => {
+            const row = stores.get(where.claveIntento);
+            return Promise.resolve(row ? { ...row } : null);
+          },
+        ),
       create: jest.fn((data: unknown) => data),
       save: jest.fn((entity: unknown) => Promise.resolve(entity)),
+    };
+    const transactionalRepo = {
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          ({ where }: { where: { claveIntento: string } }) => {
+            const row = stores.get(where.claveIntento);
+            return Promise.resolve(row ? { ...row } : null);
+          },
+        ),
+      findOneOrFail: jest.fn(),
+      create: jest.fn((data: Partial<RegistroIntentoSufragio>) => ({
+        ...data,
+      })),
+      save: jest.fn(
+        (entity: {
+          idEleccion: number;
+          claveIntento: string;
+          votosConsumidos: number;
+          ultimoIntentoAt: Date | null;
+        }) => {
+          stores.set(entity.claveIntento, { ...entity });
+          return Promise.resolve(entity);
+        },
+      ),
     };
     const service = new RevotePolicyService(
       {
@@ -263,6 +349,12 @@ describe('RevotePolicyService (VOTAR-328)', () => {
         }),
       } as never,
       intentoRepository as never,
+      {
+        transaction: jest.fn(
+          async (cb: (manager: unknown) => Promise<unknown>) =>
+            cb({ getRepository: () => transactionalRepo }),
+        ),
+      } as never,
     );
 
     const bloqueado = await service.obtenerEstado(1, VOTANTE_HASH);
@@ -285,6 +377,50 @@ describe('RevotePolicyService (VOTAR-328)', () => {
     expect(saved).toHaveLength(0);
     expect(estado.votosConsumidos).toBe(3);
     expect(estado.intentosRestantes).toBe(0);
+  });
+
+  it('VOTAR-452: sync con votosObjetivo es idempotente ante doble llamada', async () => {
+    const { service, storeRef } = createService({
+      registro: { votosConsumidos: 0, ultimoIntentoAt: null },
+    });
+
+    const first = await service.registrarConsumo(1, VOTANTE_HASH, 1);
+    const second = await service.registrarConsumo(1, VOTANTE_HASH, 1);
+
+    expect(first.votosConsumidos).toBe(1);
+    expect(second.votosConsumidos).toBe(1);
+    expect(storeRef()?.votosConsumidos).toBe(1);
+  });
+
+  it('VOTAR-452: votosObjetivo sincroniza hacia el conteo on-chain sin pasarse del max', async () => {
+    const { service, storeRef } = createService({
+      registro: {
+        votosConsumidos: 1,
+        ultimoIntentoAt: new Date(Date.now() - 120_000),
+      },
+      config: { minIntervaloSegundos: 0, maxVotosPorVotante: 3 },
+    });
+
+    const estado = await service.registrarConsumo(1, VOTANTE_HASH, 99);
+
+    expect(estado.votosConsumidos).toBe(3);
+    expect(storeRef()?.votosConsumidos).toBe(3);
+  });
+
+  it('VOTAR-452: segundo revoto tras cooldown expirado incrementa consumo', async () => {
+    const { service, storeRef } = createService({
+      config: { minIntervaloSegundos: 20, maxVotosPorVotante: 3 },
+      registro: {
+        votosConsumidos: 1,
+        ultimoIntentoAt: new Date(Date.now() - 25_000),
+      },
+    });
+
+    const estado = await service.registrarConsumo(1, VOTANTE_HASH, 2);
+
+    expect(estado.votosConsumidos).toBe(2);
+    expect(estado.intentosRestantes).toBe(1);
+    expect(storeRef()?.votosConsumidos).toBe(2);
   });
 
   it('rechaza consumo si el comicio no está abierto', async () => {
