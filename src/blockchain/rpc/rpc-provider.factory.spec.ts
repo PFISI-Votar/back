@@ -45,6 +45,18 @@ describe('RpcProviderFactory — VOTAR-386', () => {
     expect(factory.create()).toBeInstanceOf(FailoverJsonRpcProvider);
   });
 
+  it('reuses the same provider instance across repeated create() calls', () => {
+    const factory = createFactory({
+      SEPOLIA_RPC_URL: 'https://sepolia.infura.io/v3/aaa',
+      SEPOLIA_RPC_FALLBACK_URLS: 'https://eth-sepolia.g.alchemy.com/v2/bbb',
+      CHAIN_ID: 11155111,
+    });
+
+    const first = factory.create();
+    const second = factory.create();
+    expect(first).toBe(second);
+  });
+
   it('throws when no RPC URL is configured', () => {
     const factory = createFactory({});
     expect(() => factory.create()).toThrow(ServiceUnavailableException);

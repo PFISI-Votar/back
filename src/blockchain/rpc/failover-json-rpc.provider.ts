@@ -78,6 +78,9 @@ export class FailoverJsonRpcProvider extends JsonRpcApiProvider {
       timeoutMs: this.#timeoutMs,
       maxBlockSkew: this.#maxBlockSkew,
       lastKnownBlock: this.#lastKnownBlock,
+      onReferenceBlock: (block) => {
+        this.#lastKnownBlock = block;
+      },
       logger: this.#logger,
       send: (url, body, timeoutMs) => this.#post(url, body, timeoutMs),
       readBlockNumber: (url) => this.#ethBlockNumber(url),

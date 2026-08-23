@@ -16,6 +16,8 @@ import { parseRpcUrls } from './rpc-failover.util';
 @Injectable()
 export class RpcProviderFactory {
   private readonly logger = new Logger(RpcProviderFactory.name);
+  private cachedProvider: Provider | null = null;
+  private cachedUrlsKey: string | null = null;
 
   constructor(private readonly configService: ConfigService) {}
 
@@ -38,6 +40,11 @@ export class RpcProviderFactory {
       );
     }
 
+    const urlsKey = urls.join('|');
+    if (this.cachedProvider && this.cachedUrlsKey === urlsKey) {
+      return this.cachedProvider;
+    }
+
     const chainId = Number(
       this.configService.get<number>('CHAIN_ID') ?? 11_155_111,
     );
@@ -50,22 +57,25 @@ export class RpcProviderFactory {
         RPC_MAX_BLOCK_SKEW,
     );
 
-    if (urls.length === 1) {
-      return new JsonRpcProvider(urls[0]);
-    }
+    const provider =
+      urls.length === 1
+        ? new JsonRpcProvider(urls[0])
+        : new FailoverJsonRpcProvider(urls, {
+            chainId,
+            timeoutMs,
+            maxBlockSkew,
+            logger: {
+              warn: (message, ...optionalParams) => {
+                this.logger.warn(
+                  `${RPC_FAILOVER_LOG_PREFIX} ${message}`,
+                  ...optionalParams,
+                );
+              },
+            },
+          });
 
-    return new FailoverJsonRpcProvider(urls, {
-      chainId,
-      timeoutMs,
-      maxBlockSkew,
-      logger: {
-        warn: (message, ...optionalParams) => {
-          this.logger.warn(
-            `${RPC_FAILOVER_LOG_PREFIX} ${message}`,
-            ...optionalParams,
-          );
-        },
-      },
-    });
+    this.cachedProvider = provider;
+    this.cachedUrlsKey = urlsKey;
+    return provider;
   }
 }

@@ -119,6 +119,43 @@ describe('sendJsonRpcWithFailover — VOTAR-386', () => {
     ).toBe(true);
   });
 
+  it('resolves reference block from the primary before skipping a lagging backup', async () => {
+    const threeUrls = [...urls, 'https://x.quiknode.pro/thirdkey'];
+    const send = jest
+      .fn()
+      .mockRejectedValueOnce(new RpcHttpError(429, 'Too Many Requests'))
+      .mockResolvedValueOnce({ status: 200, json: { result: '0x1' } });
+    const logger = { warn: jest.fn() };
+    const onReferenceBlock = jest.fn();
+    const readBlockNumber = jest.fn(async (url) => {
+      if (url.includes('infura')) {
+        return 100;
+      }
+      if (url.includes('alchemy')) {
+        return 80;
+      }
+      return 100;
+    });
+
+    const json = await sendJsonRpcWithFailover(
+      threeUrls,
+      { method: 'eth_chainId' },
+      {
+        send,
+        logger,
+        maxBlockSkew: 5,
+        readBlockNumber,
+        onReferenceBlock,
+      },
+    );
+
+    expect(json).toEqual({ result: '0x1' });
+    expect(send).toHaveBeenCalledTimes(2);
+    expect(send.mock.calls[1][0]).toBe(threeUrls[2]);
+    expect(readBlockNumber).toHaveBeenCalledWith(threeUrls[0]);
+    expect(onReferenceBlock).toHaveBeenCalledWith(100);
+  });
+
   it('does not rotate on contract-level JSON-RPC errors', async () => {
     const send = jest.fn().mockResolvedValue({
       status: 200,

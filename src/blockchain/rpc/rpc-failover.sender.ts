@@ -45,6 +45,8 @@ export type SendJsonRpcWithFailoverOptions = {
   timeoutMs?: number;
   maxBlockSkew?: number;
   lastKnownBlock?: number | null;
+  /** Persists the reference block height for later failovers on the same provider. */
+  onReferenceBlock?: (block: number) => void;
   logger?: RpcFailoverLogger;
   now?: () => string;
   send: RpcJsonSender;
@@ -85,40 +87,57 @@ export const sendJsonRpcWithFailover = async (
   const maxBlockSkew = options.maxBlockSkew ?? RPC_MAX_BLOCK_SKEW;
   const now = options.now ?? (() => new Date().toISOString());
   let lastError: unknown;
+  let referenceBlock = options.lastKnownBlock ?? null;
+
+  const rememberReferenceBlock = (block: number): void => {
+    referenceBlock = block;
+    options.onReferenceBlock?.(block);
+  };
+
+  const resolveReferenceBlock = async (): Promise<number | null> => {
+    if (referenceBlock != null) {
+      return referenceBlock;
+    }
+    if (!options.readBlockNumber) {
+      return null;
+    }
+    try {
+      const block = await options.readBlockNumber(urls[0]);
+      rememberReferenceBlock(block);
+      return block;
+    } catch {
+      return null;
+    }
+  };
 
   for (let index = 0; index < urls.length; index += 1) {
     const url = urls[index];
     const backupUrl = urls[index + 1];
 
     try {
-      if (
-        index > 0 &&
-        options.readBlockNumber &&
-        options.lastKnownBlock != null
-      ) {
-        const backupBlock = await options.readBlockNumber(url);
-        const skew = Math.abs(options.lastKnownBlock - backupBlock);
-        if (
-          !isBlockSkewAcceptable(
-            options.lastKnownBlock,
-            backupBlock,
-            maxBlockSkew,
-          )
-        ) {
-          lastError = new Error(
-            `RPC block skew ${skew} exceeds max ${maxBlockSkew} on ${describeRpcEndpoint(url)}`,
-          );
-          options.logger?.warn(
-            formatRpcFailoverLog({
-              at: now(),
-              reason: 'unavailable',
-              failedEndpoint: sanitizeRpcUrl(url),
-              backupEndpoint: backupUrl ? sanitizeRpcUrl(backupUrl) : '(none)',
-              message: `skipped backup: block skew ${skew} (ref=${options.lastKnownBlock}, backup=${backupBlock})`,
-              blockSkew: skew,
-            }),
-          );
-          continue;
+      if (index > 0 && options.readBlockNumber) {
+        const refBlock = await resolveReferenceBlock();
+        if (refBlock != null) {
+          const backupBlock = await options.readBlockNumber(url);
+          const skew = Math.abs(refBlock - backupBlock);
+          if (!isBlockSkewAcceptable(refBlock, backupBlock, maxBlockSkew)) {
+            lastError = new Error(
+              `RPC block skew ${skew} exceeds max ${maxBlockSkew} on ${describeRpcEndpoint(url)}`,
+            );
+            options.logger?.warn(
+              formatRpcFailoverLog({
+                at: now(),
+                reason: 'unavailable',
+                failedEndpoint: sanitizeRpcUrl(url),
+                backupEndpoint: backupUrl
+                  ? sanitizeRpcUrl(backupUrl)
+                  : '(none)',
+                message: `skipped backup: block skew ${skew} (ref=${refBlock}, backup=${backupBlock})`,
+                blockSkew: skew,
+              }),
+            );
+            continue;
+          }
         }
       }
 
@@ -140,6 +159,14 @@ export const sendJsonRpcWithFailover = async (
       lastError = error;
       if (!backupUrl || !isRpcFailoverError(error)) {
         throw error;
+      }
+
+      if (referenceBlock == null && options.readBlockNumber) {
+        try {
+          rememberReferenceBlock(await options.readBlockNumber(url));
+        } catch {
+          // Primary may be fully unavailable; skew check best-effort on next hop.
+        }
       }
 
       const event: RpcFailoverEvent = {

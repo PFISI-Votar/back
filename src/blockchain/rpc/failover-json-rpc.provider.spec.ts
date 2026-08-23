@@ -34,7 +34,7 @@ describe('FailoverJsonRpcProvider — VOTAR-386', () => {
 
     const blockNumber = await provider.send('eth_blockNumber', []);
     expect(blockNumber).toBe('0x2a');
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn.mock.calls[0][0]).toContain('reason=rate_limit');
     expect(logger.warn.mock.calls[0][0]).not.toContain('primarysecret');
@@ -68,5 +68,57 @@ describe('FailoverJsonRpcProvider — VOTAR-386', () => {
     await expect(provider.send('eth_chainId', [])).resolves.toBe('0x1');
     expect(Date.now() - started).toBeLessThan(1000);
     expect(logger.warn.mock.calls[0][0]).toContain('reason=timeout');
+  });
+
+  it('skips a lagging backup and uses the next node when block skew is too high', async () => {
+    const logger = { warn: jest.fn() };
+    const fetchImpl = jest.fn(async (input: string, init?: RequestInit) => {
+      const body =
+        init?.body && typeof init.body === 'string'
+          ? (JSON.parse(init.body) as { method?: string })
+          : null;
+      const isBlockNumber = body?.method === 'eth_blockNumber';
+
+      if (input.includes('infura')) {
+        if (isBlockNumber) {
+          return {
+            status: 200,
+            json: async () => jsonRpc('0x64'),
+          } as Response;
+        }
+        return {
+          status: 429,
+          json: async () => ({ error: { message: 'Too Many Requests' } }),
+        } as Response;
+      }
+      if (input.includes('alchemy')) {
+        return {
+          status: 200,
+          json: async () => jsonRpc(isBlockNumber ? '0x50' : '0x1'),
+        } as Response;
+      }
+      return {
+        status: 200,
+        json: async () => jsonRpc(isBlockNumber ? '0x64' : '0x1'),
+      } as Response;
+    });
+
+    const provider = new FailoverJsonRpcProvider(
+      [
+        'https://sepolia.infura.io/v3/primarysecret',
+        'https://eth-sepolia.g.alchemy.com/v2/backupsecret',
+        'https://x.quiknode.pro/thirdsecret',
+      ],
+      { chainId: 11155111, logger, fetchImpl },
+    );
+
+    const chainId = await provider.send('eth_chainId', []);
+    expect(chainId).toBe('0x1');
+    expect(
+      logger.warn.mock.calls.some((args) => String(args[0]).includes('skew=')),
+    ).toBe(true);
+    expect(fetchImpl.mock.calls.some(([url]) => String(url).includes('quiknode'))).toBe(
+      true,
+    );
   });
 });
