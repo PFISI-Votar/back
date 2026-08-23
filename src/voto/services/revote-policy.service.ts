@@ -45,8 +45,8 @@ export class RevotePolicyService {
 
   /**
    * Registra un intento consumido tras un cast on-chain exitoso (antes del logout).
-   * VOTAR-451 — transactional + optional `votosObjetivo` sync so finalize and
-   * catch-up never double-increment for the same on-chain cast.
+   * VOTAR-451 / VOTAR-452 — transactional + optional `votosObjetivo` sync so
+   * finalize and catch-up never double-increment for the same on-chain cast.
    */
   async registrarConsumo(
     idEleccion: number,

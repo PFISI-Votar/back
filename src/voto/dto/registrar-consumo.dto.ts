@@ -3,8 +3,9 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, Max, Min } from 'class-validator';
 
 /**
- * VOTAR-451 — optional on-chain sync target so finalize + catch-up are idempotent.
- * When set, the backend raises `votosConsumidos` to max(current, min(objetivo, max)).
+ * VOTAR-451 / VOTAR-452 — optional on-chain sync target so finalize + catch-up
+ * are idempotent. When set, the backend raises `votosConsumidos` to
+ * max(current, min(objetivo, max)).
  */
 export class RegistrarConsumoDto {
   @ApiPropertyOptional({

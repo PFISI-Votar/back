@@ -238,27 +238,8 @@ describe('RevotePolicyService (VOTAR-328)', () => {
     expect(estado.votosConsumidos).toBe(2);
   });
 
-  it('VOTAR-325: cooldown es por claveIntento (otro votante no queda bloqueado)', async () => {
+  it('VOTAR-449 / VOTAR-452: el cooldown de un legajo no bloquea a otro claveIntento distinto', async () => {
     const otroHash = 'c'.repeat(64);
-    const intentoRepository = {
-      findOne: jest
-        .fn()
-        .mockImplementation(
-          ({ where }: { where: { claveIntento: string } }) => {
-            if (where.claveIntento === VOTANTE_HASH) {
-              return Promise.resolve({
-                idEleccion: 1,
-                claveIntento: VOTANTE_HASH,
-                votosConsumidos: 1,
-                ultimoIntentoAt: new Date(),
-              });
-            }
-            return Promise.resolve(null);
-          },
-        ),
-      create: jest.fn((data: unknown) => data),
-      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
-    };
     const stores = new Map<
       string,
       {
@@ -274,6 +255,18 @@ describe('RevotePolicyService (VOTAR-328)', () => {
       votosConsumidos: 1,
       ultimoIntentoAt: new Date(),
     });
+    const intentoRepository = {
+      findOne: jest
+        .fn()
+        .mockImplementation(
+          ({ where }: { where: { claveIntento: string } }) => {
+            const row = stores.get(where.claveIntento);
+            return Promise.resolve(row ? { ...row } : null);
+          },
+        ),
+      create: jest.fn((data: unknown) => data),
+      save: jest.fn((entity: unknown) => Promise.resolve(entity)),
+    };
     const transactionalRepo = {
       findOne: jest
         .fn()
@@ -342,7 +335,7 @@ describe('RevotePolicyService (VOTAR-328)', () => {
     expect(estado.intentosRestantes).toBe(0);
   });
 
-  it('VOTAR-451: sync con votosObjetivo es idempotente ante doble llamada', async () => {
+  it('VOTAR-451 / VOTAR-452: sync con votosObjetivo es idempotente ante doble llamada', async () => {
     const { service, storeRef } = createService({
       registro: { votosConsumidos: 0, ultimoIntentoAt: null },
     });
@@ -355,7 +348,7 @@ describe('RevotePolicyService (VOTAR-328)', () => {
     expect(storeRef()?.votosConsumidos).toBe(1);
   });
 
-  it('VOTAR-451: votosObjetivo sincroniza hacia el conteo on-chain sin pasarse del max', async () => {
+  it('VOTAR-451 / VOTAR-452: votosObjetivo sincroniza hacia el conteo on-chain sin pasarse del max', async () => {
     const { service, storeRef } = createService({
       registro: {
         votosConsumidos: 1,
@@ -368,6 +361,22 @@ describe('RevotePolicyService (VOTAR-328)', () => {
 
     expect(estado.votosConsumidos).toBe(3);
     expect(storeRef()?.votosConsumidos).toBe(3);
+  });
+
+  it('VOTAR-452: segundo revoto tras cooldown expirado incrementa consumo', async () => {
+    const { service, storeRef } = createService({
+      config: { minIntervaloSegundos: 20, maxVotosPorVotante: 3 },
+      registro: {
+        votosConsumidos: 1,
+        ultimoIntentoAt: new Date(Date.now() - 25_000),
+      },
+    });
+
+    const estado = await service.registrarConsumo(1, VOTANTE_HASH, 2);
+
+    expect(estado.votosConsumidos).toBe(2);
+    expect(estado.intentosRestantes).toBe(1);
+    expect(storeRef()?.votosConsumidos).toBe(2);
   });
 
   it('rechaza consumo si el comicio no está abierto', async () => {

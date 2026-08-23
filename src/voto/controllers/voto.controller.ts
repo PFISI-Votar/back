@@ -114,7 +114,7 @@ export class VotoController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Registrar consumo de un intento tras cast on-chain exitoso (VOTAR-328 / VOTAR-451)',
+      'Registrar consumo de un intento tras cast on-chain exitoso (VOTAR-328 / VOTAR-451 / VOTAR-452)',
   })
   @ApiParam({ name: 'idEleccion', type: Number })
   @ApiResponse({ status: 200, type: EstadoRevotoResponseDto })
