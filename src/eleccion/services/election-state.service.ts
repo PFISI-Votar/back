@@ -15,6 +15,8 @@ import { BlockchainService } from '@/blockchain/blockchain.service';
  * Service responsible for managing election state transitions
  * and synchronizing state changes with the blockchain.
  * @dev VOTAR-336: Hermetic seal integration point.
+ * @dev VOTAR-327: Seals the voting window (MerkleRootStore) and the
+ * RevoteConfig audit trail (ElectionFactory) before opening.
  * Transitions sync on-chain first, then persist off-chain to avoid
  * a window where the DB is ABIERTA before the hermetic seal activates.
  */
@@ -57,6 +59,10 @@ export class ElectionStateService {
         eleccion.fechaInicio,
         eleccion.fechaFin,
       );
+      // VOTAR-327: seal RevoteConfig + voting window before the DB flips to
+      // ABIERTA, same hermetic-seal-before-persist principle as VOTAR-336.
+      await this.blockchainService.lockElectionWindow(idEleccion);
+      await this.blockchainService.lockRevoteConfig(idEleccion);
       return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
     });
   }
@@ -85,6 +91,24 @@ export class ElectionStateService {
       );
     }
     return this.syncOnChainThenPersist(eleccion, EleccionEstado.ESCRUTADA);
+  }
+
+  /**
+   * Transitions an election to the ARCHIVADA state.
+   * @dev VOTAR-322: a diferencia de las demás transiciones, esta es
+   * estrictamente off-chain — no llama a `blockchainService` bajo ninguna
+   * circunstancia. El contrato ya quedó inmutable en CLOSED al cerrarse
+   * (transitionToCerrada) y debe permanecer así (costo cero de gas).
+   */
+  async transitionToArchivada(idEleccion: number): Promise<Eleccion> {
+    const eleccion = await this.findEleccionOrFail(idEleccion);
+    if (eleccion.estado !== EleccionEstado.CERRADA) {
+      throw new UnprocessableEntityException(
+        `El comicio debe estar en estado CERRADA para archivarse. Estado actual: ${eleccion.estado}`,
+      );
+    }
+    eleccion.estado = EleccionEstado.ARCHIVADA;
+    return this.eleccionRepository.save(eleccion);
   }
 
   private async resolveCandidateIds(idEleccion: number): Promise<number[]> {

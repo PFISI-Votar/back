@@ -1,6 +1,6 @@
 {
   "contractName": "MerkleRootStore",
-  "abiHash": "0x0143ace1a5dd69537a83ac9a2dadabbc16faf776847a3b0058a663a435d96e62",
+  "abiHash": "0xfaa29f65ebd2ad569fa7e2f7530d1baf39c7ebf4d699bfaf5e4c1a78350afc3d",
   "abi": [
     {
       "inputs": [
@@ -37,6 +37,17 @@
     {
       "inputs": [],
       "name": "AdminIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ConfigLocked",
       "type": "error"
     },
     {
@@ -80,6 +91,19 @@
       ],
       "name": "RootLocked",
       "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ConfigurationLocked",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -133,6 +157,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -471,6 +514,25 @@
           "type": "uint256"
         }
       ],
+      "name": "isConfigLocked",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
       "name": "isPublished",
       "outputs": [
         {
@@ -480,6 +542,32 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "lockConfig",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -624,6 +712,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-04T02:29:14.580Z",
+  "exportedAt": "2026-08-12T18:30:50.204Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

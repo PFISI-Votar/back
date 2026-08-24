@@ -111,6 +111,33 @@ export class EleccionGateway
   }
 
   /**
+   * VOTAR-347 — emite pausa/reanudación de emergencia a todos los clientes
+   * conectados (autoridades y observadores monitoreando el comicio).
+   */
+  emitEleccionPausada(idEleccion: number, razon: string): void {
+    this.logger.log(`Emitiendo evento de pausa para elección ${idEleccion}`);
+    this.server.emit('eleccion:pausada', { idEleccion, razon });
+  }
+
+  emitEleccionReanudada(idEleccion: number): void {
+    this.logger.log(
+      `Emitiendo evento de reanudación para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:reanudada', { idEleccion });
+  }
+
+  /**
+   * Emite un evento de elección archivada a todos los clientes conectados (VOTAR-322).
+   * @param idEleccion ID de la elección que fue archivada
+   */
+  emitEleccionArchivada(idEleccion: number): void {
+    this.logger.log(
+      `Emitiendo evento de archivado para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:archivada', { idEleccion });
+  }
+
+  /**
    * VOTAR-364: push tally update to dashboard subscribers of a comicio.
    */
   emitResultadosActualizados(payload: ResultadosActualizadosPayload): void {

@@ -1,6 +1,6 @@
 {
   "contractName": "ElectionFactory",
-  "abiHash": "0xd12374873034c50168b0b37cc8b9260792fd6ba56fb0af061b365df80f92f6b0",
+  "abiHash": "0x00112af3a7a641785ee53ad6c6dfe8ccfa159de69de38602870b0e5cd67af944",
   "abi": [
     {
       "inputs": [
@@ -12,6 +12,11 @@
         {
           "internalType": "address",
           "name": "merkleRootStoreAddress",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "pauserOperator_",
           "type": "address"
         }
       ],
@@ -52,7 +57,29 @@
           "type": "uint256"
         }
       ],
+      "name": "ConfigLocked",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
       "name": "ElectionAlreadyExists",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ElectionDoesNotExist",
       "type": "error"
     },
     {
@@ -69,6 +96,24 @@
       "inputs": [],
       "name": "MerkleRootStoreIsZeroAddress",
       "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "PauserOperatorIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "ConfigurationLocked",
+      "type": "event"
     },
     {
       "anonymous": false,
@@ -137,6 +182,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -526,6 +590,38 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "isConfigLocked",
+      "outputs": [
+        {
+          "internalType": "bool",
+          "name": "",
+          "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "lockConfig",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "merkleRootStore",
       "outputs": [
@@ -536,6 +632,19 @@
         }
       ],
       "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
       "type": "function"
     },
     {
@@ -553,6 +662,19 @@
           "internalType": "bool",
           "name": "",
           "type": "bool"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "pauserOperator",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
         }
       ],
       "stateMutability": "view",
@@ -621,6 +743,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-04T02:29:14.585Z",
+  "exportedAt": "2026-08-12T18:30:50.208Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

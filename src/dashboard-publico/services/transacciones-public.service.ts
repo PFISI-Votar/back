@@ -1,0 +1,69 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { BlockchainService } from '@/blockchain/blockchain.service';
+import { TransaccionBlockchainService } from '@/blockchain/services/transaccion-blockchain.service';
+import { TransaccionesPublicaResponseDto } from '@/dashboard-publico/dto/transacciones-publica-response.dto';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
+import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+
+const ESTADOS_ELECCION_CERRADOS = [
+  EleccionEstado.CERRADA,
+  EleccionEstado.ESCRUTADA,
+  // VOTAR-322: el archivado es off-chain; el acceso público a la evidencia
+  // on-chain debe permanecer intacto tras archivar.
+  EleccionEstado.ARCHIVADA,
+];
+
+const FUENTE_DATOS = 'Índice append-only verificable on-chain (Etherscan)';
+
+@Injectable()
+export class TransaccionesPublicService {
+  constructor(
+    @InjectRepository(Eleccion)
+    private readonly eleccionRepository: Repository<Eleccion>,
+    @InjectRepository(ConfiguracionComicio)
+    private readonly configuracionRepository: Repository<ConfiguracionComicio>,
+    private readonly blockchainService: BlockchainService,
+    private readonly transaccionBlockchainService: TransaccionBlockchainService,
+  ) {}
+
+  async obtenerTransaccionesPublica(
+    idEleccion: number,
+  ): Promise<TransaccionesPublicaResponseDto> {
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      throw new NotFoundException('Comicio no encontrado');
+    }
+
+    const configuracion = await this.configuracionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!configuracion) {
+      throw new NotFoundException('Configuración del comicio no encontrada');
+    }
+
+    const resultadosDefinitivos = ESTADOS_ELECCION_CERRADOS.includes(
+      eleccion.estado,
+    );
+    const snapshotCongelado =
+      resultadosDefinitivos || !configuracion.mostrarResultadosTiempoReal;
+
+    await this.blockchainService.resolveElectionContracts(idEleccion);
+
+    const transacciones =
+      await this.transaccionBlockchainService.listarPorEleccion(idEleccion);
+
+    return {
+      idEleccion,
+      snapshotCongelado,
+      red: this.blockchainService.getNetworkDisplayName(),
+      chainId: this.blockchainService.getChainId(),
+      transacciones,
+      fuenteDatos: FUENTE_DATOS,
+    };
+  }
+}

@@ -37,4 +37,10 @@ export class BudConfigResponseDto {
     example: true,
   })
   permitirVotoNulo!: boolean;
+
+  @ApiProperty({
+    description:
+      'VOTAR-347 — true si la urna digital está pausada por incidente. La BUD debe bloquear el envío de votos mientras sea true.',
+  })
+  pausada!: boolean;
 }

@@ -6,20 +6,37 @@ import {
 } from '@nestjs/common';
 import { BlockchainService } from './blockchain.service';
 import { ContratoBlockchainService } from './services/contrato-blockchain.service';
+import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
+import { RpcProviderFactory } from './rpc/rpc-provider.factory';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 const mockPublishRoot = jest.fn();
 const mockSetElectionState = jest.fn();
+const mockSetElectionWindow = jest.fn();
+const mockCreateElection = jest.fn();
 const mockWait = jest.fn();
 const mockGetBlock = jest.fn();
 const mockGetTransactionReceipt = jest.fn();
 const mockParseLog = jest.fn();
 const mockGetParticipationStats = jest.fn();
+const mockGetRevoteStats = jest.fn();
 const mockGetVotesByCandidate = jest.fn();
+const mockGetElectionState = jest.fn();
+const mockMerkleRootStoreAddress = jest.fn();
+const mockGetMerkleRoot = jest.fn();
+const mockIsPublished = jest.fn();
+const mockRevoteEnabled = jest.fn();
+const mockMaxVotesPerVoter = jest.fn();
+const mockMinIntervalSeconds = jest.fn();
 const mockGetElection = jest.fn();
 const mockQueryFilter = jest.fn();
+const mockBallotQueryFilter = jest.fn();
+const mockRegistryQueryFilter = jest.fn();
+const mockMerkleQueryFilter = jest.fn();
 const mockVoteCastFilter = jest.fn();
 const mockRegisterCandidates = jest.fn();
+const mockLockConfigMerkle = jest.fn();
+const mockLockConfigFactory = jest.fn();
 
 jest.mock('ethers', () => {
   const actual = jest.requireActual<typeof import('ethers')>('ethers');
@@ -27,40 +44,111 @@ jest.mock('ethers', () => {
     ...actual,
     Contract: jest.fn().mockImplementation((_address: string, abi: unknown) => {
       const abiList = Array.isArray(abi) ? abi : [];
-      const hasRegisterCandidates = abiList.some(
-        (item: { name?: string }) => item.name === 'registerCandidates',
-      );
-      const hasVoteCast = abiList.some(
-        (item: { name?: string }) => item.name === 'VoteCast',
-      );
-      const hasGetParticipation = abiList.some(
-        (item: { name?: string }) => item.name === 'getParticipationStats',
-      );
-      const hasGetElection = abiList.some(
-        (item: { name?: string }) => item.name === 'getElection',
-      );
+      const abiHas = (name: string) =>
+        abiList.some((item: { name?: string } | string) =>
+          typeof item === 'string' ? item.includes(name) : item.name === name,
+        );
+      const hasRegisterCandidates = abiHas('registerCandidates');
+      const hasVoteCast = abiHas('VoteCast');
+      const hasSignedVoteCast = abiHas('SignedVoteCast');
+      const hasGetParticipation = abiHas('getParticipationStats');
+      const hasGetRevoteStats = abiHas('getRevoteStats');
+      const hasGetElectionState = abiHas('getElectionState');
+      const hasMerkleRootStoreGetter = abiHas('merkleRootStore');
+      const hasRevoteEnabled = abiHas('revoteEnabled');
+      const hasMaxVotesPerVoter = abiHas('maxVotesPerVoter');
+      const hasGetElection = abiHas('getElection');
+      const hasMerkleRootStore =
+        abiHas('publishRoot') &&
+        abiHas('RootPublished') &&
+        !hasRegisterCandidates;
+      if (hasMerkleRootStore) {
+        return {
+          publishRoot: mockPublishRoot,
+          setElectionState: mockSetElectionState,
+          setElectionWindow: mockSetElectionWindow,
+          lockConfig: mockLockConfigMerkle,
+          getMerkleRoot: mockGetMerkleRoot,
+          isPublished: mockIsPublished,
+          filters: {
+            RootPublished: jest.fn().mockReturnValue({ type: 'RootPublished' }),
+            ElectionStateChanged: jest
+              .fn()
+              .mockReturnValue({ type: 'ElectionStateChanged' }),
+            ElectionWindowSet: jest
+              .fn()
+              .mockReturnValue({ type: 'ElectionWindowSet' }),
+          },
+          queryFilter: mockMerkleQueryFilter,
+        };
+      }
+      if (hasSignedVoteCast) {
+        return {
+          filters: {
+            SignedVoteCast: jest
+              .fn()
+              .mockReturnValue({ type: 'SignedVoteCast' }),
+          },
+          queryFilter: mockBallotQueryFilter,
+        };
+      }
       // VOTE_REGISTRY_CONTRACT_ABI carries both the VoteCast/VoteUpdated events
       // and the registerCandidates function fragment in one array (VOTAR-345),
       // so a real Contract built from it supports both — merge, don't branch.
       if (hasRegisterCandidates || hasVoteCast) {
         return {
           registerCandidates: mockRegisterCandidates,
-          filters: { VoteCast: mockVoteCastFilter },
-          queryFilter: mockQueryFilter,
+          filters: {
+            VoteCast: mockVoteCastFilter,
+            VoteUpdated: jest.fn().mockReturnValue({ type: 'VoteUpdated' }),
+            CandidateSetRegistered: jest
+              .fn()
+              .mockReturnValue({ type: 'CandidateSetRegistered' }),
+          },
+          queryFilter: mockRegistryQueryFilter,
         };
       }
-      if (hasGetParticipation) {
+      if (hasGetElectionState && hasMerkleRootStoreGetter) {
         return {
+          getElectionState: mockGetElectionState,
+          merkleRootStore: mockMerkleRootStoreAddress,
           getParticipationStats: mockGetParticipationStats,
+          getRevoteStats: mockGetRevoteStats,
           getVotesByCandidate: mockGetVotesByCandidate,
         };
       }
+      if (hasGetParticipation || hasGetRevoteStats) {
+        return {
+          getParticipationStats: mockGetParticipationStats,
+          getRevoteStats: mockGetRevoteStats,
+          getVotesByCandidate: mockGetVotesByCandidate,
+        };
+      }
+      if (hasRevoteEnabled) {
+        return { revoteEnabled: mockRevoteEnabled };
+      }
+      if (hasMaxVotesPerVoter) {
+        return {
+          maxVotesPerVoter: mockMaxVotesPerVoter,
+          minIntervalSeconds: mockMinIntervalSeconds,
+        };
+      }
       if (hasGetElection) {
-        return { getElection: mockGetElection };
+        return {
+          getElection: mockGetElection,
+          createElection: mockCreateElection,
+          // ELECTION_FACTORY_CONTRACT_ABI (VOTAR-327): also exposes lockConfig,
+          // used by BlockchainService.lockRevoteConfig.
+          lockConfig: mockLockConfigFactory,
+        };
       }
       return {
         publishRoot: mockPublishRoot,
         setElectionState: mockSetElectionState,
+        setElectionWindow: mockSetElectionWindow,
+        // MERKLE_ROOT_STORE_ABI (VOTAR-327): lockConfig, used by
+        // BlockchainService.lockElectionWindow.
+        lockConfig: mockLockConfigMerkle,
       };
     }),
     Wallet: jest.fn().mockImplementation(() => ({})),
@@ -70,7 +158,7 @@ jest.mock('ethers', () => {
     })),
     Interface: jest.fn().mockImplementation((abi: unknown) => ({
       parseLog: mockParseLog,
-      // Delegate to the real ethers Interface so decodeVoteRegistryErrorName's
+      // Delegate to the real ethers Interface so decodeContractErrorName's
       // custom-error decoding is exercised faithfully in tests, not stubbed.
       parseError: (data: string) =>
         new actual.Interface(abi as never).parseError(data),
@@ -87,6 +175,11 @@ describe('BlockchainService', () => {
 
   const mockContratoBlockchain = {
     getElectionFactory: jest.fn(),
+  };
+
+  const mockTransaccionBlockchain = {
+    indexarSilencioso: jest.fn(),
+    buildRevoteStatsFromIndex: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -107,7 +200,12 @@ describe('BlockchainService', () => {
     });
     mockPublishRoot.mockResolvedValue({ wait: mockWait });
     mockSetElectionState.mockResolvedValue({ wait: mockWait });
+    mockSetElectionWindow.mockResolvedValue({ wait: mockWait });
+    mockCreateElection.mockResolvedValue({ wait: mockWait });
     mockRegisterCandidates.mockResolvedValue({ wait: mockWait });
+    mockSetElectionWindow.mockResolvedValue({ wait: mockWait });
+    mockLockConfigMerkle.mockResolvedValue({ wait: mockWait });
+    mockLockConfigFactory.mockResolvedValue({ wait: mockWait });
     mockWait.mockResolvedValue({
       hash: '0xabc',
       blockNumber: 100,
@@ -119,9 +217,31 @@ describe('BlockchainService', () => {
       args: [42, '0x' + 'a'.repeat(64), 1700000000n],
     });
     mockGetParticipationStats.mockResolvedValue([25n, 0n, 0n]);
+    mockGetRevoteStats.mockResolvedValue([30n, 70n, 300000000000000000n]);
     mockGetVotesByCandidate.mockResolvedValue(10n);
-    mockVoteCastFilter.mockReturnValue({});
+    mockGetElectionState.mockResolvedValue(2n);
+    mockMerkleRootStoreAddress.mockResolvedValue(
+      '0x55d1d115309872C16B9646362C82fFa246F3F652',
+    );
+    mockGetMerkleRoot.mockResolvedValue(['0x' + 'a'.repeat(64), 1700000000n]);
+    mockIsPublished.mockResolvedValue(true);
+    mockRevoteEnabled.mockResolvedValue(true);
+    mockMaxVotesPerVoter.mockResolvedValue(3n);
+    mockMinIntervalSeconds.mockResolvedValue(60n);
+    mockVoteCastFilter.mockReturnValue({ type: 'VoteCast' });
     mockQueryFilter.mockResolvedValue([]);
+    mockBallotQueryFilter.mockResolvedValue([]);
+    mockRegistryQueryFilter.mockResolvedValue([]);
+    mockMerkleQueryFilter.mockResolvedValue([]);
+    mockGetElection.mockResolvedValue({
+      ballot: '0x4444444444444444444444444444444444444444',
+      voteRegistry: '0x5555555555555555555555555555555555555555',
+      auditView: '0x6666666666666666666666666666666666666666',
+      exists: false,
+    });
+    mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+      direccionContrato: '0x3333333333333333333333333333333333333333',
+    });
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -131,6 +251,11 @@ describe('BlockchainService', () => {
           provide: ContratoBlockchainService,
           useValue: mockContratoBlockchain,
         },
+        {
+          provide: TransaccionBlockchainService,
+          useValue: mockTransaccionBlockchain,
+        },
+        RpcProviderFactory,
       ],
     }).compile();
 
@@ -195,6 +320,62 @@ describe('BlockchainService', () => {
     expect(service.buildExplorerUrl('0xabc')).toBe(
       'https://sepolia.etherscan.io/tx/0xabc',
     );
+  });
+
+  it('buildExplorerAddressUrl returns Etherscan contract link', () => {
+    expect(
+      service.buildExplorerAddressUrl(
+        '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+      ),
+    ).toBe(
+      'https://sepolia.etherscan.io/address/0x5FbDB2315678afecb367f032d93F642f64180aa3',
+    );
+  });
+
+  it('getContratoEstadoOnChain returns audit metadata (VOTAR-367)', async () => {
+    const actual = await service.getContratoEstadoOnChain(7);
+
+    expect(actual.estadoOnChain).toEqual({ codigo: 2, etiqueta: 'ABIERTA' });
+    expect(actual.merkleRoot.publicado).toBe(true);
+    expect(actual.merkleRoot.hash).toBe('0x' + 'a'.repeat(64));
+    expect(actual.merkleRoot.consistente).toBe(true);
+    expect(actual.contratos.auditView.explorerUrl).toContain('/address/');
+    expect(actual.revoto.maxVotosPorVotante).toBe(3);
+    expect(actual.red).toBe('Sepolia');
+  });
+
+  describe('getContratoEstadoOnChain — merkleRoot.consistente (VOTAR-453)', () => {
+    it('flags inconsistent state when published with a zero root', async () => {
+      mockIsPublished.mockResolvedValue(true);
+      mockGetMerkleRoot.mockResolvedValue(['0x' + '0'.repeat(64), 1700000000n]);
+
+      const actual = await service.getContratoEstadoOnChain(7);
+
+      expect(actual.merkleRoot.publicado).toBe(true);
+      expect(actual.merkleRoot.hash).toBe('0x' + '0'.repeat(64));
+      expect(actual.merkleRoot.consistente).toBe(false);
+    });
+
+    it('stays consistent when the root is zero but not published', async () => {
+      mockIsPublished.mockResolvedValue(false);
+      mockGetMerkleRoot.mockResolvedValue(['0x' + '0'.repeat(64), 0n]);
+
+      const actual = await service.getContratoEstadoOnChain(7);
+
+      expect(actual.merkleRoot.publicado).toBe(false);
+      expect(actual.merkleRoot.consistente).toBe(true);
+    });
+  });
+
+  describe('getContratoEstadoOnChain — revoto.politicaRevoto (VOTAR-453 punto 2)', () => {
+    it('reports DISABLED policy when revoteEnabled is false on-chain', async () => {
+      mockRevoteEnabled.mockResolvedValue(false);
+
+      const actual = await service.getContratoEstadoOnChain(7);
+
+      expect(actual.revoto.habilitado).toBe(false);
+      expect(actual.revoto.politicaRevoto).toBe('DISABLED');
+    });
   });
 
   it('getNetworkDisplayName defaults to Sepolia', () => {
@@ -353,6 +534,20 @@ describe('BlockchainService', () => {
       ).rejects.toThrow(/ELECTION_ADMIN_ROLE/);
     });
 
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockSetElectionState.mockRejectedValue(rawError);
+
+      await expect(
+        service.syncElectionState(42, EleccionEstado.ABIERTA),
+      ).rejects.toThrow(/ELECTION_ADMIN_ROLE/);
+    });
+
     it('throws when receipt is null', async () => {
       mockWait.mockResolvedValue(null);
 
@@ -367,6 +562,134 @@ describe('BlockchainService', () => {
       await expect(
         service.syncElectionState(42, EleccionEstado.ABIERTA),
       ).rejects.toThrow(/No se pudo sincronizar el estado on-chain/);
+    });
+  });
+
+  describe('syncElectionWindow — VOTAR-434', () => {
+    const start = new Date('2026-08-10T10:00:00.000Z');
+    const end = new Date('2026-08-10T18:00:00.000Z');
+
+    it('syncs election window to blockchain successfully', async () => {
+      const actual = await service.syncElectionWindow(42, start, end);
+
+      expect(actual.txHash).toBe('0xabc');
+      expect(actual.blockNumber).toBe(100);
+      expect(mockSetElectionWindow).toHaveBeenCalledWith(
+        42,
+        Math.floor(start.getTime() / 1000),
+        Math.floor(end.getTime() / 1000),
+      );
+    });
+
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockSetElectionWindow.mockRejectedValue(rawError);
+
+      await expect(service.syncElectionWindow(42, start, end)).rejects.toThrow(
+        /ELECTION_ADMIN_ROLE/,
+      );
+    });
+
+    it('maps InvalidElectionWindow from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        { data: '0xff6efeb1' },
+      );
+      mockSetElectionWindow.mockRejectedValue(rawError);
+
+      await expect(service.syncElectionWindow(42, start, end)).rejects.toThrow(
+        /ventana de votación configurada/,
+      );
+    });
+  });
+
+  describe('deployElectionStack — VOTAR-434', () => {
+    const revoteConfig = {
+      enabled: false,
+      maxVotesPerVoter: 1,
+      minIntervalSeconds: 0,
+      policy: 0,
+    };
+
+    it('deploys the election stack and returns addresses', async () => {
+      mockGetElection
+        .mockResolvedValueOnce({
+          ballot: '0x0000000000000000000000000000000000000000',
+          voteRegistry: '0x0000000000000000000000000000000000000000',
+          auditView: '0x0000000000000000000000000000000000000000',
+          exists: false,
+        })
+        .mockResolvedValueOnce({
+          ballot: '0x4444444444444444444444444444444444444444',
+          voteRegistry: '0x5555555555555555555555555555555555555555',
+          auditView: '0x6666666666666666666666666666666666666666',
+          exists: true,
+        });
+
+      const actual = await service.deployElectionStack(42, revoteConfig);
+
+      expect(actual).toEqual({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyDeployed: false,
+      });
+      expect(mockCreateElection).toHaveBeenCalledWith(42, revoteConfig);
+    });
+
+    it('maps AccessControl from raw revert .data (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0xe2517d3f00000000000000000000000011111111111111111111111111111111111111110000000000000000000000000000000000000000000000000000000000000000',
+        },
+      );
+      mockCreateElection.mockRejectedValue(rawError);
+
+      await expect(
+        service.deployElectionStack(42, revoteConfig),
+      ).rejects.toThrow(/DEFAULT_ADMIN_ROLE/);
+    });
+
+    it('treats ElectionAlreadyExists from raw revert .data as alreadyDeployed', async () => {
+      mockGetElection
+        .mockResolvedValueOnce({
+          ballot: '0x0000000000000000000000000000000000000000',
+          voteRegistry: '0x0000000000000000000000000000000000000000',
+          auditView: '0x0000000000000000000000000000000000000000',
+          exists: false,
+        })
+        .mockResolvedValueOnce({
+          ballot: '0x4444444444444444444444444444444444444444',
+          voteRegistry: '0x5555555555555555555555555555555555555555',
+          auditView: '0x6666666666666666666666666666666666666666',
+          exists: true,
+        });
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          data: '0x2f684674000000000000000000000000000000000000000000000000000000000000002a',
+        },
+      );
+      mockCreateElection.mockRejectedValue(rawError);
+
+      const actual = await service.deployElectionStack(42, revoteConfig);
+
+      expect(actual).toEqual({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        txHash: '',
+        blockNumber: 0,
+        alreadyDeployed: true,
+      });
     });
   });
 
@@ -459,6 +782,158 @@ describe('BlockchainService', () => {
     });
   });
 
+  describe('syncElectionWindow — VOTAR-321', () => {
+    const startTime = new Date('2026-07-15T10:00:00Z');
+    const endTime = new Date('2026-07-15T18:00:00Z');
+
+    it('syncs the voting window on success', async () => {
+      const actual = await service.syncElectionWindow(42, startTime, endTime);
+
+      expect(actual.txHash).toBe('0xabc');
+      expect(actual.blockNumber).toBe(100);
+      expect(mockSetElectionWindow).toHaveBeenCalledWith(
+        42,
+        Math.floor(startTime.getTime() / 1000),
+        Math.floor(endTime.getTime() / 1000),
+      );
+    });
+
+    it('treats a ConfigLocked revert as a no-op (idempotent retry, VOTAR-327)', async () => {
+      mockSetElectionWindow.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.syncElectionWindow(42, startTime, endTime);
+
+      expect(actual).toEqual({ txHash: '', blockNumber: 0 });
+    });
+  });
+
+  describe('lockElectionWindow — VOTAR-327', () => {
+    it('locks the voting window and returns tx metadata on success', async () => {
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyLocked: false,
+      });
+      expect(mockLockConfigMerkle).toHaveBeenCalledWith(42);
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(service.lockElectionWindow(42)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('treats ConfigLocked as idempotent, not an error', async () => {
+      mockLockConfigMerkle.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('treats ConfigLocked as idempotent when only raw revert .data is present (real send() shape)', async () => {
+      const rawError = Object.assign(
+        new Error('execution reverted (unknown custom error)'),
+        {
+          // ConfigLocked(uint256) encoded with electionId=42.
+          data: '0x9b4a661a000000000000000000000000000000000000000000000000000000000000002a',
+        },
+      );
+      mockLockConfigMerkle.mockRejectedValue(rawError);
+
+      const actual = await service.lockElectionWindow(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('maps AccessControl revert to a helpful role message', async () => {
+      mockLockConfigMerkle.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(service.lockElectionWindow(42)).rejects.toThrow(
+        /ELECTION_ADMIN_ROLE/,
+      );
+    });
+  });
+
+  describe('lockRevoteConfig — VOTAR-327', () => {
+    beforeEach(() => {
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+    });
+
+    it('locks the RevoteConfig audit trail and returns tx metadata on success', async () => {
+      const actual = await service.lockRevoteConfig(42);
+
+      expect(actual).toEqual({
+        txHash: '0xabc',
+        blockNumber: 100,
+        alreadyLocked: false,
+      });
+      expect(mockLockConfigFactory).toHaveBeenCalledWith(42);
+    });
+
+    it('throws when blockchain env is missing', async () => {
+      mockConfig.get.mockImplementation(() => undefined);
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+    });
+
+    it('treats ConfigLocked as idempotent, not an error', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('execution reverted: ConfigLocked(42)'),
+      );
+
+      const actual = await service.lockRevoteConfig(42);
+
+      expect(actual).toEqual({
+        txHash: '',
+        blockNumber: 0,
+        alreadyLocked: true,
+      });
+    });
+
+    it('maps ElectionDoesNotExist to a 422 with a helpful message', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('execution reverted: ElectionDoesNotExist(42)'),
+      );
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+    });
+
+    it('maps AccessControl revert to a helpful role message', async () => {
+      mockLockConfigFactory.mockRejectedValue(
+        new Error('AccessControlUnauthorizedAccount'),
+      );
+
+      await expect(service.lockRevoteConfig(42)).rejects.toThrow(
+        /DEFAULT_ADMIN_ROLE/,
+      );
+    });
+  });
+
   describe('participation queries — VOTAR-365', () => {
     it('getParticipationStats returns aggregate tallies without nullifiers', async () => {
       const actual = await service.getParticipationStats(7);
@@ -481,7 +956,7 @@ describe('BlockchainService', () => {
 
     it('getVoteCastTimeline builds hourly buckets from first votes only', async () => {
       const nowSec = Math.floor(Date.now() / 1000);
-      mockQueryFilter.mockResolvedValue([
+      mockRegistryQueryFilter.mockResolvedValue([
         {
           args: {
             voterHash: '0xaaa',
@@ -513,6 +988,111 @@ describe('BlockchainService', () => {
       expect(actual.reduce((sum, point) => sum + point.nuevos, 0)).toBe(2);
       const serialized = JSON.stringify(actual);
       expect(serialized).not.toMatch(/0xaaa|0xbbb/);
+    });
+
+    it('getRevoteStats returns aggregates from AuditViewContract (VOTAR-329)', async () => {
+      const actual = await service.getRevoteStats(7);
+
+      expect(actual).toEqual({
+        totalRevotes: 30,
+        uniqueVoters: 70,
+        overwriteRatio: 0.3,
+      });
+      expect(mockGetRevoteStats).toHaveBeenCalledWith(7);
+    });
+
+    it('getRevoteStats falls back to indexed txs when AuditView lacks selector', async () => {
+      const callException = Object.assign(
+        new Error(
+          'missing revert data (action="call", data=null, reason=null, code=CALL_EXCEPTION, version=6.17.0)',
+        ),
+        { code: 'CALL_EXCEPTION' },
+      );
+      mockGetRevoteStats.mockRejectedValueOnce(callException);
+      mockTransaccionBlockchain.buildRevoteStatsFromIndex.mockResolvedValueOnce(
+        {
+          totalRevotes: 3,
+          uniqueVoters: 2,
+          overwriteRatio: 0.6,
+        },
+      );
+
+      const actual = await service.getRevoteStats(7);
+
+      expect(actual).toEqual({
+        totalRevotes: 3,
+        uniqueVoters: 2,
+        overwriteRatio: 0.6,
+      });
+      expect(
+        mockTransaccionBlockchain.buildRevoteStatsFromIndex,
+      ).toHaveBeenCalledWith(7);
+    });
+
+    it('getRevoteStats rethrows non-selector blockchain failures', async () => {
+      mockGetRevoteStats.mockRejectedValueOnce(
+        new Error('network timeout contacting RPC'),
+      );
+
+      await expect(service.getRevoteStats(7)).rejects.toBeInstanceOf(
+        ServiceUnavailableException,
+      );
+      expect(
+        mockTransaccionBlockchain.buildRevoteStatsFromIndex,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('scanElectionTransactionHistory returns chronological audit entries (VOTAR-373)', async () => {
+      const txHash = '0x' + '11'.repeat(32);
+      mockBallotQueryFilter.mockResolvedValue([
+        {
+          transactionHash: txHash,
+          blockNumber: 100,
+          index: 0,
+          eventName: 'SignedVoteCast',
+          args: { electionId: 7n },
+        },
+      ]);
+      mockRegistryQueryFilter.mockImplementation(
+        (filter: { type?: string }) => {
+          if (filter?.type === 'VoteCast') {
+            return Promise.resolve([
+              {
+                transactionHash: txHash,
+                blockNumber: 100,
+                index: 1,
+                eventName: 'VoteCast',
+                args: { candidateId: 3n, isOverwrite: false },
+              },
+            ]);
+          }
+          return Promise.resolve([]);
+        },
+      );
+      mockMerkleQueryFilter.mockResolvedValue([
+        {
+          transactionHash: '0x' + '22'.repeat(32),
+          blockNumber: 50,
+          index: 0,
+          eventName: 'RootPublished',
+          args: { electionId: 7n },
+        },
+      ]);
+      mockGetBlock.mockResolvedValue({ timestamp: 1700000000 });
+
+      const actual = await service.scanElectionTransactionHistory(7);
+
+      expect(actual).toHaveLength(2);
+      expect(actual[0].numeroBloque).toBe(100);
+      expect(actual[0].hashTransaccion).toBe(txHash);
+      expect(actual[1].numeroBloque).toBe(50);
+      expect(actual[0].explorerUrl).toBe(
+        `https://sepolia.etherscan.io/tx/${txHash}`,
+      );
+      expect(actual[0].descripcionLegible).toContain('Sufragio');
+      expect(JSON.stringify(actual)).not.toMatch(
+        /nullifier|voterHash|selectionHash/i,
+      );
     });
 
     it('resolveElectionContracts falls back to factory when env addresses missing', async () => {

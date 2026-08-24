@@ -44,6 +44,8 @@ describe('ElectionStateService', () => {
       syncElectionState: jest.fn(),
       syncElectionWindow: jest.fn(),
       registerCandidates: jest.fn(),
+      lockElectionWindow: jest.fn(),
+      lockRevoteConfig: jest.fn(),
     };
 
     const mockOfertaElectoralQueryService = {
@@ -100,6 +102,16 @@ describe('ElectionStateService', () => {
         txHash: '0xwin',
         blockNumber: 12344,
       });
+      blockchainService.lockElectionWindow.mockResolvedValue({
+        txHash: '0xlockwin',
+        blockNumber: 12344,
+        alreadyLocked: false,
+      });
+      blockchainService.lockRevoteConfig.mockResolvedValue({
+        txHash: '0xlockrevote',
+        blockNumber: 12344,
+        alreadyLocked: false,
+      });
       blockchainService.syncElectionState.mockResolvedValue({
         txHash: '0xabc123',
         blockNumber: 12345,
@@ -122,6 +134,8 @@ describe('ElectionStateService', () => {
         eleccion.fechaInicio,
         eleccion.fechaFin,
       );
+      expect(blockchainService.lockElectionWindow).toHaveBeenCalledWith(1);
+      expect(blockchainService.lockRevoteConfig).toHaveBeenCalledWith(1);
       expect(blockchainService.syncElectionState).toHaveBeenCalledWith(
         1,
         EleccionEstado.ABIERTA,
@@ -134,10 +148,18 @@ describe('ElectionStateService', () => {
         blockchainService.registerCandidates.mock.invocationCallOrder[0];
       const windowOrder =
         blockchainService.syncElectionWindow.mock.invocationCallOrder[0];
+      const lockWindowOrder =
+        blockchainService.lockElectionWindow.mock.invocationCallOrder[0];
+      const lockRevoteOrder =
+        blockchainService.lockRevoteConfig.mock.invocationCallOrder[0];
       const syncOrder =
         blockchainService.syncElectionState.mock.invocationCallOrder[0];
       const saveOrder = eleccionRepository.save.mock.invocationCallOrder[0];
       expect(registerOrder).toBeLessThan(windowOrder);
+      expect(windowOrder).toBeLessThan(lockWindowOrder);
+      expect(windowOrder).toBeLessThan(lockRevoteOrder);
+      expect(lockWindowOrder).toBeLessThan(syncOrder);
+      expect(lockRevoteOrder).toBeLessThan(syncOrder);
       expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.ABIERTA);
     });
@@ -177,6 +199,16 @@ describe('ElectionStateService', () => {
         txHash: '0xwin',
         blockNumber: 1,
       });
+      blockchainService.lockElectionWindow.mockResolvedValue({
+        txHash: '0xlockwin',
+        blockNumber: 1,
+        alreadyLocked: false,
+      });
+      blockchainService.lockRevoteConfig.mockResolvedValue({
+        txHash: '0xlockrevote',
+        blockNumber: 1,
+        alreadyLocked: false,
+      });
       blockchainService.syncElectionState.mockRejectedValue(
         new ServiceUnavailableException('Blockchain error'),
       );
@@ -204,6 +236,62 @@ describe('ElectionStateService', () => {
       );
 
       expect(blockchainService.syncElectionWindow).not.toHaveBeenCalled();
+      expect(blockchainService.lockElectionWindow).not.toHaveBeenCalled();
+      expect(blockchainService.lockRevoteConfig).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should not lock revote config or persist when lockElectionWindow fails (VOTAR-327)', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      blockchainService.registerCandidates.mockResolvedValue({
+        txHash: '0xcand',
+        blockNumber: 1,
+        alreadySealed: false,
+      });
+      blockchainService.syncElectionWindow.mockResolvedValue({
+        txHash: '0xwin',
+        blockNumber: 1,
+      });
+      blockchainService.lockElectionWindow.mockRejectedValue(
+        new ServiceUnavailableException('Blockchain error'),
+      );
+
+      await expect(service.transitionToAbierta(1)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+
+      expect(blockchainService.lockRevoteConfig).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('should not persist when lockRevoteConfig fails (VOTAR-327)', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.CONFIGURADA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      blockchainService.registerCandidates.mockResolvedValue({
+        txHash: '0xcand',
+        blockNumber: 1,
+        alreadySealed: false,
+      });
+      blockchainService.syncElectionWindow.mockResolvedValue({
+        txHash: '0xwin',
+        blockNumber: 1,
+      });
+      blockchainService.lockElectionWindow.mockResolvedValue({
+        txHash: '0xlockwin',
+        blockNumber: 1,
+        alreadyLocked: false,
+      });
+      blockchainService.lockRevoteConfig.mockRejectedValue(
+        new ServiceUnavailableException('Blockchain error'),
+      );
+
+      await expect(service.transitionToAbierta(1)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+
       expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
       expect(eleccionRepository.save).not.toHaveBeenCalled();
     });
@@ -360,6 +448,57 @@ describe('ElectionStateService', () => {
       );
 
       expect(eleccionRepository.save).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('transitionToArchivada', () => {
+    it('should persist ARCHIVADA without touching the blockchain (VOTAR-322)', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.CERRADA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      eleccionRepository.save.mockResolvedValue({
+        ...eleccion,
+        estado: EleccionEstado.ARCHIVADA,
+      });
+
+      const result = await service.transitionToArchivada(1);
+
+      expect(eleccionRepository.findOne).toHaveBeenCalledWith({
+        where: { idEleccion: 1 },
+      });
+      expect(eleccionRepository.save).toHaveBeenCalledWith({
+        ...eleccion,
+        estado: EleccionEstado.ARCHIVADA,
+      });
+      expect(result.estado).toBe(EleccionEstado.ARCHIVADA);
+
+      // AC2: aislamiento estricto de la capa blockchain — costo cero de gas.
+      expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionWindow).not.toHaveBeenCalled();
+      expect(blockchainService.registerCandidates).not.toHaveBeenCalled();
+      expect(blockchainService.lockElectionWindow).not.toHaveBeenCalled();
+      expect(blockchainService.lockRevoteConfig).not.toHaveBeenCalled();
+    });
+
+    it('should throw NotFoundException when election does not exist', async () => {
+      eleccionRepository.findOne.mockResolvedValue(null);
+
+      await expect(service.transitionToArchivada(999)).rejects.toThrow(
+        NotFoundException,
+      );
+    });
+
+    it('should throw UnprocessableEntityException when election is not in CERRADA state', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.ABIERTA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+
+      await expect(service.transitionToArchivada(1)).rejects.toThrow(
+        UnprocessableEntityException,
+      );
+      await expect(service.transitionToArchivada(1)).rejects.toThrow(
+        /debe estar en estado CERRADA/,
+      );
+      expect(eleccionRepository.save).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionState).not.toHaveBeenCalled();
     });
   });
 });

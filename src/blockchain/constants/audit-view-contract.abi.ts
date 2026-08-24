@@ -1,7 +1,22 @@
 /**
  * Minimal AuditViewContract ABI for VOTAR-364 / VOTAR-365 public reads (VOTAR-350).
+ * Extended for VOTAR-367 contract audit metadata.
  */
 export const AUDIT_VIEW_CONTRACT_ABI = [
+  {
+    type: 'function',
+    name: 'getElectionState',
+    stateMutability: 'view',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'uint8' }],
+  },
+  {
+    type: 'function',
+    name: 'merkleRootStore',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'address' }],
+  },
   {
     type: 'function',
     name: 'getParticipationStats',
@@ -11,6 +26,17 @@ export const AUDIT_VIEW_CONTRACT_ABI = [
       { name: 'totalVotes', type: 'uint256' },
       { name: 'blankVotes', type: 'uint256' },
       { name: 'nullVotes', type: 'uint256' },
+    ],
+  },
+  {
+    type: 'function',
+    name: 'getRevoteStats',
+    stateMutability: 'view',
+    inputs: [{ name: 'electionId', type: 'uint256' }],
+    outputs: [
+      { name: 'totalRevotes', type: 'uint256' },
+      { name: 'uniqueVoters', type: 'uint256' },
+      { name: 'overwriteRatio', type: 'uint256' },
     ],
   },
   {

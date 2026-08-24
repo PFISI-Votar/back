@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0x921ad2f7ff680f24ed6760b690774be43c97f61e430169518848278671197433",
+  "abiHash": "0x13f7e52cb35e8e69b84fa21d66a81561f31bbd9d497dbe67e3f1a121af1d3191",
   "abi": [
     {
       "inputs": [
@@ -156,6 +156,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -447,6 +466,35 @@
     {
       "inputs": [
         {
+          "internalType": "uint256",
+          "name": "electionId",
+          "type": "uint256"
+        }
+      ],
+      "name": "getRevoteStats",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "totalRevotes",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "uniqueVoters",
+          "type": "uint256"
+        },
+        {
+          "internalType": "uint256",
+          "name": "overwriteRatio",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
           "internalType": "bytes32",
           "name": "role",
           "type": "bytes32"
@@ -626,6 +674,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -781,6 +842,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-04T02:29:14.581Z",
+  "exportedAt": "2026-08-12T18:30:50.206Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
