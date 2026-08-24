@@ -104,6 +104,7 @@ const createRepositories = () => {
         nombre: 'Comicio UTN',
         estado: EleccionEstado.ABIERTA,
         tipoVotacion: TipoVotacion.POR_LISTA,
+        pausada: false,
       }),
     },
     configuracionRepository: {
@@ -163,7 +164,25 @@ describe('VotoService', () => {
       metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
       resultadosDefinitivos: false,
       snapshotCongelado: true,
+      permitirVotoNulo: true,
+      pausada: false,
     });
+  });
+
+  it('VOTAR-447: propaga permitirVotoNulo=false en configuración BUD pública', async () => {
+    const repositories = createRepositories();
+    repositories.configuracionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      permitirVotoEnBlanco: false,
+      permitirVotoNulo: false,
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+      mostrarResultadosTiempoReal: false,
+    });
+    const service = createService(repositories);
+
+    const actual = await service.obtenerConfiguracionBud(1);
+
+    expect(actual.permitirVotoNulo).toBe(false);
   });
 
   it('lanza NotFoundException si el comicio no existe al obtener configuración BUD', async () => {

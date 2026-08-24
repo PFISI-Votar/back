@@ -41,4 +41,11 @@ export class EscrutinioResponseDto {
 
   @ApiProperty({ type: [CandidatoEscrutinioDto] })
   candidatos!: CandidatoEscrutinioDto[];
+
+  @ApiProperty({
+    example: true,
+    description:
+      'VOTAR-447: si el comicio habilita voto nulo (y su recuento en el dashboard público)',
+  })
+  permitirVotoNulo!: boolean;
 }
