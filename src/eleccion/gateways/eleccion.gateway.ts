@@ -8,8 +8,16 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import { InjectRepository } from '@nestjs/typeorm';
 import type { Server, Socket } from 'socket.io';
+import { Repository } from 'typeorm';
 import { resolveAllowedOriginsFromEnv } from '@/config/cors.config';
+import {
+  SeccionDashboard,
+  isSeccionDashboardVisible,
+} from '@/eleccion/configuracion-comicio/constants/visibilidad-dashboard.constants';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 
 export type ResultadosActualizadosPayload = {
   idEleccion: number;
@@ -37,6 +45,13 @@ export class EleccionGateway
 
   private readonly logger = new Logger(EleccionGateway.name);
 
+  constructor(
+    @InjectRepository(Eleccion)
+    private readonly eleccionRepository: Repository<Eleccion>,
+    @InjectRepository(ConfiguracionComicio)
+    private readonly configRepository: Repository<ConfiguracionComicio>,
+  ) {}
+
   handleConnection(client: Socket): void {
     const clientId = client.id;
     this.logger.log(`Cliente WebSocket conectado: ${clientId}`);
@@ -49,14 +64,21 @@ export class EleccionGateway
 
   /**
    * Dashboard público: join room for live tally updates (VOTAR-364).
+   * VOTAR-459: no admite la suscripción si la solapa "Resultados" fue
+   * ocultada por la autoridad electoral mientras el comicio está en curso —
+   * de lo contrario el 403 de GET /resultados sería evadible por WebSocket.
    */
   @SubscribeMessage('dashboard:subscribe')
-  handleDashboardSubscribe(
+  async handleDashboardSubscribe(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { idEleccion?: number },
-  ): void {
+  ): Promise<void> {
     const idEleccion = Number(body?.idEleccion);
     if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
+      return;
+    }
+    const puedeSuscribirse = await this.puedeSuscribirseAResultados(idEleccion);
+    if (!puedeSuscribirse) {
       return;
     }
     const room = this.roomName(idEleccion);
@@ -151,5 +173,27 @@ export class EleccionGateway
 
   private roomName(idEleccion: number): string {
     return `eleccion:${idEleccion}`;
+  }
+
+  private async puedeSuscribirseAResultados(
+    idEleccion: number,
+  ): Promise<boolean> {
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      return false;
+    }
+    const config = await this.configRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!config) {
+      return false;
+    }
+    return isSeccionDashboardVisible(
+      config,
+      eleccion.estado,
+      SeccionDashboard.RESULTADOS,
+    );
   }
 }
