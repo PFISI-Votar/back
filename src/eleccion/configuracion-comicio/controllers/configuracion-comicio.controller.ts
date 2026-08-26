@@ -19,6 +19,10 @@ import {
   ConfiguracionVotoNuloResponseDto,
   GuardarConfiguracionVotoNuloDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-voto-nulo.dto';
+import {
+  GuardarVisibilidadDashboardDto,
+  VisibilidadDashboardResponseDto,
+} from '@/eleccion/configuracion-comicio/dto/visibilidad-dashboard.dto';
 import { ConfiguracionComicioService } from '@/eleccion/configuracion-comicio/services/configuracion-comicio.service';
 
 @ApiTags('configuracion-comicio')
@@ -109,6 +113,50 @@ export class ConfiguracionComicioController {
   ): Promise<ConfiguracionVotoNuloResponseDto> {
     const user = assertAuthenticatedUser(req.user);
     return this.configuracionComicioService.guardarConfiguracionVotoNulo(
+      idEleccion,
+      dto,
+      {
+        actorId: user.sub,
+        ipOrigen: this.resolveClientIp(req),
+      },
+    );
+  }
+
+  @Get('elecciones/:idEleccion/visibilidad-dashboard')
+  @ApiOperation({
+    summary:
+      'Obtener visibilidad de las solapas del dashboard público (VOTAR-459)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: VisibilidadDashboardResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  async obtenerVisibilidadDashboard(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<VisibilidadDashboardResponseDto> {
+    return this.configuracionComicioService.obtenerVisibilidadDashboard(
+      idEleccion,
+    );
+  }
+
+  @Put('elecciones/:idEleccion/visibilidad-dashboard')
+  @ApiOperation({
+    summary:
+      'Guardar visibilidad de las solapas del dashboard público (VOTAR-459)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: VisibilidadDashboardResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict — comicio no editable (no BORRADOR ni CONFIGURADA)',
+  })
+  async guardarVisibilidadDashboard(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Body() dto: GuardarVisibilidadDashboardDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<VisibilidadDashboardResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    return this.configuracionComicioService.guardarVisibilidadDashboard(
       idEleccion,
       dto,
       {

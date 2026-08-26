@@ -42,6 +42,10 @@ describe('ConfiguracionComicioService', () => {
     mostrarResultadosTiempoReal: false,
     duracionMinutos: null,
     politicaRevoto: PoliticaRevoto.DISABLED,
+    mostrarDashboardResultados: true,
+    mostrarDashboardParticipacion: true,
+    mostrarDashboardRevoto: true,
+    mostrarDashboardTransacciones: true,
   } as ConfiguracionComicio;
 
   const baseEleccion: Eleccion = {
@@ -394,6 +398,145 @@ describe('ConfiguracionComicioService', () => {
 
       await expect(
         service.obtenerConfiguracionVotoNulo(99),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('VOTAR-459 visibilidad-dashboard', () => {
+    beforeEach(() => {
+      mockEleccionRepository.findOne.mockResolvedValue({ ...baseEleccion });
+      mockConfigRepository.findOne.mockResolvedValue({ ...baseConfig });
+      mockConfigRepository.save.mockImplementation(
+        (entity: ConfiguracionComicio) => Promise.resolve(entity),
+      );
+    });
+
+    it('obtenerVisibilidadDashboard refleja estado persistido y defaults en true', async () => {
+      const actual = await service.obtenerVisibilidadDashboard(1);
+      expect(actual).toEqual({
+        idEleccion: 1,
+        mostrarResultados: true,
+        mostrarParticipacion: true,
+        mostrarRevoto: true,
+        mostrarTransacciones: true,
+        editable: true,
+      });
+    });
+
+    it('guardarVisibilidadDashboard persiste los 4 flags', async () => {
+      const actual = await service.guardarVisibilidadDashboard(
+        1,
+        {
+          mostrarResultados: false,
+          mostrarParticipacion: false,
+          mostrarRevoto: true,
+          mostrarTransacciones: true,
+        },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.mostrarResultados).toBe(false);
+      expect(actual.mostrarParticipacion).toBe(false);
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          mostrarDashboardResultados: false,
+          mostrarDashboardParticipacion: false,
+          mostrarDashboardRevoto: true,
+          mostrarDashboardTransacciones: true,
+        }),
+      );
+    });
+
+    it('registra audit log solo cuando algún flag cambia', async () => {
+      await service.guardarVisibilidadDashboard(
+        1,
+        {
+          mostrarResultados: false,
+          mostrarParticipacion: true,
+          mostrarRevoto: true,
+          mostrarTransacciones: true,
+        },
+        { actorId: 'admin-1', ipOrigen: '127.0.0.1' },
+      );
+
+      expect(mockAuditLoggerService.logConfigModificada).toHaveBeenCalledWith(
+        expect.objectContaining({ idEleccion: 1, actorId: 'admin-1' }),
+      );
+
+      mockAuditLoggerService.logConfigModificada.mockClear();
+      mockConfigRepository.findOne.mockResolvedValue({ ...baseConfig });
+
+      await service.guardarVisibilidadDashboard(
+        1,
+        {
+          mostrarResultados: true,
+          mostrarParticipacion: true,
+          mostrarRevoto: true,
+          mostrarTransacciones: true,
+        },
+        { actorId: 'admin-1' },
+      );
+
+      expect(mockAuditLoggerService.logConfigModificada).not.toHaveBeenCalled();
+    });
+
+    it('permite guardar en estado CONFIGURADA (a diferencia de voto-nulo y revoto)', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue({
+        ...baseEleccion,
+        estado: EleccionEstado.CONFIGURADA,
+      });
+
+      const actual = await service.guardarVisibilidadDashboard(
+        1,
+        {
+          mostrarResultados: false,
+          mostrarParticipacion: true,
+          mostrarRevoto: true,
+          mostrarTransacciones: true,
+        },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.editable).toBe(true);
+      expect(actual.mostrarResultados).toBe(false);
+    });
+
+    it('lanza 409 si el comicio ya está ABIERTA', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue({
+        ...baseEleccion,
+        estado: EleccionEstado.ABIERTA,
+      });
+
+      await expect(
+        service.guardarVisibilidadDashboard(
+          1,
+          {
+            mostrarResultados: false,
+            mostrarParticipacion: true,
+            mostrarRevoto: true,
+            mostrarTransacciones: true,
+          },
+          { actorId: 'admin-1' },
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+    });
+
+    it('editable es false cuando el comicio está ABIERTA', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue({
+        ...baseEleccion,
+        estado: EleccionEstado.ABIERTA,
+      });
+
+      const actual = await service.obtenerVisibilidadDashboard(1);
+
+      expect(actual.editable).toBe(false);
+    });
+
+    it('lanza 404 si la elección no existe', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerVisibilidadDashboard(99),
       ).rejects.toBeInstanceOf(NotFoundException);
     });
   });
