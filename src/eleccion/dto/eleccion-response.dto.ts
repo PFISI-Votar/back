@@ -14,6 +14,13 @@ export class EleccionResponseDto {
   @ApiPropertyOptional()
   descripcion?: string | null;
 
+  @ApiPropertyOptional({
+    description:
+      'VOTAR-454: observación mostrada en el login de la BUD. Null oculta el recuadro.',
+    nullable: true,
+  })
+  observacionLogin?: string | null;
+
   @ApiProperty()
   fechaInicio: Date;
 

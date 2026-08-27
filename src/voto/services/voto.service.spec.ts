@@ -166,6 +166,7 @@ describe('VotoService', () => {
       snapshotCongelado: true,
       permitirVotoNulo: true,
       pausada: false,
+      observacionLogin: null,
     });
   });
 
@@ -183,6 +184,24 @@ describe('VotoService', () => {
     const actual = await service.obtenerConfiguracionBud(1);
 
     expect(actual.permitirVotoNulo).toBe(false);
+  });
+
+  it('VOTAR-454: propaga observacionLogin en configuración BUD pública', async () => {
+    const repositories = createRepositories();
+    const observacionLogin = 'Ingresá con tu correo institucional.';
+    repositories.eleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      nombre: 'Comicio UTN',
+      estado: EleccionEstado.ABIERTA,
+      tipoVotacion: TipoVotacion.POR_LISTA,
+      pausada: false,
+      observacionLogin,
+    });
+    const service = createService(repositories);
+
+    const actual = await service.obtenerConfiguracionBud(1);
+
+    expect(actual.observacionLogin).toBe(observacionLogin);
   });
 
   it('lanza NotFoundException si el comicio no existe al obtener configuración BUD', async () => {
