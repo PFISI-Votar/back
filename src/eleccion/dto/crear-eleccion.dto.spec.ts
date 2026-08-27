@@ -40,4 +40,19 @@ describe('CrearEleccionDto', () => {
     expect(dto.descripcion).not.toContain('<img');
     expect(validateSync(dto)).toHaveLength(0);
   });
+
+  it('VOTAR-454: sanitiza scripts maliciosos en la observación de login', () => {
+    const plain = {
+      ...buildValidPlain(),
+      observacionLogin: '<script>alert(1)</script>Usá tu cuenta institucional.',
+    };
+
+    const dto = plainToInstance(CrearEleccionDto, plain, {
+      enableImplicitConversion: true,
+    });
+
+    expect(dto.observacionLogin).toBe('Usá tu cuenta institucional.');
+    expect(dto.observacionLogin).not.toContain('<script>');
+    expect(validateSync(dto)).toHaveLength(0);
+  });
 });

@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
@@ -43,4 +43,11 @@ export class BudConfigResponseDto {
       'VOTAR-347 — true si la urna digital está pausada por incidente. La BUD debe bloquear el envío de votos mientras sea true.',
   })
   pausada!: boolean;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description:
+      'VOTAR-454: observación configurable del login de la BUD. Null oculta el recuadro.',
+  })
+  observacionLogin!: string | null;
 }

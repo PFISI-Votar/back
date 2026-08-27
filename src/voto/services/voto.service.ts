@@ -80,6 +80,7 @@ export class VotoService {
         resultadosDefinitivos || !configuracion.mostrarResultadosTiempoReal,
       permitirVotoNulo: configuracion.permitirVotoNulo,
       pausada: eleccion.pausada,
+      observacionLogin: eleccion.observacionLogin ?? null,
     };
   }
 
