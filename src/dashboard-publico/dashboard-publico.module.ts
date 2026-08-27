@@ -6,6 +6,7 @@ import { ParticipacionPublicController } from '@/dashboard-publico/controllers/p
 import { RevotoStatsPublicController } from '@/dashboard-publico/controllers/revoto-stats-public.controller';
 import { TransaccionesPublicController } from '@/dashboard-publico/controllers/transacciones-public.controller';
 import { ParticipacionSnapshot } from '@/dashboard-publico/entities/participacion-snapshot.entity';
+import { SeccionDashboardVisibleGuard } from '@/dashboard-publico/guards/seccion-dashboard-visible.guard';
 import { ContratoEstadoPublicService } from '@/dashboard-publico/services/contrato-estado-public.service';
 import { ParticipacionPublicService } from '@/dashboard-publico/services/participacion-public.service';
 import { ParticipacionSamplerService } from '@/dashboard-publico/services/participacion-sampler.service';
@@ -39,6 +40,7 @@ import { PadronModule } from '@/padron/padron.module';
     TransaccionesPublicService,
     ParticipacionSamplerService,
     ContratoEstadoPublicService,
+    SeccionDashboardVisibleGuard,
   ],
   exports: [
     ParticipacionSamplerService, // exportado para CierreComicioService
