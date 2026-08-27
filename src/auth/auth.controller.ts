@@ -14,8 +14,14 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { REFRESH_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { LoginDto } from '@/auth/dto/login.dto';
 import { AuthResponseDto, AuthUserDto } from '@/auth/dto/auth-response.dto';
+import {
+  ResetTwoFactorDto,
+  TwoFactorStatusDto,
+  VerifyTwoFactorDto,
+} from '@/auth/dto/two-factor.dto';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { AuthService } from '@/auth/services/auth.service';
@@ -47,12 +53,14 @@ export class AuthController {
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-login' })
   @ApiOperation({
     summary: 'Iniciar sesión con credenciales de Autogestión UTN',
+    description:
+      'Si la cuenta es autoridad electoral, puede devolver un desafío 2FA (setup o verificación) en lugar de cookies de sesión.',
   })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
     description:
-      'Autenticación exitosa. Access y refresh token en cookies HttpOnly.',
+      'Autenticación exitosa o desafío 2FA pendiente. Access y refresh token en cookies HttpOnly solo si la sesión quedó completa.',
     type: AuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
@@ -62,12 +70,74 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponseDto> {
+    const result = await this.authService.login(dto, {
+      ipOrigen: this.resolveClientIp(request),
+    });
+    if (result.kind === 'two_factor') {
+      return { twoFactor: result.twoFactor };
+    }
+    this.attachSessionCookies(
+      response,
+      result.session.response.accessToken,
+      result.session.refreshToken,
+    );
+    return { user: result.session.response.user };
+  }
+
+  @Post('2fa/verify')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(IpRateLimitGuard)
+  @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-2fa-verify' })
+  @ApiOperation({
+    summary: 'Completar login admin verificando el código TOTP',
+  })
+  @ApiBody({ type: VerifyTwoFactorDto })
+  @ApiResponse({
+    status: 200,
+    description: '2FA válido; cookies de sesión emitidas',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Código o desafío inválido' })
+  @ApiResponse({ status: 429, description: 'Rate limit excedido' })
+  async verifyTwoFactor(
+    @Body() dto: VerifyTwoFactorDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AuthResponseDto> {
     const { response: authResponse, refreshToken } =
-      await this.authService.login(dto, {
+      await this.authService.verifyTwoFactor(dto.challengeToken, dto.code, {
         ipOrigen: this.resolveClientIp(request),
       });
     this.attachSessionCookies(response, authResponse.accessToken, refreshToken);
     return { user: authResponse.user };
+  }
+
+  @Get('2fa/status')
+  @AdminAuth()
+  @ApiOperation({ summary: 'Estado del setup 2FA de la autoridad autenticada' })
+  @ApiResponse({ status: 200, type: TwoFactorStatusDto })
+  async getTwoFactorStatus(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<TwoFactorStatusDto> {
+    const user = assertAuthenticatedUser(request.user);
+    return this.authService.getTwoFactorStatus(user);
+  }
+
+  @Post('2fa/reset')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @AdminAuth()
+  @ApiOperation({
+    summary: 'Invalidar el setup 2FA tras confirmar la contraseña institucional',
+  })
+  @ApiBody({ type: ResetTwoFactorDto })
+  @ApiResponse({ status: 204, description: 'Setup 2FA invalidado' })
+  @ApiResponse({ status: 401, description: 'Contraseña inválida' })
+  async resetTwoFactor(
+    @Body() dto: ResetTwoFactorDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    const user = assertAuthenticatedUser(request.user);
+    await this.authService.resetTwoFactor(user, dto.password);
   }
 
   @Post('refresh')
