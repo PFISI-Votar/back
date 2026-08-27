@@ -1,5 +1,3 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -12,7 +10,9 @@ import * as securityHeaders from '@/config/security-headers.config';
 
 describe('Security headers (e2e) — VOTAR-381', () => {
   let app: INestApplication<App>;
-  const uploadsDir = join(process.cwd(), 'uploads-security-e2e');
+  // VOTAR-466 — UUID sintáctico válido pero inexistente: alcanza para
+  // ejercer el 404 de GET /imagenes/:idImagen sin necesitar datos sembrados.
+  const imagenInexistente = '00000000-0000-4000-8000-000000000000';
 
   const expectCommonSecurityHeaders = (
     headers: request.Response['headers'],
@@ -49,12 +49,6 @@ describe('Security headers (e2e) — VOTAR-381', () => {
     await app.init();
   };
 
-  beforeAll(() => {
-    mkdirSync(uploadsDir, { recursive: true });
-    writeFileSync(join(uploadsDir, 'fixture.txt'), 'fixture');
-    process.env.UPLOADS_DIR = 'uploads-security-e2e';
-  });
-
   afterEach(async () => {
     await app.close();
   });
@@ -81,10 +75,13 @@ describe('Security headers (e2e) — VOTAR-381', () => {
       expect(response.headers['strict-transport-security']).toBeUndefined();
     });
 
-    it('GET /uploads includes X-Content-Type-Options nosniff (UAT-05)', async () => {
+    it('GET /imagenes includes X-Content-Type-Options nosniff (UAT-05)', async () => {
+      // VOTAR-466 — /uploads dejó de servirse; la ruta de medios ahora es
+      // /imagenes/:idImagen (Postgres). Un UUID inexistente ejercita los
+      // headers de seguridad en el camino 404 sin depender de datos sembrados.
       const response = await request(app.getHttpServer())
-        .get('/uploads/fixture.txt')
-        .expect(200);
+        .get(`/imagenes/${imagenInexistente}`)
+        .expect(404);
       expectCommonSecurityHeaders(response.headers);
     });
 
@@ -126,6 +123,14 @@ describe('Security headers (e2e) — VOTAR-381', () => {
       expect(response.headers['strict-transport-security']).toBe(
         'max-age=31536000; includeSubDomains',
       );
+    });
+
+    it('GET /imagenes includes X-Content-Type-Options nosniff (UAT-05)', async () => {
+      const response = await request(app.getHttpServer())
+        .get(`/imagenes/${imagenInexistente}`)
+        .set('x-forwarded-proto', 'https')
+        .expect(404);
+      expectCommonSecurityHeaders(response.headers);
     });
   });
 });
