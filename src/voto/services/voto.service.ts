@@ -7,6 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
+import {
+  SeccionDashboard,
+  isSeccionDashboardVisible,
+} from '@/eleccion/configuracion-comicio/constants/visibilidad-dashboard.constants';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -80,6 +84,28 @@ export class VotoService {
         resultadosDefinitivos || !configuracion.mostrarResultadosTiempoReal,
       permitirVotoNulo: configuracion.permitirVotoNulo,
       pausada: eleccion.pausada,
+      visibilidadDashboard: {
+        resultados: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.RESULTADOS,
+        ),
+        participacion: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.PARTICIPACION,
+        ),
+        revoto: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.REVOTO,
+        ),
+        transacciones: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.TRANSACCIONES,
+        ),
+      },
     };
   }
 
