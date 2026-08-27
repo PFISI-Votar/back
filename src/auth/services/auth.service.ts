@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  UnauthorizedException,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -102,13 +99,13 @@ export class AuthService {
         };
       }
 
-      const secret = await this.totpService.createSecret();
+      const secret = this.totpService.createSecret();
       autoridad.totpSecret = secret;
       autoridad.totpEnabled = false;
       await this.autoridadRepository.save(autoridad);
 
       const label = email || nick;
-      const otpauthUrl = await this.totpService.buildOtpauthUrl(secret, label);
+      const otpauthUrl = this.totpService.buildOtpauthUrl(secret, label);
       const challengeToken = await this.issueTwoFactorChallenge(
         identity,
         'setup',
@@ -141,7 +138,7 @@ export class AuthService {
       throw new UnauthorizedException('Setup 2FA inválido o incompleto');
     }
 
-    const valid = await this.totpService.verifyCode(
+    const valid = this.totpService.verifyCode(
       autoridad.totpSecret,
       code.trim(),
     );
@@ -164,17 +161,10 @@ export class AuthService {
       email: challenge.email,
       name: challenge.name,
     };
-    return this.completeSession(
-      identity,
-      JwtRole.ELECTION_ADMIN,
-      auditContext,
-    );
+    return this.completeSession(identity, JwtRole.ELECTION_ADMIN, auditContext);
   }
 
-  async resetTwoFactor(
-    user: JwtPayload,
-    password: string,
-  ): Promise<void> {
+  async resetTwoFactor(user: JwtPayload, password: string): Promise<void> {
     const autoridad = await this.findAutoridadForAuthenticatedUser(user);
     if (!autoridad) {
       throw new UnauthorizedException('Autoridad electoral no encontrada');
@@ -253,13 +243,14 @@ export class AuthService {
     challengeToken: string,
   ): Promise<TwoFactorChallengePayload> {
     try {
-      const payload = await this.jwtService.verifyAsync<TwoFactorChallengePayload>(
-        challengeToken,
-        {
-          audience: TWO_FACTOR_CHALLENGE_AUDIENCE,
-          issuer: DEFAULT_JWT_ISSUER,
-        },
-      );
+      const payload =
+        await this.jwtService.verifyAsync<TwoFactorChallengePayload>(
+          challengeToken,
+          {
+            audience: TWO_FACTOR_CHALLENGE_AUDIENCE,
+            issuer: DEFAULT_JWT_ISSUER,
+          },
+        );
       if (
         payload.purpose !== '2fa_challenge' ||
         (payload.mode !== 'setup' && payload.mode !== 'verify') ||
@@ -322,10 +313,7 @@ export class AuthService {
   ): Promise<AutoridadElectoral | null> {
     if (user.email) {
       return this.autoridadRepository.findOne({
-        where: [
-          { identificadorSso: user.sub },
-          { email: user.email },
-        ],
+        where: [{ identificadorSso: user.sub }, { email: user.email }],
       });
     }
     return this.autoridadRepository.findOne({

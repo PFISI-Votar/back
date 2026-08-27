@@ -127,7 +127,8 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @AdminAuth()
   @ApiOperation({
-    summary: 'Invalidar el setup 2FA tras confirmar la contraseña institucional',
+    summary:
+      'Invalidar el setup 2FA tras confirmar la contraseña institucional',
   })
   @ApiBody({ type: ResetTwoFactorDto })
   @ApiResponse({ status: 204, description: 'Setup 2FA invalidado' })

@@ -38,17 +38,16 @@ describe('AuthService', () => {
     .mockReturnValue('otpauth://totp/VOTAR:admin@test');
   const verifyCodeMock = jest.fn();
 
-  const baseAutoridad = (): AutoridadElectoral =>
-    ({
-      idAutoridad: 1,
-      identificadorSso: '14988',
-      email: 'admin@test.local',
-      nombre: 'Bruno Lucarelli',
-      rol: RolAutoridad.ELECTION_ADMIN,
-      totpSecret: null,
-      totpEnabled: false,
-      fechaRegistro: new Date(),
-    }) as AutoridadElectoral;
+  const baseAutoridad = (): AutoridadElectoral => ({
+    idAutoridad: 1,
+    identificadorSso: '14988',
+    email: 'admin@test.local',
+    nombre: 'Bruno Lucarelli',
+    rol: RolAutoridad.ELECTION_ADMIN,
+    totpSecret: null,
+    totpEnabled: false,
+    fechaRegistro: new Date(),
+  });
 
   beforeEach(async () => {
     const module: TestingModule = await Test.createTestingModule({
@@ -101,7 +100,9 @@ describe('AuthService', () => {
     logLoginMock.mockResolvedValue(undefined);
     createSecretMock.mockReturnValue('BASE32SECRET');
     buildOtpauthUrlMock.mockReturnValue('otpauth://totp/VOTAR:admin@test');
-    autoridadRepository.save.mockImplementation(async (entity) => entity as AutoridadElectoral);
+    autoridadRepository.save.mockImplementation((entity) =>
+      Promise.resolve(entity as AutoridadElectoral),
+    );
   });
 
   it('returns 2FA setup challenge for admin without totp enabled', async () => {
