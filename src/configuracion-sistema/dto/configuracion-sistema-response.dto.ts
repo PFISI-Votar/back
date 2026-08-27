@@ -5,7 +5,7 @@ import type { ActaAperturaModo } from '@/configuracion-sistema/entities/configur
 
 export class ConfiguracionSistemaResponseDto {
   @ApiProperty({
-    example: '/uploads/sistema/logo-institucional-1700000000000-abc.jpg',
+    example: '/imagenes/3f8c1c2a-5b1e-4a9d-9f0c-2b7e5d6a1c34',
     nullable: true,
   })
   logoUrl: string | null;
