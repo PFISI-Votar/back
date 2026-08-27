@@ -1,44 +1,62 @@
-import { promises as fs } from 'node:fs';
-import { join, resolve, sep } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { createHash } from 'node:crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import sharp from 'sharp';
+import { ImagenElectoral } from '@/common/images/entities/imagen-electoral.entity';
 
 export type ElectoralImageKind =
   | 'candidato-foto'
   | 'lista-logo'
   | 'logo-institucional';
 
+/**
+ * VOTAR-466 — las imágenes se sirven desde Postgres en esta ruta pública,
+ * reemplazando el static serving de /uploads. El identificador es el UUID
+ * de la fila en `imagen_electoral`.
+ */
+export const PUBLIC_IMAGE_ROOT = '/imagenes';
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
 
-const IMAGE_CONFIG: Record<
-  ElectoralImageKind,
-  {
-    directory: string;
-    width: number;
-    height: number;
-    label: string;
-    fit: 'cover' | 'contain';
-  }
-> = {
+/**
+ * Calidades de WebP a intentar, de mayor a menor, hasta que el resultado
+ * entre en el presupuesto de tamaño del tipo (VOTAR-466). Si ninguna entra,
+ * se conserva la última pasada (la de menor peso): nunca se rechaza una
+ * imagen que ya pasó la validación de entrada por su tamaño de salida.
+ */
+const WEBP_QUALITY_STEPS = [80, 70, 60, 50] as const;
+
+interface ImageKindConfig {
+  width: number;
+  height: number;
+  label: string;
+  fit: 'cover' | 'contain';
+  /** Presupuesto de tamaño de salida en bytes, tras optimizar a WebP. */
+  maxOutputBytes: number;
+}
+
+export const IMAGE_CONFIG: Record<ElectoralImageKind, ImageKindConfig> = {
   'candidato-foto': {
-    directory: 'candidatos',
     width: 400,
     height: 400,
     label: 'fotografía de candidato',
     fit: 'cover',
+    maxOutputBytes: 60 * 1024,
   },
   'lista-logo': {
-    directory: 'listas',
     width: 800,
     height: 400,
     label: 'logotipo de lista',
     fit: 'cover',
+    maxOutputBytes: 100 * 1024,
   },
   'logo-institucional': {
-    directory: 'sistema',
     width: 600,
     height: 600,
     label: 'logotipo institucional',
@@ -46,13 +64,51 @@ const IMAGE_CONFIG: Record<
     // (se embeben en el encabezado de reportes institucionales, ej. Acta
     // de Apertura VOTAR-374).
     fit: 'contain',
+    maxOutputBytes: 100 * 1024,
   },
+};
+
+/**
+ * Normaliza (recorte/relleno según el tipo) y optimiza a WebP con
+ * presupuesto de tamaño (VOTAR-466). Pura y sin dependencia de Nest DI para
+ * que también la usen los seeds (`election-seed-utils.ts`), que corren
+ * fuera del contenedor de inyección y deben producir imágenes idénticas a
+ * las que sube un usuario real.
+ */
+export const optimizarImagenElectoral = async (
+  buffer: Buffer,
+  config: ImageKindConfig,
+): Promise<{ data: Buffer; info: sharp.OutputInfo }> => {
+  const base = sharp(buffer, { failOn: 'error' })
+    .rotate() // aplica la orientación EXIF y descarta el resto del EXIF
+    .resize(config.width, config.height, {
+      fit: config.fit,
+      position: 'center',
+    })
+    .flatten({ background: '#ffffff' });
+
+  let resultado: { data: Buffer; info: sharp.OutputInfo } | undefined;
+  for (const quality of WEBP_QUALITY_STEPS) {
+    // .clone() es obligatorio: un pipeline de sharp no se puede reejecutar.
+    resultado = await base
+      .clone()
+      .webp({ quality, effort: 5 })
+      .toBuffer({ resolveWithObject: true });
+
+    if (resultado.data.length <= config.maxOutputBytes) {
+      break;
+    }
+  }
+
+  return resultado as { data: Buffer; info: sharp.OutputInfo };
 };
 
 @Injectable()
 export class ElectoralImageService {
-  private readonly uploadRoot = resolve(process.env.UPLOADS_DIR ?? 'uploads');
-  private readonly publicRoot = '/uploads';
+  constructor(
+    @InjectRepository(ImagenElectoral)
+    private readonly repository: Repository<ImagenElectoral>,
+  ) {}
 
   async saveImage(
     file: Express.Multer.File | undefined,
@@ -61,52 +117,42 @@ export class ElectoralImageService {
     this.validateFile(file);
 
     const config = IMAGE_CONFIG[kind];
-    const filename = `${kind}-${Date.now()}-${randomUUID()}.jpg`;
-    const directory = join(this.uploadRoot, config.directory);
-    const targetPath = join(directory, filename);
+    const { data, info } = await optimizarImagenElectoral(file.buffer, config);
 
-    await fs.mkdir(directory, { recursive: true });
-    await sharp(file.buffer, { failOn: 'error' })
-      .rotate()
-      .resize(config.width, config.height, {
-        fit: config.fit,
-        position: 'center',
-      })
-      .flatten({ background: '#ffffff' })
-      .jpeg({ quality: 88, mozjpeg: true })
-      .toFile(targetPath);
+    const guardada = await this.repository.save(
+      this.repository.create({
+        tipo: kind,
+        mimeType: 'image/webp',
+        contenido: data,
+        tamanoBytes: data.length,
+        checksumSha256: createHash('sha256').update(data).digest('hex'),
+        ancho: info.width,
+        alto: info.height,
+      }),
+    );
 
-    return `${this.publicRoot}/${config.directory}/${filename}`;
+    return `${PUBLIC_IMAGE_ROOT}/${guardada.idImagen}`;
+  }
+
+  /**
+   * Los bytes viven en una columna `select: false`; hay que pedirlos
+   * explícito. Usado por el controlador para servir la imagen.
+   */
+  async obtenerImagen(idImagen: string): Promise<ImagenElectoral | null> {
+    return this.repository
+      .createQueryBuilder('imagen')
+      .addSelect('imagen.contenido')
+      .where('imagen.idImagen = :idImagen', { idImagen })
+      .getOne();
   }
 
   async deleteIfManagedUrl(url: string | null | undefined): Promise<void> {
-    if (!url) {
+    const idImagen = this.extractImageId(url);
+    if (!idImagen) {
       return;
     }
 
-    const pathname = this.getPathname(url);
-    if (!pathname.startsWith(`${this.publicRoot}/`)) {
-      return;
-    }
-
-    const relativePath = pathname.slice(this.publicRoot.length + 1);
-    const targetPath = resolve(this.uploadRoot, relativePath);
-    const rootWithSeparator = `${this.uploadRoot}${sep}`;
-
-    if (
-      targetPath !== this.uploadRoot &&
-      !targetPath.startsWith(rootWithSeparator)
-    ) {
-      return;
-    }
-
-    try {
-      await fs.unlink(targetPath);
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-        throw error;
-      }
-    }
+    await this.repository.delete({ idImagen });
   }
 
   private validateFile(
@@ -135,6 +181,26 @@ export class ElectoralImageService {
     const normalized = filename.toLowerCase();
     const index = normalized.lastIndexOf('.');
     return index === -1 ? '' : normalized.slice(index);
+  }
+
+  /**
+   * Reemplaza el guard de path traversal del backend en disco: cualquier
+   * pathname que no sea exactamente `/imagenes/<uuid>` se ignora (incluye
+   * URLs legacy `/uploads/...` que puedan sobrevivir en un dump anterior a
+   * VOTAR-466).
+   */
+  private extractImageId(url: string | null | undefined): string | null {
+    if (!url) {
+      return null;
+    }
+
+    const pathname = this.getPathname(url);
+    if (!pathname.startsWith(`${PUBLIC_IMAGE_ROOT}/`)) {
+      return null;
+    }
+
+    const candidate = pathname.slice(PUBLIC_IMAGE_ROOT.length + 1);
+    return UUID_PATTERN.test(candidate) ? candidate : null;
   }
 
   private getPathname(url: string): string {

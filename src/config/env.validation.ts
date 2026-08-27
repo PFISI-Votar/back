@@ -21,7 +21,6 @@ export const envValidationSchema = Joi.object({
   DB_USERNAME: Joi.string().required(),
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
-  UPLOADS_DIR: Joi.string().default('uploads'),
 
   LOAD_BLOCKCHAIN_LOCAL: Joi.boolean()
     .truthy('true')
