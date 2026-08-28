@@ -79,7 +79,7 @@ export const optimizarImagenElectoral = async (
   buffer: Buffer,
   config: ImageKindConfig,
 ): Promise<{ data: Buffer; info: sharp.OutputInfo }> => {
-    const base = sharp(buffer, { failOn: 'error' })
+  const base = sharp(buffer, { failOn: 'error' })
     .rotate() // aplica la orientación EXIF y descarta el resto del EXIF
     .resize(config.width, config.height, {
       fit: config.fit,
