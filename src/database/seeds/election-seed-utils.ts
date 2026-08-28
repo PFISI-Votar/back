@@ -37,7 +37,18 @@ export type ElectionSeedDefinition = {
   nombre: string;
   descripcion: string;
   tituloBoleta: string;
+  /** @default TipoVotacion.POR_LISTA */
+  tipoVotacion?: TipoVotacion;
   listas: SeedList[];
+};
+
+/**
+ * Imágenes fijas para reemplazar el SVG generado por defecto — mismo
+ * archivo para todos los candidatos/todas las listas del seed.
+ */
+export type SeedImageOverrides = {
+  candidatoFotoBuffer?: Buffer;
+  listaLogoBuffer?: Buffer;
 };
 
 type SeedContext = {
@@ -114,18 +125,18 @@ const buildCandidatePhotoSvg = (
  * VOTAR-466 — persiste una imagen de seed en `imagen_electoral` usando el
  * mismo pipeline de optimización que un upload real (WebP + presupuesto),
  * así los datos sembrados son indistinguibles de los que sube un usuario.
- * Idempotente por checksum: si el SVG (determinista) ya generó una fila
- * idéntica en una corrida anterior del seed, se reutiliza en vez de
- * duplicar bytes — reemplaza el `fs.access() -> return` que tenía
- * `ensureGeneratedJpeg` contra el disco.
+ * Idempotente por checksum: si la imagen de entrada (SVG determinista o
+ * archivo fijo) ya generó una fila idéntica en una corrida anterior del
+ * seed, se reutiliza en vez de duplicar bytes — reemplaza el
+ * `fs.access() -> return` que tenía `ensureGeneratedJpeg` contra el disco.
  */
 const ensureSeedImage = async (
   manager: EntityManager,
   tipo: ElectoralImageKind,
-  svg: string,
+  source: Buffer,
 ): Promise<string> => {
   const { data, info } = await optimizarImagenElectoral(
-    Buffer.from(svg),
+    source,
     IMAGE_CONFIG[tipo],
   );
   const checksumSha256 = createHash('sha256').update(data).digest('hex');
@@ -155,6 +166,7 @@ const ensureSeedImage = async (
 export const seedElection = async (
   definition: ElectionSeedDefinition,
   manager: EntityManager,
+  imageOverrides: SeedImageOverrides = {},
 ): Promise<SeedContext> => {
   await manager.delete(Eleccion, { nombre: definition.nombre });
 
@@ -166,7 +178,7 @@ export const seedElection = async (
       fechaInicio,
       fechaFin,
       estado: EleccionEstado.BORRADOR,
-      tipoVotacion: TipoVotacion.POR_LISTA,
+      tipoVotacion: definition.tipoVotacion ?? TipoVotacion.POR_LISTA,
       minimoCandidatosPorLista: null,
     }),
   );
@@ -229,7 +241,7 @@ export const seedElection = async (
     const logoUrl = await ensureSeedImage(
       manager,
       'lista-logo',
-      buildListLogoSvg(seedList),
+      imageOverrides.listaLogoBuffer ?? Buffer.from(buildListLogoSvg(seedList)),
     );
     const lista = await manager.save(
       manager.create(Lista, {
@@ -258,7 +270,8 @@ export const seedElection = async (
       const fotoUrl = await ensureSeedImage(
         manager,
         'candidato-foto',
-        buildCandidatePhotoSvg(seedList, seedCandidate),
+        imageOverrides.candidatoFotoBuffer ??
+          Buffer.from(buildCandidatePhotoSvg(seedList, seedCandidate)),
       );
       await manager.save(
         manager.create(Candidato, {
