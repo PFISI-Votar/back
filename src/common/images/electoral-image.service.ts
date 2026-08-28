@@ -79,11 +79,16 @@ export const optimizarImagenElectoral = async (
   buffer: Buffer,
   config: ImageKindConfig,
 ): Promise<{ data: Buffer; info: sharp.OutputInfo }> => {
-  const base = sharp(buffer, { failOn: 'error' })
+    const base = sharp(buffer, { failOn: 'error' })
     .rotate() // aplica la orientación EXIF y descarta el resto del EXIF
     .resize(config.width, config.height, {
       fit: config.fit,
       position: 'center',
+      // VOTAR-457: sin esto, el espacio sobrante que deja `fit: 'contain'`
+      // (logos no cuadrados) se rellena de negro por default en Sharp.
+      // `flatten` de abajo no alcanza porque solo aplana transparencia
+      // existente, no el padding que agrega resize().
+      background: { r: 255, g: 255, b: 255, alpha: 1 },
     })
     .flatten({ background: '#ffffff' });
 
