@@ -75,7 +75,7 @@ describe('ElectoralImageService', () => {
           ...entity,
         } as ImagenElectoral),
       ),
-      delete: jest.fn(() => Promise.resolve()),
+      delete: jest.fn((_idImagen: { idImagen: string }) => Promise.resolve()),
       createQueryBuilder: jest.fn(),
     };
     service = new ElectoralImageService(
