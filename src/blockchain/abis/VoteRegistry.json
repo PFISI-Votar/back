@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0x13f7e52cb35e8e69b84fa21d66a81561f31bbd9d497dbe67e3f1a121af1d3191",
+  "abiHash": "0x8796030028e160279d75771eb0514d4bf5dff20d48f446de1d33d14156c0cbd5",
   "abi": [
     {
       "inputs": [
@@ -403,6 +403,19 @@
           "internalType": "uint256",
           "name": "",
           "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "VALIDATOR_ROLE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
         }
       ],
       "stateMutability": "view",
@@ -842,6 +855,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-12T18:30:50.206Z",
+  "exportedAt": "2026-09-03T17:33:39.421Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

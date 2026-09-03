@@ -73,6 +73,19 @@ export const envValidationSchema = Joi.object({
   PRIVATE_KEY: Joi.string().optional(),
   ADMIN_MULTISIG_ADDRESS: Joi.string().optional(),
   PAUSER_OPERATOR_ADDRESS: Joi.string().optional(),
+  /**
+   * VOTAR-377 — clave privada de la "Entidad de Firmas Digitales" (Tercero de
+   * Confianza). Firma EIP-712 `Validation` sobre el payload del voto una vez
+   * verificada la pertenencia al padrón. Su address debe tener VALIDATOR_ROLE en
+   * el BallotContract. Dedicada (no reusar PRIVATE_KEY): separación de funciones.
+   */
+  VALIDATOR_PRIVATE_KEY: Joi.string().optional(),
+  /** VOTAR-377 — TTL de una credencial de validación anónima (fase 1 → fase 2). */
+  CREDENCIAL_VALIDACION_TTL_MS: Joi.number()
+    .integer()
+    .min(60_000)
+    .max(3_600_000)
+    .default(900_000),
   /** VOTAR-347 — confirmaciones de autoridades PAUSER distintas requeridas antes de emitir la tx. */
   PAUSE_CONFIRMATIONS_REQUIRED: Joi.number().integer().min(1).default(2),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
