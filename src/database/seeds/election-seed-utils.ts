@@ -1,8 +1,13 @@
-import { promises as fs } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
 import { DataSource, EntityManager } from 'typeorm';
-import sharp from 'sharp';
 import dataSource from '@/database/data-source';
+import {
+  ElectoralImageKind,
+  IMAGE_CONFIG,
+  PUBLIC_IMAGE_ROOT,
+  optimizarImagenElectoral,
+} from '@/common/images/electoral-image.service';
+import { ImagenElectoral } from '@/common/images/entities/imagen-electoral.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
@@ -42,8 +47,6 @@ type SeedContext = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const UPLOAD_ROOT = resolve(process.env.UPLOADS_DIR ?? 'uploads');
-const PUBLIC_UPLOAD_ROOT = '/uploads';
 
 export const getFutureDateRange = () => {
   const now = new Date();
@@ -62,33 +65,6 @@ export const splitNombreCompleto = (nombreCompleto: string) => {
   return { nombre, apellido };
 };
 
-const toSeedAssetSlug = (value: string): string => {
-  const slug = value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-
-  return slug || 'asset';
-};
-
-const getListLogoUrl = (seedList: SeedList): string =>
-  `${PUBLIC_UPLOAD_ROOT}/listas/lista-logo-${toSeedAssetSlug(
-    seedList.sigla || seedList.nombre,
-  )}.jpg`;
-
-const getCandidatePhotoUrl = (
-  seedList: SeedList,
-  seedCandidate: SeedCandidate,
-): string =>
-  `${PUBLIC_UPLOAD_ROOT}/candidatos/candidato-foto-${toSeedAssetSlug(
-    `${seedList.sigla}-${seedCandidate.nombreCompleto}`,
-  )}.jpg`;
-
-const getUploadPath = (publicUrl: string): string =>
-  join(UPLOAD_ROOT, publicUrl.slice(PUBLIC_UPLOAD_ROOT.length + 1));
-
 const escapeSvgText = (value: string): string =>
   value
     .replace(/&/g, '&amp;')
@@ -103,22 +79,6 @@ const getInitials = (nombreCompleto: string): string => {
   const last = parts.length > 1 ? parts[parts.length - 1][0] : '';
 
   return `${first}${last}`.toUpperCase();
-};
-
-const ensureGeneratedJpeg = async (
-  targetPath: string,
-  svg: string,
-): Promise<void> => {
-  try {
-    await fs.access(targetPath);
-    return;
-  } catch {
-    await fs.mkdir(dirname(targetPath), { recursive: true });
-  }
-
-  await sharp(Buffer.from(svg))
-    .jpeg({ quality: 88, mozjpeg: true })
-    .toFile(targetPath);
 };
 
 const buildListLogoSvg = (seedList: SeedList): string => {
@@ -150,29 +110,52 @@ const buildCandidatePhotoSvg = (
 </svg>`;
 };
 
-const ensureSeedImageAssets = async (
-  definition: ElectionSeedDefinition,
-): Promise<void> => {
-  for (const seedList of definition.listas) {
-    await ensureGeneratedJpeg(
-      getUploadPath(getListLogoUrl(seedList)),
-      buildListLogoSvg(seedList),
-    );
+/**
+ * VOTAR-466 — persiste una imagen de seed en `imagen_electoral` usando el
+ * mismo pipeline de optimización que un upload real (WebP + presupuesto),
+ * así los datos sembrados son indistinguibles de los que sube un usuario.
+ * Idempotente por checksum: si el SVG (determinista) ya generó una fila
+ * idéntica en una corrida anterior del seed, se reutiliza en vez de
+ * duplicar bytes — reemplaza el `fs.access() -> return` que tenía
+ * `ensureGeneratedJpeg` contra el disco.
+ */
+const ensureSeedImage = async (
+  manager: EntityManager,
+  tipo: ElectoralImageKind,
+  svg: string,
+): Promise<string> => {
+  const { data, info } = await optimizarImagenElectoral(
+    Buffer.from(svg),
+    IMAGE_CONFIG[tipo],
+  );
+  const checksumSha256 = createHash('sha256').update(data).digest('hex');
 
-    for (const seedCandidate of seedList.candidatos) {
-      await ensureGeneratedJpeg(
-        getUploadPath(getCandidatePhotoUrl(seedList, seedCandidate)),
-        buildCandidatePhotoSvg(seedList, seedCandidate),
-      );
-    }
+  const existente = await manager.findOne(ImagenElectoral, {
+    where: { checksumSha256 },
+  });
+  if (existente) {
+    return `${PUBLIC_IMAGE_ROOT}/${existente.idImagen}`;
   }
+
+  const guardada = await manager.save(
+    manager.create(ImagenElectoral, {
+      tipo,
+      mimeType: 'image/webp',
+      contenido: data,
+      tamanoBytes: data.length,
+      checksumSha256,
+      ancho: info.width,
+      alto: info.height,
+    }),
+  );
+
+  return `${PUBLIC_IMAGE_ROOT}/${guardada.idImagen}`;
 };
 
 export const seedElection = async (
   definition: ElectionSeedDefinition,
   manager: EntityManager,
 ): Promise<SeedContext> => {
-  await ensureSeedImageAssets(definition);
   await manager.delete(Eleccion, { nombre: definition.nombre });
 
   const { fechaInicio, fechaFin } = getFutureDateRange();
@@ -243,13 +226,18 @@ export const seedElection = async (
   }
 
   for (const [index, seedList] of definition.listas.entries()) {
+    const logoUrl = await ensureSeedImage(
+      manager,
+      'lista-logo',
+      buildListLogoSvg(seedList),
+    );
     const lista = await manager.save(
       manager.create(Lista, {
         idBoleta: boleta.idBoleta,
         nombre: seedList.nombre,
         sigla: seedList.sigla,
         color: seedList.color,
-        logoUrl: getListLogoUrl(seedList),
+        logoUrl,
         fechaOficializacion: null,
         estado: EstadoLista.BORRADOR,
         listId: index + 1,
@@ -267,13 +255,18 @@ export const seedElection = async (
         );
       }
 
+      const fotoUrl = await ensureSeedImage(
+        manager,
+        'candidato-foto',
+        buildCandidatePhotoSvg(seedList, seedCandidate),
+      );
       await manager.save(
         manager.create(Candidato, {
           idLista: lista.idLista,
           idCategoria: categoria.idCategoria,
           ...splitNombreCompleto(seedCandidate.nombreCompleto),
           orden: candidateIndex + 1,
-          fotoUrl: getCandidatePhotoUrl(seedList, seedCandidate),
+          fotoUrl,
           datosAdicionales: {},
         }),
       );

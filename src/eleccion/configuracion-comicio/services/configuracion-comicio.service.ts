@@ -19,6 +19,10 @@ import {
   ConfiguracionVotoNuloResponseDto,
   GuardarConfiguracionVotoNuloDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-voto-nulo.dto';
+import {
+  GuardarVisibilidadDashboardDto,
+  VisibilidadDashboardResponseDto,
+} from '@/eleccion/configuracion-comicio/dto/visibilidad-dashboard.dto';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
@@ -26,7 +30,10 @@ import { ConfiguracionRevotoAuditContext } from '@/eleccion/configuracion-comici
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { CrearEleccionValidationException } from '@/eleccion/exceptions/crear-eleccion-validation.exception';
-import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
+import {
+  assertEleccionEditable,
+  assertVisibilidadDashboardEditable,
+} from '@/eleccion/utils/eleccion-editable.util';
 
 @Injectable()
 export class ConfiguracionComicioService {
@@ -65,6 +72,10 @@ export class ConfiguracionComicioService {
       minIntervaloSegundos: 0,
       mostrarResultadosTiempoReal: false,
       politicaRevoto: PoliticaRevoto.DISABLED,
+      mostrarDashboardResultados: true,
+      mostrarDashboardParticipacion: true,
+      mostrarDashboardRevoto: true,
+      mostrarDashboardTransacciones: true,
     });
     return this.configRepository.save(config);
   }
@@ -145,6 +156,73 @@ export class ConfiguracionComicioService {
       });
     }
     return this.toVotoNuloResponse(guardada, eleccion.estado);
+  }
+
+  async obtenerVisibilidadDashboard(
+    idEleccion: number,
+  ): Promise<VisibilidadDashboardResponseDto> {
+    const eleccion = await this.assertEleccionExists(idEleccion);
+    const config = await this.findOrCreateConfig(idEleccion);
+    return this.toVisibilidadDashboardResponse(config, eleccion.estado);
+  }
+
+  async guardarVisibilidadDashboard(
+    idEleccion: number,
+    dto: GuardarVisibilidadDashboardDto,
+    auditContext: ConfiguracionRevotoAuditContext,
+  ): Promise<VisibilidadDashboardResponseDto> {
+    const eleccion = await this.assertEleccionExists(idEleccion);
+    assertVisibilidadDashboardEditable(eleccion);
+    const config = await this.findOrCreateConfig(idEleccion);
+    const antes = {
+      mostrarDashboardResultados: config.mostrarDashboardResultados,
+      mostrarDashboardParticipacion: config.mostrarDashboardParticipacion,
+      mostrarDashboardRevoto: config.mostrarDashboardRevoto,
+      mostrarDashboardTransacciones: config.mostrarDashboardTransacciones,
+    };
+    config.mostrarDashboardResultados = dto.mostrarResultados;
+    config.mostrarDashboardParticipacion = dto.mostrarParticipacion;
+    config.mostrarDashboardRevoto = dto.mostrarRevoto;
+    config.mostrarDashboardTransacciones = dto.mostrarTransacciones;
+    const guardada = await this.configRepository.save(config);
+    const despues = {
+      mostrarDashboardResultados: guardada.mostrarDashboardResultados,
+      mostrarDashboardParticipacion: guardada.mostrarDashboardParticipacion,
+      mostrarDashboardRevoto: guardada.mostrarDashboardRevoto,
+      mostrarDashboardTransacciones: guardada.mostrarDashboardTransacciones,
+    };
+    if (
+      antes.mostrarDashboardResultados !== despues.mostrarDashboardResultados ||
+      antes.mostrarDashboardParticipacion !==
+        despues.mostrarDashboardParticipacion ||
+      antes.mostrarDashboardRevoto !== despues.mostrarDashboardRevoto ||
+      antes.mostrarDashboardTransacciones !==
+        despues.mostrarDashboardTransacciones
+    ) {
+      await this.auditLoggerService.logConfigModificada({
+        idEleccion,
+        actorId: auditContext.actorId,
+        ipOrigen: auditContext.ipOrigen,
+        cambios: { visibilidadDashboard: { antes, despues } },
+      });
+    }
+    return this.toVisibilidadDashboardResponse(guardada, eleccion.estado);
+  }
+
+  private toVisibilidadDashboardResponse(
+    config: ConfiguracionComicio,
+    estado: EleccionEstado,
+  ): VisibilidadDashboardResponseDto {
+    return {
+      idEleccion: config.idEleccion,
+      mostrarResultados: config.mostrarDashboardResultados,
+      mostrarParticipacion: config.mostrarDashboardParticipacion,
+      mostrarRevoto: config.mostrarDashboardRevoto,
+      mostrarTransacciones: config.mostrarDashboardTransacciones,
+      editable:
+        estado === EleccionEstado.BORRADOR ||
+        estado === EleccionEstado.CONFIGURADA,
+    };
   }
 
   private toVotoNuloResponse(
