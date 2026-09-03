@@ -19,6 +19,7 @@ import { VotoModule } from '@/voto/voto.module';
 import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.module';
 import { AuditModule } from '@/audit/audit.module';
 import { FaucetModule } from '@/faucet/faucet.module';
+import { BackupModule } from '@/backups/backup.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { FaucetModule } from '@/faucet/faucet.module';
     AuditModule,
     ConfiguracionSistemaModule,
     FaucetModule,
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [AppService],
