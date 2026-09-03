@@ -45,6 +45,8 @@ const NETWORK_PATTERNS = [
 
 const UNAVAILABLE_PATTERNS = [/502/, /503/, /504/, /gateway/i, /cloudflare/i];
 
+const LOOPBACK_HOSTS = new Set(['localhost', '127.0.0.1', '::1']);
+
 export const parseRpcUrls = (
   primary?: string | null,
   fallbacks?: string | null,
@@ -53,6 +55,31 @@ export const parseRpcUrls = (
     .map((value) => value?.trim())
     .filter((value): value is string => Boolean(value));
   return [...new Set(collected)];
+};
+
+/**
+ * VOTAR-378 / UAT-02 — tráfico hacia nodos públicos debe ir por HTTPS.
+ * HTTP sólo se admite en loopback (Hardhat / Anvil local).
+ */
+export const assertRpcUrlsUseHttpsExceptLoopback = (urls: string[]): void => {
+  for (const url of urls) {
+    let parsed: URL;
+    try {
+      parsed = new URL(url);
+    } catch {
+      throw new Error(`RPC URL inválida: ${url}`);
+    }
+    const isLoopback = LOOPBACK_HOSTS.has(parsed.hostname);
+    if (parsed.protocol === 'https:') {
+      continue;
+    }
+    if (parsed.protocol === 'http:' && isLoopback) {
+      continue;
+    }
+    throw new Error(
+      `RPC URL debe usar HTTPS (Ley 25.326 / UAT-02): ${parsed.origin}`,
+    );
+  }
 };
 
 export const describeRpcEndpoint = (url: string): string => {
