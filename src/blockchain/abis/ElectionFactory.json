@@ -1,6 +1,6 @@
 {
   "contractName": "ElectionFactory",
-  "abiHash": "0x00112af3a7a641785ee53ad6c6dfe8ccfa159de69de38602870b0e5cd67af944",
+  "abiHash": "0xaa2b2737e919cef17c6491c1b1291aa93b6811ecb78b3ee27fcba7e22997229e",
   "abi": [
     {
       "inputs": [
@@ -17,6 +17,11 @@
         {
           "internalType": "address",
           "name": "pauserOperator_",
+          "type": "address"
+        },
+        {
+          "internalType": "address",
+          "name": "validatorSigner_",
           "type": "address"
         }
       ],
@@ -100,6 +105,11 @@
     {
       "inputs": [],
       "name": "PauserOperatorIsZeroAddress",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "ValidatorSignerIsZeroAddress",
       "type": "error"
     },
     {
@@ -349,6 +359,19 @@
     {
       "inputs": [],
       "name": "PAUSER_ROLE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "VALIDATOR_ROLE",
       "outputs": [
         {
           "internalType": "bytes32",
@@ -741,8 +764,21 @@
       "outputs": [],
       "stateMutability": "nonpayable",
       "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "validatorSigner",
+      "outputs": [
+        {
+          "internalType": "address",
+          "name": "",
+          "type": "address"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
     }
   ],
-  "exportedAt": "2026-08-12T18:30:50.208Z",
+  "exportedAt": "2026-09-03T17:33:39.425Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

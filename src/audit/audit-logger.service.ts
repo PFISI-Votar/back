@@ -31,6 +31,22 @@ export interface LogVotoEmitidoInput {
   endpoint?: string;
 }
 
+export interface LogCredencialValidacionEmitidaInput {
+  idEleccion: number;
+  /** Identificador ofuscado del votante (hash de hoja del padrón). */
+  actorId: string;
+  ipOrigen?: string | null;
+  timestamp?: Date;
+}
+
+export interface LogFirmaValidacionEmitidaInput {
+  idEleccion: number;
+  /** Address de la Entidad de Firmas Digitales (VALIDATOR_ROLE). */
+  direccionValidador: string;
+  algoritmo: string;
+  timestamp?: Date;
+}
+
 export interface LogComicioAbiertoInput {
   idEleccion: number;
   actorId: string;
@@ -252,6 +268,57 @@ export class AuditLoggerService {
         );
       }
     }
+  }
+
+  /**
+   * VOTAR-377 FASE 1 — emisión de una credencial de validación. Registra el
+   * votante (ofuscado) y la elección, NUNCA el commit de la credencial: el rastro
+   * de identidad y el rastro de la firma anónima quedan deliberadamente separados.
+   */
+  async logCredencialValidacionEmitida(
+    input: LogCredencialValidacionEmitidaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen ?? undefined);
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.CREDENCIAL_VALIDACION_EMITIDA,
+      actorId: input.actorId,
+      descripcion: `Credencial de validación emitida para el comicio ${input.idEleccion} al votante con ID ofuscado ${actorOfuscado}`,
+      endpoint: '/elecciones/:id/validacion/credencial',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-377 FASE 2 — la Entidad de Firmas Digitales certificó un sufragio. Es
+   * un evento anónimo: `actor = ANONIMO`, sin IP/terminal, y `datosAdicionales`
+   * NUNCA lleva nullifier, selectionHash ni commit (respeta FORBIDDEN_VOTO_JOIN_KEYS).
+   */
+  async logFirmaValidacionEmitida(
+    input: LogFirmaValidacionEmitidaInput,
+  ): Promise<AuditLog> {
+    const entry = await this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.FIRMA_VALIDACION_EMITIDA,
+      actorId: 'ANONIMO',
+      descripcion: `Firma institucional de legitimidad emitida para un sufragio del comicio ${input.idEleccion} (Ley 25.506)`,
+      endpoint: '/elecciones/:id/validacion/firma',
+      ipOrigenRaw: null,
+      datosAdicionales: {
+        direccionValidador: input.direccionValidador,
+        algoritmo: input.algoritmo,
+      },
+      timestamp: input.timestamp,
+      preservarActorLiteral: true,
+      omitirTerminal: true,
+    });
+    return entry;
   }
 
   async logComicioAbierto(input: LogComicioAbiertoInput): Promise<AuditLog> {

@@ -1,6 +1,6 @@
 {
   "contractName": "MerkleRootStore",
-  "abiHash": "0xfaa29f65ebd2ad569fa7e2f7530d1baf39c7ebf4d699bfaf5e4c1a78350afc3d",
+  "abiHash": "0x9799b6fb20d521abeeaafcff90f2ae6912b430a1e8b8b3c8e1cac39964d9680f",
   "abi": [
     {
       "inputs": [
@@ -349,6 +349,19 @@
     {
       "inputs": [],
       "name": "PAUSER_ROLE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "VALIDATOR_ROLE",
       "outputs": [
         {
           "internalType": "bytes32",
@@ -712,6 +725,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-12T18:30:50.204Z",
+  "exportedAt": "2026-09-03T17:33:39.419Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
