@@ -56,6 +56,13 @@ export class CategoriaBoletaDigitalDto {
   @ApiProperty()
   orden: number;
 
+  @ApiProperty({
+    example: 1,
+    description:
+      'Cantidad de cargos / máximo de candidatos que el votante puede elegir en esta categoría (VOTAR-474).',
+  })
+  cantidadCargos: number;
+
   @ApiProperty({ enum: CategoriaBoletaEstado })
   estado: CategoriaBoletaEstado;
 

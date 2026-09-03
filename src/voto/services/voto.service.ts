@@ -230,6 +230,7 @@ export class VotoService {
         nombre: categoria.nombre,
         descripcion: categoria.descripcion,
         orden: categoria.orden,
+        cantidadCargos: categoria.cantidadCargos,
         estado:
           candidatos.length > 0
             ? CategoriaBoletaEstado.DISPONIBLE
