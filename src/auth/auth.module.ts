@@ -24,6 +24,7 @@ import { AutogestionService } from '@/auth/services/autogestion.service';
 import { JwtKeysService } from '@/auth/services/jwt-keys.service';
 import { JwksService } from '@/auth/services/jwks.service';
 import { RefreshTokenService } from '@/auth/services/refresh-token.service';
+import { TotpService } from '@/auth/services/totp.service';
 import { VotanteAuthService } from '@/auth/services/votante-auth.service';
 import { JwtStrategy } from '@/auth/strategies/jwt.strategy';
 import { VoterJwtStrategy } from '@/auth/strategies/voter-jwt.strategy';
@@ -85,6 +86,7 @@ import { PadronModule } from '@/padron/padron.module';
     VotanteAuthService,
     AutogestionService,
     RefreshTokenService,
+    TotpService,
     JwtKeysService,
     JwksService,
     JwtStrategy,

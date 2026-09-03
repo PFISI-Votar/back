@@ -17,6 +17,7 @@ import { RefreshSession } from '@/auth/entities/refresh-session.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
+import { TotpService } from '@/auth/services/totp.service';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
@@ -27,6 +28,25 @@ import { ConfiguracionDatosCandidato } from '@/eleccion/candidato/entities/confi
 import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { withBearer } from './helpers/auth-test.helper';
+
+type TwoFactorLoginBody = {
+  user?: { role: string; sub: string };
+  accessToken?: string;
+  twoFactor?: {
+    status: 'setup_required' | 'verification_required';
+    challengeToken: string;
+    secret?: string;
+  };
+};
+
+const ADMIN_LOGIN = { nick: 'votar.admin', password: 'secret' };
+
+const adminPersona = {
+  legajo: '14988',
+  nombre: 'Admin',
+  apellido: 'Test',
+  email: 'admin@test.local',
+};
 
 const entities = [
   Eleccion,
@@ -51,10 +71,51 @@ describe('AuthAdmin (e2e) — US-313', () => {
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let jwtService: JwtService;
+  let totpService: TotpService;
+  let autoridadRepository: Repository<AutoridadElectoral>;
   let auditLogRepository: Repository<AuditLog>;
   let auditLogger: AuditLoggerService;
   let adminToken: string;
   let voterToken: string;
+
+  const mockAdminAutogestion = () => {
+    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
+      persona: adminPersona,
+    });
+  };
+
+  /** Login admin + verificación TOTP; cookies solo tras /auth/2fa/verify. */
+  const loginAdminCompleting2fa = async (
+    http: request.SuperTest<request.Test> | request.SuperAgentTest,
+  ) => {
+    mockAdminAutogestion();
+    const loginResponse = await http
+      .post('/auth/login')
+      .send(ADMIN_LOGIN)
+      .expect(200);
+
+    const loginBody = loginResponse.body as TwoFactorLoginBody;
+    expect(loginBody.twoFactor).toBeDefined();
+    expect(loginBody.user).toBeUndefined();
+    expect(loginResponse.headers['set-cookie']).toBeUndefined();
+
+    let secret = loginBody.twoFactor?.secret;
+    if (!secret) {
+      const autoridad = await autoridadRepository.findOne({
+        where: { identificadorSso: ADMIN_LOGIN.nick },
+      });
+      secret = autoridad?.totpSecret ?? undefined;
+    }
+    expect(secret).toBeDefined();
+
+    return http
+      .post('/auth/2fa/verify')
+      .send({
+        challengeToken: loginBody.twoFactor!.challengeToken,
+        code: totpService.generateCode(secret!),
+      })
+      .expect(200);
+  };
 
   beforeAll(async () => {
     const db = newDb({ autoCreateForeignKeyIndices: true });
@@ -112,6 +173,7 @@ describe('AuthAdmin (e2e) — US-313', () => {
     await app.init();
 
     jwtService = app.get(JwtService);
+    totpService = app.get(TotpService);
     adminToken = jwtService.sign({
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
@@ -123,7 +185,7 @@ describe('AuthAdmin (e2e) — US-313', () => {
       email: 'voter@test.local',
     });
 
-    const autoridadRepository = dataSource.getRepository(AutoridadElectoral);
+    autoridadRepository = dataSource.getRepository(AutoridadElectoral);
     await autoridadRepository.save({
       identificadorSso: 'votar.admin',
       email: 'admin@test.local',
@@ -183,27 +245,14 @@ describe('AuthAdmin (e2e) — US-313', () => {
     expect(latest.timestamp).toBeDefined();
   });
 
-  it('POST /auth/login establece cookies HttpOnly y devuelve solo el usuario', async () => {
-    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
-      persona: {
-        legajo: '14988',
-        nombre: 'Admin',
-        apellido: 'Test',
-        email: 'admin@test.local',
-      },
-    });
+  it('POST /auth/login admin exige 2FA y no emite cookies hasta verificar TOTP', async () => {
+    const response = await loginAdminCompleting2fa(
+      request(app.getHttpServer()),
+    );
 
-    const response = await request(app.getHttpServer())
-      .post('/auth/login')
-      .send({ nick: 'votar.admin', password: 'secret' })
-      .expect(200);
-
-    const body = response.body as {
-      user: { role: string; sub: string };
-      accessToken?: string;
-    };
+    const body = response.body as TwoFactorLoginBody;
     expect(body.accessToken).toBeUndefined();
-    expect(body.user.role).toBe(JwtRole.ELECTION_ADMIN);
+    expect(body.user?.role).toBe(JwtRole.ELECTION_ADMIN);
 
     const cookieHeader = (response.headers['set-cookie'] as string[]).join(';');
     expect(cookieHeader).toContain('votar_refresh_token=');
@@ -217,40 +266,16 @@ describe('AuthAdmin (e2e) — US-313', () => {
     expect(decoded.role).toBe(JwtRole.ELECTION_ADMIN);
   });
 
-  it('GET /elecciones funciona con cookie de access tras login', async () => {
-    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
-      persona: {
-        legajo: '14988',
-        nombre: 'Admin',
-        apellido: 'Test',
-        email: 'admin@test.local',
-      },
-    });
-
+  it('GET /elecciones funciona con cookie de access tras login + 2FA', async () => {
     const agent = request.agent(app.getHttpServer());
-    await agent
-      .post('/auth/login')
-      .send({ nick: 'votar.admin', password: 'secret' })
-      .expect(200);
+    await loginAdminCompleting2fa(agent);
 
     await agent.get('/elecciones').expect(200);
   });
 
   it('POST /auth/refresh renueva access token con cookie de sesión', async () => {
-    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
-      persona: {
-        legajo: '14988',
-        nombre: 'Admin',
-        apellido: 'Test',
-        email: 'admin@test.local',
-      },
-    });
-
     const agent = request.agent(app.getHttpServer());
-    await agent
-      .post('/auth/login')
-      .send({ nick: 'votar.admin', password: 'secret' })
-      .expect(200);
+    await loginAdminCompleting2fa(agent);
 
     const refreshResponse = await agent.post('/auth/refresh').expect(200);
     const refreshBody = refreshResponse.body as {
@@ -266,19 +291,8 @@ describe('AuthAdmin (e2e) — US-313', () => {
   });
 
   it('POST /auth/logout revoca la sesión de refresh', async () => {
-    mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
-      persona: {
-        legajo: '14988',
-        nombre: 'Admin',
-        email: 'admin@test.local',
-      },
-    });
-
     const agent = request.agent(app.getHttpServer());
-    await agent
-      .post('/auth/login')
-      .send({ nick: 'votar.admin', password: 'secret' })
-      .expect(200);
+    await loginAdminCompleting2fa(agent);
 
     await agent.post('/auth/logout').expect(204);
     await agent.post('/auth/refresh').expect(401);
