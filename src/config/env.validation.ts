@@ -102,4 +102,21 @@ export const envValidationSchema = Joi.object({
   FAUCET_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
   /** VOTAR-387 — private key del Faucet Maestro (aprovisionamiento de gas de test). */
   FAUCET_MASTER_PRIVATE_KEY: Joi.string().optional(),
+
+  /**
+   * VOTAR-388 — respaldos diarios cifrados de PostgreSQL.
+   * Default false: evita que cada instancia local genere dumps automáticamente.
+   */
+  BACKUP_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  /** Secreto AES-256 (passphrase o 64 hex). Requerido cuando se ejecuta db:backup / scheduler. */
+  BACKUP_ENCRYPTION_KEY: Joi.string().min(16).optional(),
+  /** Directorio local de artefactos cifrados. Vacío = src/backups. */
+  BACKUP_DIR: Joi.string().allow('').optional(),
+  /** Ubicación remota / offsite (otro volumen o mount). Vacío = solo local. */
+  BACKUP_REMOTE_DIR: Joi.string().allow('').optional(),
+  BACKUP_RETENTION_DAYS: Joi.number().integer().min(1).default(30),
+  /** Hora local (0-23) de baja carga para el scheduler diario. */
+  BACKUP_HOUR: Joi.number().integer().min(0).max(23).default(3),
+  /** BD destino por defecto para npm run db:restore. */
+  BACKUP_RESTORE_DB: Joi.string().allow('').optional(),
 });

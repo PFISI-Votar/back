@@ -23,6 +23,14 @@ export class AutoridadElectoral {
   @Column({ name: 'rol', type: 'enum', enum: RolAutoridad })
   rol: RolAutoridad;
 
+  /** Secreto TOTP en base32; null si nunca se inició el setup o tras reset. */
+  @Column({ name: 'totp_secret', type: 'varchar', nullable: true })
+  totpSecret: string | null;
+
+  /** true cuando el usuario confirmó el setup con un código válido. */
+  @Column({ name: 'totp_enabled', type: 'boolean', default: false })
+  totpEnabled: boolean;
+
   @CreateDateColumn({ name: 'fecha_registro', type: 'timestamptz' })
   fechaRegistro: Date;
 }
