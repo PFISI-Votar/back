@@ -1,4 +1,5 @@
 import {
+  assertRpcUrlsUseHttpsExceptLoopback,
   describeRpcEndpoint,
   isBlockSkewAcceptable,
   isRpcFailoverError,
@@ -59,6 +60,18 @@ describe('rpc-failover.util — VOTAR-386', () => {
     expect(isRpcFailoverError(new Error('timeout exceeded'))).toBe(true);
     expect(isRpcFailoverError(new Error('execution reverted'))).toBe(false);
     expect(isRpcFailoverError(new Error('insufficient funds'))).toBe(false);
+  });
+
+  it('VOTAR-378 UAT-02: exige HTTPS salvo loopback', () => {
+    expect(() =>
+      assertRpcUrlsUseHttpsExceptLoopback([
+        'https://sepolia.infura.io/v3/aaa',
+        'http://127.0.0.1:8545',
+      ]),
+    ).not.toThrow();
+    expect(() =>
+      assertRpcUrlsUseHttpsExceptLoopback(['http://sepolia.infura.io/v3/aaa']),
+    ).toThrow(/HTTPS/);
   });
 
   it('rejects backups with a significant block skew', () => {

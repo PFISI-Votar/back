@@ -11,7 +11,10 @@ import {
   RPC_FAILOVER_TIMEOUT_MS,
   RPC_MAX_BLOCK_SKEW,
 } from './rpc-failover.constants';
-import { parseRpcUrls } from './rpc-failover.util';
+import {
+  assertRpcUrlsUseHttpsExceptLoopback,
+  parseRpcUrls,
+} from './rpc-failover.util';
 
 @Injectable()
 export class RpcProviderFactory {
@@ -22,10 +25,12 @@ export class RpcProviderFactory {
   constructor(private readonly configService: ConfigService) {}
 
   getUrls(): string[] {
-    return parseRpcUrls(
+    const urls = parseRpcUrls(
       this.configService.get<string>('SEPOLIA_RPC_URL'),
       this.configService.get<string>('SEPOLIA_RPC_FALLBACK_URLS'),
     );
+    assertRpcUrlsUseHttpsExceptLoopback(urls);
+    return urls;
   }
 
   hasUrls(): boolean {
