@@ -94,12 +94,14 @@ export class CredencialValidacionService {
       throw new ConflictException('El commit de credencial ya fue registrado.');
     }
 
+    const emitidaEn = bucket5min(new Date());
     await this.credencialRepository.save(
       this.credencialRepository.create({
         idEleccion,
         commitCredencial: normalizedCommit,
         estado: EstadoCredencialValidacion.EMITIDA,
         expiraEn,
+        emitidaEn,
       }),
     );
 
@@ -159,6 +161,28 @@ export class CredencialValidacionService {
         'Credencial de validación inválida, vencida o ya utilizada.',
       );
     }
+  }
+
+  /**
+   * Best-effort: si `firmarValidacion` falla después del consumo atómico,
+   * restaura la credencial a EMITIDA (si sigue vigente) para no quemar el voucher.
+   */
+  async restaurarTrasFalloDeFirma(
+    idEleccion: number,
+    secreto: string,
+  ): Promise<void> {
+    const commit = keccak256(secreto).toLowerCase();
+    await this.dataSource
+      .createQueryBuilder()
+      .update(CredencialValidacion)
+      .set({ estado: EstadoCredencialValidacion.EMITIDA })
+      .where('commit_credencial = :commit', { commit })
+      .andWhere('id_eleccion = :idEleccion', { idEleccion })
+      .andWhere('estado = :estado', {
+        estado: EstadoCredencialValidacion.CONSUMIDA,
+      })
+      .andWhere('expira_en > :now', { now: new Date() })
+      .execute();
   }
 
   private async assertBajoTope(

@@ -108,6 +108,11 @@ describe('CredencialValidacionService (VOTAR-377)', () => {
           estado: EstadoCredencialValidacion.EMITIDA,
         }),
       );
+      const saved = credencialRepository.save.mock.calls[0][0] as {
+        emitidaEn: Date;
+        expiraEn: Date;
+      };
+      expect(saved.emitidaEn.getTime() % (5 * 60 * 1000)).toBe(0);
       expect(auditLogger.logCredencialValidacionEmitida).toHaveBeenCalledWith(
         expect.objectContaining({
           idEleccion: ID_ELECCION,
@@ -162,6 +167,16 @@ describe('CredencialValidacionService (VOTAR-377)', () => {
       await expect(
         service.consumir(ID_ELECCION, SECRETO),
       ).rejects.toBeInstanceOf(GoneException);
+    });
+  });
+
+  describe('restaurarTrasFalloDeFirma', () => {
+    it('restaura CONSUMIDA → EMITIDA si la credencial sigue vigente', async () => {
+      updateExecute.mockResolvedValue({ affected: 1 });
+      await expect(
+        service.restaurarTrasFalloDeFirma(ID_ELECCION, SECRETO),
+      ).resolves.toBeUndefined();
+      expect(dataSource.createQueryBuilder).toHaveBeenCalled();
     });
   });
 });

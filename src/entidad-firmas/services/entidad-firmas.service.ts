@@ -26,31 +26,41 @@ export class EntidadFirmasService {
     dto: SolicitarFirmaValidacionDto,
   ): Promise<FirmaValidacionResponseDto> {
     // 1. Uso único de la credencial anónima (UPDATE atómico condicional).
+    //    Consume-first evita que dos requests concurrentes obtengan firmas distintas
+    //    con el mismo secreto; si la firma falla, se restaura el voucher.
     await this.credencialService.consumir(idEleccion, dto.secreto);
 
-    // 2. Firma institucional sobre la totalidad del payload (AC-5).
-    const { firmaValidacion, direccionValidador } =
-      await this.firmaService.firmarValidacion(idEleccion, {
-        electionId: BigInt(idEleccion),
-        nullifier: dto.nullifier,
-        selectionHash: dto.selectionHash,
-        candidateId: BigInt(dto.candidateId),
-        timestamp: BigInt(dto.timestamp),
-        expectedSigner: dto.expectedSigner,
+    try {
+      // 2. Firma institucional sobre la totalidad del payload (AC-5).
+      const { firmaValidacion, direccionValidador } =
+        await this.firmaService.firmarValidacion(idEleccion, {
+          electionId: BigInt(idEleccion),
+          nullifier: dto.nullifier,
+          selectionHash: dto.selectionHash,
+          candidateId: BigInt(dto.candidateId),
+          timestamp: BigInt(dto.timestamp),
+          expectedSigner: dto.expectedSigner,
+        });
+
+      // 3. Rastro de auditoría anónimo (UAT-04): sin nullifier, selectionHash ni commit.
+      await this.auditLogger.logFirmaValidacionEmitida({
+        idEleccion,
+        direccionValidador,
+        algoritmo: FIRMA_VALIDACION_ALGORITMO,
       });
 
-    // 3. Rastro de auditoría anónimo (UAT-04): sin nullifier, selectionHash ni commit.
-    await this.auditLogger.logFirmaValidacionEmitida({
-      idEleccion,
-      direccionValidador,
-      algoritmo: FIRMA_VALIDACION_ALGORITMO,
-    });
-
-    return {
-      firmaValidacion,
-      direccionValidador,
-      algoritmo: FIRMA_VALIDACION_ALGORITMO,
-    };
+      return {
+        firmaValidacion,
+        direccionValidador,
+        algoritmo: FIRMA_VALIDACION_ALGORITMO,
+      };
+    } catch (error) {
+      await this.credencialService.restaurarTrasFalloDeFirma(
+        idEleccion,
+        dto.secreto,
+      );
+      throw error;
+    }
   }
 
   obtenerClavePublica(): ClavePublicaValidadorResponseDto {

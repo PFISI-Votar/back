@@ -1,10 +1,4 @@
-import {
-  Column,
-  CreateDateColumn,
-  Entity,
-  Index,
-  PrimaryGeneratedColumn,
-} from 'typeorm';
+import { Column, Entity, Index, PrimaryGeneratedColumn } from 'typeorm';
 
 /**
  * VOTAR-377 — voucher de elegibilidad de un solo uso emitido por la "Entidad de
@@ -50,6 +44,7 @@ export class CredencialValidacion {
   @Column({ name: 'expira_en', type: 'timestamptz' })
   expiraEn: Date;
 
-  @CreateDateColumn({ name: 'emitida_en', type: 'timestamptz' })
+  /** Alta (bucket 5 min) — no usar CreateDateColumn: rompería el k-anonimato. */
+  @Column({ name: 'emitida_en', type: 'timestamptz' })
   emitidaEn: Date;
 }
