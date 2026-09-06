@@ -72,6 +72,22 @@ export const VOTE_REGISTRY_CONTRACT_ABI = [
       { name: 'candidateId', type: 'uint256' },
     ],
   },
+  // VOTAR-474 — multi-candidate ballot validation errors from recordVote.
+  {
+    type: 'error',
+    name: 'EmptyBallotSelection',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'TooManyCandidates',
+    inputs: [{ name: 'count', type: 'uint256' }],
+  },
+  {
+    type: 'error',
+    name: 'DuplicateCandidateId',
+    inputs: [{ name: 'candidateId', type: 'uint256' }],
+  },
   // OpenZeppelin AccessControl — inherited by VoteRegistry via VotarAccessControl.
   {
     type: 'error',

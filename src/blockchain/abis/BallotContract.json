@@ -1,6 +1,6 @@
 {
   "contractName": "BallotContract",
-  "abiHash": "0x094aa978225c227937f403cd91fc7e274b67d26cee782f4d9bf54cd405e4fa8c",
+  "abiHash": "0x066c2eb878277c5c0925d730e16a7687c0887f8098aad80ec4c66fb86b1bd69a",
   "abi": [
     {
       "inputs": [
@@ -486,9 +486,9 @@
               "type": "bytes32"
             },
             {
-              "internalType": "uint256",
-              "name": "candidateId",
-              "type": "uint256"
+              "internalType": "uint256[]",
+              "name": "candidateIds",
+              "type": "uint256[]"
             },
             {
               "internalType": "uint256",
@@ -915,6 +915,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-09-03T17:33:39.422Z",
+  "exportedAt": "2026-09-06T14:26:48.197Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
