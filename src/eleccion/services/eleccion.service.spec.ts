@@ -289,8 +289,7 @@ describe('EleccionesService', () => {
   it('no debe inyectar dependencias blockchain en el servicio de creación', () => {
     const constructorParamTypes =
       (Reflect.getMetadata('design:paramtypes', EleccionesService) as
-        | unknown[]
-        | undefined) ?? [];
+        unknown[] | undefined) ?? [];
     const hasBlockchainProvider = constructorParamTypes.some((type) => {
       const name =
         typeof type === 'function'

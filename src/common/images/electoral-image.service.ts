@@ -6,9 +6,7 @@ import sharp from 'sharp';
 import { ImagenElectoral } from '@/common/images/entities/imagen-electoral.entity';
 
 export type ElectoralImageKind =
-  | 'candidato-foto'
-  | 'lista-logo'
-  | 'logo-institucional';
+  'candidato-foto' | 'lista-logo' | 'logo-institucional';
 
 /**
  * VOTAR-466 — las imágenes se sirven desde Postgres en esta ruta pública,
