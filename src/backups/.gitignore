@@ -1,0 +1,7 @@
+# Artefactos de respaldo cifrados (VOTAR-388). El código TypeScript sí se versiona.
+*.dump
+*.dump.enc
+*.sha256
+*.sql
+*.sql.gz
+*.tmp

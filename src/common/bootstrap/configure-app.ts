@@ -54,6 +54,10 @@ export const configureApp = (app: NestExpressApplication): void => {
       'imagenes',
       'Servido de imágenes electorales persistidas en Postgres (VOTAR-466)',
     )
+    .addTag(
+      'validacion',
+      'Entidad de Firmas Digitales — Tercero de Confianza (VOTAR-377, Ley 25.506)',
+    )
     .addBearerAuth()
     .build();
 

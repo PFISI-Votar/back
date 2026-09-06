@@ -1583,13 +1583,7 @@ export class BlockchainService {
       );
     }
 
-    if (
-      !deployment.exists ||
-      !deployment.auditView ||
-      deployment.auditView === ZeroAddress ||
-      !deployment.voteRegistry ||
-      deployment.voteRegistry === ZeroAddress
-    ) {
+    if (!this.isValidElectionDeployment(deployment)) {
       throw new UnprocessableEntityException(
         `El comicio ${idEleccion} no tiene contratos electorales desplegados on-chain.`,
       );
@@ -1600,6 +1594,37 @@ export class BlockchainService {
       voteRegistry: deployment.voteRegistry,
       auditView: deployment.auditView,
     };
+  }
+
+  /**
+   * VOTAR-473: read-only probe for UI retry of on-chain oficialización.
+   * Returns false when factory has no deployment; rethrows RPC/config failures.
+   */
+  async hasElectionStackDeployed(idEleccion: number): Promise<boolean> {
+    try {
+      await this.resolveElectionContracts(idEleccion);
+      return true;
+    } catch (error) {
+      if (error instanceof UnprocessableEntityException) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private isValidElectionDeployment(deployment: {
+    ballot: string;
+    voteRegistry: string;
+    auditView: string;
+    exists: boolean;
+  }): boolean {
+    return (
+      deployment.exists &&
+      !!deployment.auditView &&
+      deployment.auditView !== ZeroAddress &&
+      !!deployment.voteRegistry &&
+      deployment.voteRegistry !== ZeroAddress
+    );
   }
 
   /**
