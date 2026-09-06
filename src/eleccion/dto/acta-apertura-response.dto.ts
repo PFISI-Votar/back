@@ -88,7 +88,7 @@ export class ActaAperturaResponseDto {
   padron: ResumenPadronResponseDto;
 
   @ApiProperty({
-    example: '/uploads/sistema/logo-institucional-....jpg',
+    example: '/imagenes/3f8c1c2a-5b1e-4a9d-9f0c-2b7e5d6a1c34',
     nullable: true,
   })
   logoUrl: string | null;

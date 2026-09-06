@@ -61,4 +61,11 @@ describe('RpcProviderFactory — VOTAR-386', () => {
     const factory = createFactory({});
     expect(() => factory.create()).toThrow(ServiceUnavailableException);
   });
+
+  it('VOTAR-378 UAT-02: rechaza RPC HTTP públicos', () => {
+    const factory = createFactory({
+      SEPOLIA_RPC_URL: 'http://sepolia.infura.io/v3/aaa',
+    });
+    expect(() => factory.getUrls()).toThrow(/HTTPS/);
+  });
 });

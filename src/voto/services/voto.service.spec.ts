@@ -114,6 +114,10 @@ const createRepositories = () => {
         permitirVotoNulo: true,
         metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
         mostrarResultadosTiempoReal: false,
+        mostrarDashboardResultados: true,
+        mostrarDashboardParticipacion: true,
+        mostrarDashboardRevoto: true,
+        mostrarDashboardTransacciones: true,
       }),
     },
     padronVotanteRepository: {
@@ -167,6 +171,12 @@ describe('VotoService', () => {
       permitirVotoNulo: true,
       pausada: false,
       observacionLogin: null,
+      visibilidadDashboard: {
+        resultados: true,
+        participacion: true,
+        revoto: true,
+        transacciones: true,
+      },
     });
   });
 
@@ -178,6 +188,10 @@ describe('VotoService', () => {
       permitirVotoNulo: false,
       metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
       mostrarResultadosTiempoReal: false,
+      mostrarDashboardResultados: true,
+      mostrarDashboardParticipacion: true,
+      mostrarDashboardRevoto: true,
+      mostrarDashboardTransacciones: true,
     });
     const service = createService(repositories);
 
@@ -202,6 +216,63 @@ describe('VotoService', () => {
     const actual = await service.obtenerConfiguracionBud(1);
 
     expect(actual.observacionLogin).toBe(observacionLogin);
+  });
+
+  it('VOTAR-459: oculta las secciones del dashboard según configuración mientras el comicio está ABIERTA', async () => {
+    const repositories = createRepositories();
+    repositories.configuracionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      permitirVotoEnBlanco: false,
+      permitirVotoNulo: true,
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+      mostrarResultadosTiempoReal: false,
+      mostrarDashboardResultados: false,
+      mostrarDashboardParticipacion: false,
+      mostrarDashboardRevoto: true,
+      mostrarDashboardTransacciones: true,
+    });
+    const service = createService(repositories);
+
+    const actual = await service.obtenerConfiguracionBud(1);
+
+    expect(actual.visibilidadDashboard).toEqual({
+      resultados: false,
+      participacion: false,
+      revoto: true,
+      transacciones: true,
+    });
+  });
+
+  it('VOTAR-459: ignora los flags y muestra todas las secciones cuando el comicio ya cerró', async () => {
+    const repositories = createRepositories();
+    repositories.eleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      nombre: 'Comicio UTN',
+      estado: EleccionEstado.CERRADA,
+      tipoVotacion: TipoVotacion.POR_LISTA,
+      pausada: false,
+    });
+    repositories.configuracionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      permitirVotoEnBlanco: false,
+      permitirVotoNulo: true,
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+      mostrarResultadosTiempoReal: false,
+      mostrarDashboardResultados: false,
+      mostrarDashboardParticipacion: false,
+      mostrarDashboardRevoto: false,
+      mostrarDashboardTransacciones: false,
+    });
+    const service = createService(repositories);
+
+    const actual = await service.obtenerConfiguracionBud(1);
+
+    expect(actual.visibilidadDashboard).toEqual({
+      resultados: true,
+      participacion: true,
+      revoto: true,
+      transacciones: true,
+    });
   });
 
   it('lanza NotFoundException si el comicio no existe al obtener configuración BUD', async () => {

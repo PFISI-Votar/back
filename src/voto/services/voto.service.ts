@@ -7,6 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
+import {
+  SeccionDashboard,
+  isSeccionDashboardVisible,
+} from '@/eleccion/configuracion-comicio/constants/visibilidad-dashboard.constants';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -81,6 +85,28 @@ export class VotoService {
       permitirVotoNulo: configuracion.permitirVotoNulo,
       pausada: eleccion.pausada,
       observacionLogin: eleccion.observacionLogin ?? null,
+      visibilidadDashboard: {
+        resultados: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.RESULTADOS,
+        ),
+        participacion: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.PARTICIPACION,
+        ),
+        revoto: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.REVOTO,
+        ),
+        transacciones: isSeccionDashboardVisible(
+          configuracion,
+          eleccion.estado,
+          SeccionDashboard.TRANSACCIONES,
+        ),
+      },
     };
   }
 
@@ -205,6 +231,7 @@ export class VotoService {
         nombre: categoria.nombre,
         descripcion: categoria.descripcion,
         orden: categoria.orden,
+        cantidadCargos: categoria.cantidadCargos,
         estado:
           candidatos.length > 0
             ? CategoriaBoletaEstado.DISPONIBLE
