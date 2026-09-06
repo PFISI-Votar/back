@@ -20,6 +20,7 @@ import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.mo
 import { AuditModule } from '@/audit/audit.module';
 import { EntidadFirmasModule } from '@/entidad-firmas/entidad-firmas.module';
 import { FaucetModule } from '@/faucet/faucet.module';
+import { BackupModule } from '@/backups/backup.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { FaucetModule } from '@/faucet/faucet.module';
     EntidadFirmasModule,
     ConfiguracionSistemaModule,
     FaucetModule,
+    BackupModule,
   ],
   controllers: [AppController],
   providers: [AppService],
