@@ -18,6 +18,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { VotoModule } from '@/voto/voto.module';
 import { DashboardPublicoModule } from '@/dashboard-publico/dashboard-publico.module';
 import { AuditModule } from '@/audit/audit.module';
+import { EntidadFirmasModule } from '@/entidad-firmas/entidad-firmas.module';
 import { FaucetModule } from '@/faucet/faucet.module';
 import { BackupModule } from '@/backups/backup.module';
 
@@ -45,6 +46,7 @@ import { BackupModule } from '@/backups/backup.module';
     DashboardPublicoModule,
     CategoriasModule,
     AuditModule,
+    EntidadFirmasModule,
     ConfiguracionSistemaModule,
     FaucetModule,
     BackupModule,
