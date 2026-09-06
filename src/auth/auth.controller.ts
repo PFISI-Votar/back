@@ -196,16 +196,14 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     await this.authService.logout(refreshToken);
     clearAuthCookies(response, this.isProduction());
   }
 
   private extractRefreshToken(request: Request): string {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     if (!refreshToken) {
       throw new UnauthorizedException('Sesión de refresco inválida');
     }

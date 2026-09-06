@@ -2391,17 +2391,15 @@ export class BlockchainService {
           ? b.sortBlock - a.sortBlock
           : b.sortLogIndex - a.sortLogIndex,
       )
-      .map(
-        (entry): BlockchainTransactionAuditEntry => ({
-          hashTransaccion: entry.hashTransaccion,
-          numeroBloque: entry.numeroBloque,
-          marcaTiempo: entry.marcaTiempo,
-          contratoEtiqueta: entry.contratoEtiqueta,
-          nombreEvento: entry.nombreEvento,
-          descripcionLegible: entry.descripcionLegible,
-          explorerUrl: entry.explorerUrl,
-        }),
-      );
+      .map((entry): BlockchainTransactionAuditEntry => ({
+        hashTransaccion: entry.hashTransaccion,
+        numeroBloque: entry.numeroBloque,
+        marcaTiempo: entry.marcaTiempo,
+        contratoEtiqueta: entry.contratoEtiqueta,
+        nombreEvento: entry.nombreEvento,
+        descripcionLegible: entry.descripcionLegible,
+        explorerUrl: entry.explorerUrl,
+      }));
   }
 
   private describeSignedVoteCast(
