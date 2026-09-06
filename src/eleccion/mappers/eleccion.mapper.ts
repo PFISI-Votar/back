@@ -11,6 +11,7 @@ export const mapEleccionToResponseDto = (
   idEleccion: eleccion.idEleccion,
   nombre: eleccion.nombre,
   descripcion: eleccion.descripcion,
+  observacionLogin: eleccion.observacionLogin,
   fechaInicio: eleccion.fechaInicio,
   fechaFin: eleccion.fechaFin,
   estado: eleccion.estado,

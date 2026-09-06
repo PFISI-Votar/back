@@ -170,6 +170,7 @@ describe('VotoService', () => {
       snapshotCongelado: true,
       permitirVotoNulo: true,
       pausada: false,
+      observacionLogin: null,
       visibilidadDashboard: {
         resultados: true,
         participacion: true,
@@ -197,6 +198,24 @@ describe('VotoService', () => {
     const actual = await service.obtenerConfiguracionBud(1);
 
     expect(actual.permitirVotoNulo).toBe(false);
+  });
+
+  it('VOTAR-454: propaga observacionLogin en configuración BUD pública', async () => {
+    const repositories = createRepositories();
+    const observacionLogin = 'Ingresá con tu correo institucional.';
+    repositories.eleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      nombre: 'Comicio UTN',
+      estado: EleccionEstado.ABIERTA,
+      tipoVotacion: TipoVotacion.POR_LISTA,
+      pausada: false,
+      observacionLogin,
+    });
+    const service = createService(repositories);
+
+    const actual = await service.obtenerConfiguracionBud(1);
+
+    expect(actual.observacionLogin).toBe(observacionLogin);
   });
 
   it('VOTAR-459: oculta las secciones del dashboard según configuración mientras el comicio está ABIERTA', async () => {

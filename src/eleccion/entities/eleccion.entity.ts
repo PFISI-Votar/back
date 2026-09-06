@@ -27,6 +27,20 @@ export class Eleccion {
   @Column({ name: 'descripcion', type: 'varchar', nullable: true })
   descripcion!: string | null;
 
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description:
+      'VOTAR-454: texto mostrado en el login de la BUD. Vacío oculta el recuadro.',
+  })
+  @Column({
+    name: 'observacion_login',
+    type: 'varchar',
+    length: 1000,
+    nullable: true,
+  })
+  observacionLogin!: string | null;
+
   @ApiProperty({ example: '2026-09-01T10:00:00Z' })
   @Column({ name: 'fecha_inicio', type: 'timestamptz' })
   fechaInicio!: Date;
