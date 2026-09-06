@@ -36,6 +36,7 @@ import {
   extraerFilasIdentidad,
 } from './utils/parse-padron-archivo.util';
 import { TotalVotantesResponseDto } from './dto/total-votantes-response.dto';
+import { ResumenPadronResponseDto } from './dto/resumen-padron-response.dto';
 import { PadronEstado } from './enums/padron-estado.enum';
 
 const REGEX_DNI = /^\d{7,9}$/;
@@ -247,6 +248,25 @@ export class PadronService implements IPadronService {
     }
 
     return { totalVotantesHabilitados: padron.totalVotantesHabilitados };
+  }
+
+  /** Resumen agregado (VOTAR-374): total de votantes habilitados + hash del padrón. */
+  async obtenerResumenPadron(
+    idEleccion: number,
+  ): Promise<ResumenPadronResponseDto> {
+    const padron =
+      await this.padronRepository.obtenerPadronPorEleccion(idEleccion);
+
+    if (!padron || padron.estado === PadronEstado.BORRADOR) {
+      throw new NotFoundException(
+        `La elección ${idEleccion} no tiene un padrón consolidado.`,
+      );
+    }
+
+    return {
+      totalVotantesHabilitados: padron.totalVotantesHabilitados,
+      hashPadron: padron.hashPadron,
+    };
   }
 
   async listarVotantes(

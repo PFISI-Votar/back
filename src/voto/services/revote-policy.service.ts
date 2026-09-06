@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { MIN_SUFRAGIOS_CON_REVOTO } from '@/eleccion/configuracion-comicio/constants/revoto.constants';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
@@ -26,6 +26,7 @@ export class RevotePolicyService {
     private readonly configuracionRepository: Repository<ConfiguracionComicio>,
     @InjectRepository(RegistroIntentoSufragio)
     private readonly intentoRepository: Repository<RegistroIntentoSufragio>,
+    private readonly dataSource: DataSource,
   ) {}
 
   /**
@@ -44,10 +45,13 @@ export class RevotePolicyService {
 
   /**
    * Registra un intento consumido tras un cast on-chain exitoso (antes del logout).
+   * VOTAR-451 / VOTAR-452 — transactional + optional `votosObjetivo` sync so
+   * finalize and catch-up never double-increment for the same on-chain cast.
    */
   async registrarConsumo(
     idEleccion: number,
     claveIntento: string,
+    votosObjetivo?: number,
   ): Promise<EstadoRevotoResponseDto> {
     const { eleccion, config } = await this.loadElectionConfig(idEleccion);
     if (!ESTADOS_APTOS_VOTO.includes(eleccion.estado)) {
@@ -57,42 +61,59 @@ export class RevotePolicyService {
     }
 
     const maxVotos = this.resolveMaxVotos(config);
-    let registro = await this.intentoRepository.findOne({
-      where: { idEleccion, claveIntento },
-    });
 
-    if (!registro) {
-      registro = this.intentoRepository.create({
-        idEleccion,
-        claveIntento,
-        votosConsumidos: 0,
-        ultimoIntentoAt: null,
+    return this.dataSource.transaction(async (manager) => {
+      const repo = manager.getRepository(RegistroIntentoSufragio);
+      let registro = await repo.findOne({
+        where: { idEleccion, claveIntento },
+        lock: { mode: 'pessimistic_write' },
       });
-    }
 
-    // VOTAR-325 — gate off-chain: fuerza la sincronización con el tiempo real de
-    // la red aunque el cliente manipule su reloj local (UAT-02).
-    const proximoReintentoEnSegundos = this.calcularSegundosRestantes(
-      config,
-      registro,
-    );
-    if (proximoReintentoEnSegundos > 0) {
-      throw new HttpException(
-        {
-          message: 'Debe esperar antes de volver a sufragar.',
-          proximoReintentoEnSegundos,
-        },
-        HttpStatus.TOO_MANY_REQUESTS,
+      if (!registro) {
+        registro = repo.create({
+          idEleccion,
+          claveIntento,
+          votosConsumidos: 0,
+          ultimoIntentoAt: null,
+        });
+        await repo.save(registro);
+        registro = await repo.findOneOrFail({
+          where: { idEleccion, claveIntento },
+          lock: { mode: 'pessimistic_write' },
+        });
+      }
+
+      const target =
+        typeof votosObjetivo === 'number'
+          ? Math.min(Math.max(votosObjetivo, 0), maxVotos)
+          : Math.min(registro.votosConsumidos + 1, maxVotos);
+
+      // Idempotent no-op: already at/above the desired count (catch-up race).
+      if (registro.votosConsumidos >= target) {
+        return this.buildEstado(config, registro);
+      }
+
+      // VOTAR-325 — gate off-chain: fuerza la sincronización con el tiempo real de
+      // la red aunque el cliente manipule su reloj local (UAT-02).
+      const proximoReintentoEnSegundos = this.calcularSegundosRestantes(
+        config,
+        registro,
       );
-    }
+      if (proximoReintentoEnSegundos > 0) {
+        throw new HttpException(
+          {
+            message: 'Debe esperar antes de volver a sufragar.',
+            proximoReintentoEnSegundos,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
 
-    if (registro.votosConsumidos < maxVotos) {
-      registro.votosConsumidos += 1;
+      registro.votosConsumidos = target;
       registro.ultimoIntentoAt = new Date();
-      await this.intentoRepository.save(registro);
-    }
-
-    return this.buildEstado(config, registro);
+      await repo.save(registro);
+      return this.buildEstado(config, registro);
+    });
   }
 
   private async loadElectionConfig(idEleccion: number): Promise<{

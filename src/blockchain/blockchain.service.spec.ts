@@ -7,6 +7,7 @@ import {
 import { BlockchainService } from './blockchain.service';
 import { ContratoBlockchainService } from './services/contrato-blockchain.service';
 import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
+import { RpcProviderFactory } from './rpc/rpc-provider.factory';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 
 const mockPublishRoot = jest.fn();
@@ -254,6 +255,7 @@ describe('BlockchainService', () => {
           provide: TransaccionBlockchainService,
           useValue: mockTransaccionBlockchain,
         },
+        RpcProviderFactory,
       ],
     }).compile();
 

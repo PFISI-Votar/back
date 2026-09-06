@@ -40,6 +40,7 @@ describe('EscrutinioService — VOTAR-364', () => {
   const mockConfig = {
     idEleccion: 7,
     mostrarResultadosTiempoReal: true,
+    permitirVotoNulo: true,
   } as ConfiguracionComicio;
 
   const mockCandidato = {
@@ -135,6 +136,7 @@ describe('EscrutinioService — VOTAR-364', () => {
     expect(actual.idEleccion).toBe(7);
     expect(actual.fuente).toBe('ON_CHAIN');
     expect(actual.congelado).toBe(false);
+    expect(actual.permitirVotoNulo).toBe(true);
     expect(actual.participacion).toEqual({
       totalVotos: 10,
       votosBlanco: 1,
@@ -151,6 +153,18 @@ describe('EscrutinioService — VOTAR-364', () => {
       votos: 9,
       porcentaje: 90,
     });
+  });
+
+  it('VOTAR-447: propaga permitirVotoNulo=false desde la configuración del comicio', async () => {
+    arrangeHappyPath();
+    configuracionRepository.findOne.mockResolvedValue({
+      ...mockConfig,
+      permitirVotoNulo: false,
+    });
+
+    const actual = await service.obtenerResultados(7);
+
+    expect(actual.permitirVotoNulo).toBe(false);
   });
 
   it('counts blank and null separately from partisan tallies', async () => {

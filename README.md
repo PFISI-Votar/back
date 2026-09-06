@@ -113,7 +113,11 @@ Panel de gestión: `http://localhost:5173` — login con el mismo nick/password 
 npm run dev:bootstrap   # Solo migrate + admin (sin API)
 npm run dev:api         # Solo NestJS watch (asume infra ya lista)
 npm run admin:register  # Registrar admin manualmente (interactivo)
+npm run db:backup       # VOTAR-388 — volcado cifrado a src/backups/
+npm run db:restore -- <archivo.dump.enc> [bd]  # Restaurar en BD de prueba
 ```
+
+Respaldos PostgreSQL (cifrado AES-256-GCM, retención 30 días, alertas por mail): ver [`docs/VOTAR-388-backup-restore.md`](docs/VOTAR-388-backup-restore.md).
 
 ### Verificación E2E blockchain (local)
 
@@ -135,4 +139,4 @@ npm run lint
 
 ## Producción / Sepolia
 
-Para testnet, configurá manualmente en `.env` las variables `SEPOLIA_RPC_URL`, `MERKLE_ROOT_STORE_ADDRESS` y `MERKLE_UPDATER_PRIVATE_KEY`. Ver `docs/US-335-sepolia-uat.md`.
+Para testnet, configurá manualmente en `.env` las variables `SEPOLIA_RPC_URL`, `SEPOLIA_RPC_FALLBACK_URLS` (opcional, VOTAR-386), `MERKLE_ROOT_STORE_ADDRESS` y `MERKLE_UPDATER_PRIVATE_KEY`. Ver `docs/US-335-sepolia-uat.md`.

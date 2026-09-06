@@ -183,6 +183,7 @@ export class EscrutinioService {
         porcentajeParticipacion,
       },
       candidatos: candidatosDto,
+      permitirVotoNulo: configuracion.permitirVotoNulo,
     };
   }
 

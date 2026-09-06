@@ -4,13 +4,23 @@ import { getMetadataArgsStorage } from 'typeorm';
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
+import { CredencialValidacion } from '@/entidad-firmas/entities/credencial-validacion.entity';
+import { EmisionCredencial } from '@/entidad-firmas/entities/emision-credencial.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { VotoController } from '@/voto/controllers/voto.controller';
 import { VotoService } from '@/voto/services/voto.service';
 
 // Side-effect imports so TypeORM metadata is registered for schema assertions.
-void [AuditLog, AutoridadElectoral, Eleccion, PadronElectoral, PadronVotante];
+void [
+  AuditLog,
+  AutoridadElectoral,
+  Eleccion,
+  PadronElectoral,
+  PadronVotante,
+  CredencialValidacion,
+  EmisionCredencial,
+];
 
 /**
  * VOTAR-379 UAT-01 / UAT-02: ausencia de tablas o columnas off-chain que
@@ -49,6 +59,60 @@ describe('VOTAR-379 desvinculación identidad↔voto (esquema)', () => {
     expect(serviceProto.confirmarVoto).toBeUndefined();
     expect(typeof controllerProto.obtenerBoletaDigital).toBe('function');
     expect(typeof controllerProto.solicitarMerkleProof).toBe('function');
+  });
+
+  it('VOTAR-377: credencial_validacion no guarda identidad ni contenido del voto', () => {
+    const columns = getMetadataArgsStorage()
+      .columns.filter((column) => {
+        const target =
+          typeof column.target === 'function'
+            ? column.target.name
+            : String(column.target);
+        return target === 'CredencialValidacion';
+      })
+      .map((column) => String(column.options?.name ?? column.propertyName));
+    for (const forbidden of [
+      'votante_hash',
+      'hash_hoja',
+      'nullifier',
+      'selection_hash',
+      'tx_hash',
+    ]) {
+      expect(columns).not.toContain(forbidden);
+    }
+  });
+
+  it('VOTAR-377: emision_credencial no guarda commit, nullifier ni selección', () => {
+    const columns = getMetadataArgsStorage()
+      .columns.filter((column) => {
+        const target =
+          typeof column.target === 'function'
+            ? column.target.name
+            : String(column.target);
+        return target === 'EmisionCredencial';
+      })
+      .map((column) => String(column.options?.name ?? column.propertyName));
+    for (const forbidden of [
+      'commit_credencial',
+      'nullifier',
+      'selection_hash',
+      'tx_hash',
+    ]) {
+      expect(columns).not.toContain(forbidden);
+    }
+  });
+
+  it('VOTAR-377: no hay relación TypeORM entre credencial_validacion y emision_credencial', () => {
+    const relations = getMetadataArgsStorage().relations.filter((relation) => {
+      const target =
+        typeof relation.target === 'function'
+          ? relation.target.name
+          : String(relation.target);
+      return (
+        target === 'CredencialValidacion' || target === 'EmisionCredencial'
+      );
+    });
+    expect(relations).toHaveLength(0);
   });
 
   it('UAT-02: no hay relación TypeORM desde entidades de voto hacia padrón/votante', () => {

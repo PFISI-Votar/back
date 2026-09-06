@@ -13,6 +13,10 @@ import {
   sanitizePlainText,
 } from '@/common/utils/sanitize-plain-text.util';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
+import {
+  OBSERVACION_LOGIN_DEFAULT,
+  OBSERVACION_LOGIN_MAX_LENGTH,
+} from '@/eleccion/constants/observacion-login.constant';
 import { IsUtcIso8601 } from '@/common/validators/is-utc-iso8601.decorator';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 
@@ -32,6 +36,20 @@ export class CrearEleccionDto {
     sanitizeOptionalPlainText(value),
   )
   descripcion?: string;
+
+  @ApiPropertyOptional({
+    example: OBSERVACION_LOGIN_DEFAULT,
+    description:
+      'VOTAR-454: observación mostrada en el login de la BUD. Omitir usa el texto por defecto; vacío la oculta.',
+    maxLength: OBSERVACION_LOGIN_MAX_LENGTH,
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(OBSERVACION_LOGIN_MAX_LENGTH)
+  @Transform(({ value }: { value: unknown }) =>
+    sanitizeOptionalPlainText(value),
+  )
+  observacionLogin?: string;
 
   @ApiProperty({ example: '2026-09-01T10:00:00.000Z' })
   @IsUtcIso8601()

@@ -21,12 +21,18 @@ import {
 } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import { PauserAuth } from '@/auth/decorators/pauser-auth.decorator';
+import { ActaAperturaResponseDto } from '@/eleccion/dto/acta-apertura-response.dto';
+import { ActaCierreResponseDto } from '@/eleccion/dto/acta-cierre-response.dto';
 import { ActualizarEleccionDto } from '@/eleccion/dto/actualizar-eleccion.dto';
 import { CrearEleccionDto } from '@/eleccion/dto/crear-eleccion.dto';
 import { EleccionResponseDto } from '@/eleccion/dto/eleccion-response.dto';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { IEleccionController } from '@/eleccion/interfaces/eleccion.controller.interface';
+import { RegistrarHashActaCierreDto } from '@/eleccion/dto/registrar-hash-acta-cierre.dto';
+import { RegistrarHashActaCierreResponseDto } from '@/eleccion/dto/registrar-hash-acta-cierre-response.dto';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
+import { ActaAperturaService } from '@/eleccion/services/acta-apertura.service';
+import { ActaCierreService } from '@/eleccion/services/acta-cierre.service';
 import { AperturaComicioService } from '@/eleccion/services/apertura-comicio.service';
 import { CierreComicioService } from '@/eleccion/services/cierre-comicio.service';
 import { PausaComicioService } from '@/eleccion/pausa/services/pausa-comicio.service';
@@ -47,6 +53,8 @@ export class EleccionesController implements IEleccionController {
     private readonly cierreComicioService: CierreComicioService,
     private readonly pausaComicioService: PausaComicioService,
     private readonly archivarComicioService: ArchivarComicioService,
+    private readonly actaAperturaService: ActaAperturaService,
+    private readonly actaCierreService: ActaCierreService,
   ) {}
 
   @Get()
@@ -72,6 +80,95 @@ export class EleccionesController implements IEleccionController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<EleccionResponseDto> {
     return this.eleccionesService.obtenerPorId(idEleccion);
+  }
+
+  @Get(':idEleccion/acta-apertura')
+  @ApiOperation({
+    summary: 'Compilar el Acta de Apertura del comicio (VOTAR-374)',
+    description:
+      'Consolida el volumen de votantes del padrón, los candidatos postulados, ' +
+      'la raíz de Merkle anclada y la dirección del Smart Contract. El PDF ' +
+      'institucional se genera client-side a partir de esta respuesta.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'OK',
+    type: ActaAperturaResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'El comicio aún no fue abierto (estado BORRADOR o CONFIGURADA)',
+  })
+  async obtenerActaApertura(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<ActaAperturaResponseDto> {
+    return this.actaAperturaService.generar(idEleccion);
+  }
+
+  @Get(':idEleccion/acta-cierre')
+  @ApiOperation({
+    summary: 'Compilar el Acta de Cierre del comicio (escrutinio final)',
+    description:
+      'Consolida los totales de participación, votos por candidato ' +
+      '(agrupables por lista en el frontend), blancos, nulos y la ' +
+      'dirección del Smart Contract. El PDF institucional se genera ' +
+      'client-side a partir de esta respuesta.',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 200,
+    description: 'OK',
+    type: ActaCierreResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'El comicio aún no fue cerrado (estado BORRADOR, CONFIGURADA o ABIERTA)',
+  })
+  async obtenerActaCierre(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<ActaCierreResponseDto> {
+    return this.actaCierreService.generar(idEleccion);
+  }
+
+  @Post(':idEleccion/acta-cierre/hash')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Registrar el hash SHA-256 del Acta de Cierre emitida',
+    description:
+      'El PDF se genera y hashea client-side; este endpoint deja registro ' +
+      'permanente e inmutable del hash en la bitácora de auditoría, para ' +
+      'verificar la integridad del documento emitido (UAT-01).',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 201,
+    description: 'Hash registrado en la bitácora de auditoría',
+    type: RegistrarHashActaCierreResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'El comicio aún no fue cerrado (estado BORRADOR, CONFIGURADA o ABIERTA)',
+  })
+  async registrarHashActaCierre(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Body() dto: RegistrarHashActaCierreDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<RegistrarHashActaCierreResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    return this.actaCierreService.registrarHash({
+      idEleccion,
+      actorId: user.sub,
+      hashPdf: dto.hashPdf,
+      timestamp: new Date(),
+      ipOrigen: this.resolveClientIp(req),
+    });
   }
 
   @Post()

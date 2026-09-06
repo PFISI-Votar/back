@@ -56,7 +56,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: JwtPayload): JwtPayload {
+  validate(payload: JwtPayload & { purpose?: string }): JwtPayload {
+    if (payload.purpose === '2fa_challenge' || !payload.role) {
+      throw new UnauthorizedException('Token de acceso inválido');
+    }
     return payload;
   }
 }
