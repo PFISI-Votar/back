@@ -28,10 +28,27 @@ const mockEleccionRepository = {
   actualizarCompleta: jest.fn(),
 };
 
+const mockDeleteQueryBuilder = {
+  delete: jest.fn().mockReturnThis(),
+  from: jest.fn().mockReturnThis(),
+  where: jest.fn().mockReturnThis(),
+  execute: jest.fn().mockResolvedValue({ affected: 0 }),
+};
+
+const mockEntityManager = {
+  createQueryBuilder: jest.fn(() => mockDeleteQueryBuilder),
+  remove: jest.fn(),
+};
+
 const mockEleccionOrmRepository = {
   findOne: jest.fn(),
   find: jest.fn(),
   remove: jest.fn(),
+  manager: {
+    transaction: jest.fn((cb: (m: typeof mockEntityManager) => unknown) =>
+      cb(mockEntityManager),
+    ),
+  },
 };
 
 const mockConfigComicioOrmRepository = {
@@ -254,7 +271,7 @@ describe('EleccionesService', () => {
     );
   });
 
-  it('debe eliminar un comicio en BORRADOR', async () => {
+  it('debe eliminar un comicio en BORRADOR removiendo antes los candidatos', async () => {
     const eleccion = {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
@@ -263,7 +280,15 @@ describe('EleccionesService', () => {
 
     await service.eliminarEleccion(1);
 
-    expect(mockEleccionOrmRepository.remove).toHaveBeenCalledWith(eleccion);
+    expect(mockEleccionOrmRepository.manager.transaction).toHaveBeenCalled();
+    // Los candidatos se borran explícitamente antes de disparar el CASCADE
+    // porque la FK candidato→categoria es ON DELETE RESTRICT.
+    expect(mockDeleteQueryBuilder.where).toHaveBeenCalledWith(
+      expect.stringContaining('id_lista IN'),
+      { idEleccion: 1 },
+    );
+    expect(mockDeleteQueryBuilder.execute).toHaveBeenCalled();
+    expect(mockEntityManager.remove).toHaveBeenCalledWith(eleccion);
   });
 
   it('debe lanzar 409 al eliminar comicio no editable', async () => {
@@ -275,7 +300,10 @@ describe('EleccionesService', () => {
     await expect(service.eliminarEleccion(1)).rejects.toThrow(
       ConflictException,
     );
-    expect(mockEleccionOrmRepository.remove).not.toHaveBeenCalled();
+    expect(
+      mockEleccionOrmRepository.manager.transaction,
+    ).not.toHaveBeenCalled();
+    expect(mockEntityManager.remove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 404 al eliminar comicio inexistente', async () => {
@@ -289,7 +317,8 @@ describe('EleccionesService', () => {
   it('no debe inyectar dependencias blockchain en el servicio de creación', () => {
     const constructorParamTypes =
       (Reflect.getMetadata('design:paramtypes', EleccionesService) as
-        unknown[] | undefined) ?? [];
+        | unknown[]
+        | undefined) ?? [];
     const hasBlockchainProvider = constructorParamTypes.some((type) => {
       const name =
         typeof type === 'function'

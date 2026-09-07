@@ -15,6 +15,7 @@ import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/
 import { ConfiguracionComicioService } from '@/eleccion/configuracion-comicio/services/configuracion-comicio.service';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
+import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { parseUtcDateTime } from '@/common/utils/parse-utc-datetime.util';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
 
@@ -80,7 +81,26 @@ export class EleccionesService implements IEleccionService {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
     assertEleccionEditable(eleccion);
-    await this.eleccionOrmRepository.remove(eleccion);
+
+    // La FK candidato→categoria es ON DELETE RESTRICT, por lo que el CASCADE
+    // desde `eleccion` (vía boleta→categoria) falla con 500 cuando alguna lista
+    // tiene candidatos registrados. Se eliminan los candidatos de forma
+    // explícita dentro de la misma transacción antes de disparar el CASCADE.
+    await this.eleccionOrmRepository.manager.transaction(async (manager) => {
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from(Candidato)
+        .where(
+          'id_lista IN (' +
+            'SELECT l.id_lista FROM lista l ' +
+            'INNER JOIN boleta b ON b.id_boleta = l.id_boleta ' +
+            'WHERE b.id_eleccion = :idEleccion)',
+          { idEleccion },
+        )
+        .execute();
+      await manager.remove(eleccion);
+    });
   }
 
   /**
