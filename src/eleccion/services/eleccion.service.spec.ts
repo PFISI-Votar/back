@@ -28,15 +28,8 @@ const mockEleccionRepository = {
   actualizarCompleta: jest.fn(),
 };
 
-const mockDeleteQueryBuilder = {
-  delete: jest.fn().mockReturnThis(),
-  from: jest.fn().mockReturnThis(),
-  where: jest.fn().mockReturnThis(),
-  execute: jest.fn().mockResolvedValue({ affected: 0 }),
-};
-
 const mockEntityManager = {
-  createQueryBuilder: jest.fn(() => mockDeleteQueryBuilder),
+  query: jest.fn().mockResolvedValue([]),
   remove: jest.fn(),
 };
 
@@ -283,11 +276,10 @@ describe('EleccionesService', () => {
     expect(mockEleccionOrmRepository.manager.transaction).toHaveBeenCalled();
     // Los candidatos se borran explícitamente antes de disparar el CASCADE
     // porque la FK candidato→categoria es ON DELETE RESTRICT.
-    expect(mockDeleteQueryBuilder.where).toHaveBeenCalledWith(
-      expect.stringContaining('id_lista IN'),
-      { idEleccion: 1 },
+    expect(mockEntityManager.query).toHaveBeenCalledWith(
+      expect.stringContaining('DELETE FROM candidato'),
+      [1],
     );
-    expect(mockDeleteQueryBuilder.execute).toHaveBeenCalled();
     expect(mockEntityManager.remove).toHaveBeenCalledWith(eleccion);
   });
 
