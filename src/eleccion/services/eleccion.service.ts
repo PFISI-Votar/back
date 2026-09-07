@@ -81,22 +81,14 @@ export class EleccionesService implements IEleccionService {
     }
     assertEleccionEditable(eleccion);
 
-    // La FK candidato→categoria es ON DELETE RESTRICT, por lo que el CASCADE
-    // desde `eleccion` (vía boleta→categoria) falla con 500 cuando alguna lista
-    // tiene candidatos registrados. Se eliminan los candidatos de forma
-    // explícita dentro de la misma transacción antes de disparar el CASCADE.
-    await this.eleccionOrmRepository.manager.transaction(async (manager) => {
-      await manager.query(
-        `DELETE FROM candidato
-         WHERE id_lista IN (
-           SELECT l.id_lista FROM lista l
-           INNER JOIN boleta b ON b.id_boleta = l.id_boleta
-           WHERE b.id_eleccion = $1
-         )`,
-        [idEleccion],
-      );
-      await manager.remove(eleccion);
-    });
+    // VOTAR-486: borrado lógico. El DELETE físico dispara el `ON DELETE SET NULL`
+    // de la FK audit_log→eleccion y el trigger de inmutabilidad de audit_log
+    // (VOTAR-372) aborta ese UPDATE, dejando sin eliminar cualquier comicio que
+    // ya tenga bitácora (p. ej. tras cargar el padrón). Con soft delete el
+    // comicio y su oferta desaparecen de todas las lecturas —TypeORM filtra
+    // `fecha_eliminacion IS NULL` automáticamente— sin tocar la bitácora
+    // institucional.
+    await this.eleccionOrmRepository.softRemove(eleccion);
   }
 
   /**

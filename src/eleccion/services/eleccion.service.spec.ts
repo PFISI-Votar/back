@@ -37,6 +37,7 @@ const mockEleccionOrmRepository = {
   findOne: jest.fn(),
   find: jest.fn(),
   remove: jest.fn(),
+  softRemove: jest.fn(),
   manager: {
     transaction: jest.fn((cb: (m: typeof mockEntityManager) => unknown) =>
       cb(mockEntityManager),
@@ -264,7 +265,7 @@ describe('EleccionesService', () => {
     );
   });
 
-  it('debe eliminar un comicio en BORRADOR removiendo antes los candidatos', async () => {
+  it('debe eliminar un comicio en BORRADOR con borrado lógico (VOTAR-486)', async () => {
     const eleccion = {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
@@ -273,14 +274,10 @@ describe('EleccionesService', () => {
 
     await service.eliminarEleccion(1);
 
-    expect(mockEleccionOrmRepository.manager.transaction).toHaveBeenCalled();
-    // Los candidatos se borran explícitamente antes de disparar el CASCADE
-    // porque la FK candidato→categoria es ON DELETE RESTRICT.
-    expect(mockEntityManager.query).toHaveBeenCalledWith(
-      expect.stringContaining('DELETE FROM candidato'),
-      [1],
-    );
-    expect(mockEntityManager.remove).toHaveBeenCalledWith(eleccion);
+    // Soft delete: nunca DELETE físico, para no disparar el ON DELETE SET NULL
+    // de audit_log→eleccion (bloqueado por el trigger de inmutabilidad).
+    expect(mockEleccionOrmRepository.softRemove).toHaveBeenCalledWith(eleccion);
+    expect(mockEntityManager.remove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 409 al eliminar comicio no editable', async () => {
@@ -292,10 +289,7 @@ describe('EleccionesService', () => {
     await expect(service.eliminarEleccion(1)).rejects.toThrow(
       ConflictException,
     );
-    expect(
-      mockEleccionOrmRepository.manager.transaction,
-    ).not.toHaveBeenCalled();
-    expect(mockEntityManager.remove).not.toHaveBeenCalled();
+    expect(mockEleccionOrmRepository.softRemove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 404 al eliminar comicio inexistente', async () => {
@@ -309,8 +303,7 @@ describe('EleccionesService', () => {
   it('no debe inyectar dependencias blockchain en el servicio de creación', () => {
     const constructorParamTypes =
       (Reflect.getMetadata('design:paramtypes', EleccionesService) as
-        | unknown[]
-        | undefined) ?? [];
+        unknown[] | undefined) ?? [];
     const hasBlockchainProvider = constructorParamTypes.some((type) => {
       const name =
         typeof type === 'function'

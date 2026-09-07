@@ -4,6 +4,7 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   OneToOne,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
@@ -85,6 +86,21 @@ export class Eleccion {
   @ApiProperty()
   @UpdateDateColumn({ name: 'fecha_actualizacion', type: 'timestamptz' })
   fechaActualizacion!: Date;
+
+  /**
+   * VOTAR-486: marca de borrado lógico. Un comicio con valor no nulo queda
+   * excluido de forma automática de todas las lecturas de TypeORM.
+   * Se usa soft delete porque el DELETE físico dispara el `ON DELETE SET NULL`
+   * de la FK audit_log→eleccion, y el trigger de inmutabilidad de audit_log
+   * (VOTAR-372) aborta ese UPDATE.
+   */
+  @ApiProperty({ required: false, nullable: true })
+  @DeleteDateColumn({
+    name: 'fecha_eliminacion',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  fechaEliminacion!: Date | null;
 
   @OneToOne(() => ConfiguracionComicio, (config) => config.eleccion)
   configuracionComicio?: ConfiguracionComicio;
