@@ -28,10 +28,21 @@ const mockEleccionRepository = {
   actualizarCompleta: jest.fn(),
 };
 
+const mockEntityManager = {
+  query: jest.fn().mockResolvedValue([]),
+  remove: jest.fn(),
+};
+
 const mockEleccionOrmRepository = {
   findOne: jest.fn(),
   find: jest.fn(),
   remove: jest.fn(),
+  softRemove: jest.fn(),
+  manager: {
+    transaction: jest.fn((cb: (m: typeof mockEntityManager) => unknown) =>
+      cb(mockEntityManager),
+    ),
+  },
 };
 
 const mockConfigComicioOrmRepository = {
@@ -254,7 +265,7 @@ describe('EleccionesService', () => {
     );
   });
 
-  it('debe eliminar un comicio en BORRADOR', async () => {
+  it('debe eliminar un comicio en BORRADOR con borrado lógico (VOTAR-486)', async () => {
     const eleccion = {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
@@ -263,7 +274,10 @@ describe('EleccionesService', () => {
 
     await service.eliminarEleccion(1);
 
-    expect(mockEleccionOrmRepository.remove).toHaveBeenCalledWith(eleccion);
+    // Soft delete: nunca DELETE físico, para no disparar el ON DELETE SET NULL
+    // de audit_log→eleccion (bloqueado por el trigger de inmutabilidad).
+    expect(mockEleccionOrmRepository.softRemove).toHaveBeenCalledWith(eleccion);
+    expect(mockEntityManager.remove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 409 al eliminar comicio no editable', async () => {
@@ -275,7 +289,7 @@ describe('EleccionesService', () => {
     await expect(service.eliminarEleccion(1)).rejects.toThrow(
       ConflictException,
     );
-    expect(mockEleccionOrmRepository.remove).not.toHaveBeenCalled();
+    expect(mockEleccionOrmRepository.softRemove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 404 al eliminar comicio inexistente', async () => {

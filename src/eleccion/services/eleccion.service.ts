@@ -80,7 +80,15 @@ export class EleccionesService implements IEleccionService {
       throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
     assertEleccionEditable(eleccion);
-    await this.eleccionOrmRepository.remove(eleccion);
+
+    // VOTAR-486: borrado lógico. El DELETE físico dispara el `ON DELETE SET NULL`
+    // de la FK audit_log→eleccion y el trigger de inmutabilidad de audit_log
+    // (VOTAR-372) aborta ese UPDATE, dejando sin eliminar cualquier comicio que
+    // ya tenga bitácora (p. ej. tras cargar el padrón). Con soft delete el
+    // comicio y su oferta desaparecen de todas las lecturas —TypeORM filtra
+    // `fecha_eliminacion IS NULL` automáticamente— sin tocar la bitácora
+    // institucional.
+    await this.eleccionOrmRepository.softRemove(eleccion);
   }
 
   /**
