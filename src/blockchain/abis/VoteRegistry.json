@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0xb95f055529680a8eb888091c8f36eb38e7aed7a9b295a3ce58f71d7ba65bda32",
+  "abiHash": "0xe2893c8f50c03e811757c70b77f2661cdf68addeaf04191f5706eb1d82b042a2",
   "abi": [
     {
       "inputs": [
@@ -67,27 +67,6 @@
       "type": "error"
     },
     {
-      "inputs": [],
-      "name": "EmptyCandidateSet",
-      "type": "error"
-    },
-    {
-      "inputs": [],
-      "name": "EmptyBallotSelection",
-      "type": "error"
-    },
-    {
-      "inputs": [
-        {
-          "internalType": "uint256",
-          "name": "count",
-          "type": "uint256"
-        }
-      ],
-      "name": "TooManyCandidates",
-      "type": "error"
-    },
-    {
       "inputs": [
         {
           "internalType": "uint256",
@@ -96,6 +75,16 @@
         }
       ],
       "name": "DuplicateCandidateId",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EmptyBallotSelection",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EmptyCandidateSet",
       "type": "error"
     },
     {
@@ -154,6 +143,17 @@
         }
       ],
       "name": "TallyUnderflow",
+      "type": "error"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "count",
+          "type": "uint256"
+        }
+      ],
+      "name": "TooManyCandidates",
       "type": "error"
     },
     {
@@ -398,6 +398,19 @@
     },
     {
       "inputs": [],
+      "name": "MAX_CANDIDATES_PER_BALLOT",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MERKLE_UPDATER_ROLE",
       "outputs": [
         {
@@ -417,19 +430,6 @@
           "internalType": "bytes32",
           "name": "",
           "type": "bytes32"
-        }
-      ],
-      "stateMutability": "view",
-      "type": "function"
-    },
-    {
-      "inputs": [],
-      "name": "MAX_CANDIDATES_PER_BALLOT",
-      "outputs": [
-        {
-          "internalType": "uint256",
-          "name": "",
-          "type": "uint256"
         }
       ],
       "stateMutability": "view",
@@ -895,6 +895,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-09-06T14:26:48.197Z",
+  "exportedAt": "2026-09-08T03:02:24.723Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }
