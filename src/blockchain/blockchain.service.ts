@@ -125,7 +125,7 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const ZERO_MERKLE_ROOT =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
 
-//VOTAR-482: minimum ETH the operational wallet must hold before any on-chain write. 
+//VOTAR-482: minimum ETH the operational wallet must hold before any on-chain write.
 const MIN_OPERATION_BALANCE = parseEther('0.005');
 
 /**
@@ -227,7 +227,7 @@ export class BlockchainService {
    * balance and address so the operator can act immediately.
    * Called at the top of every write method AND as a DB-pre-check in
    * OficializacionService to avoid committing state with an empty wallet.
-  */
+   */
   async assertWalletHasFunds(): Promise<void> {
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     const rpcUrl = this.rpcProviderFactory.getUrls()[0];
@@ -270,7 +270,6 @@ export class BlockchainService {
     electionId: number,
     merkleRoot: string,
   ): Promise<PublishMerkleRootResult> {
-
     // VOTAR-482
     await this.assertWalletHasFunds();
 
