@@ -165,6 +165,36 @@ describe('ElectoralImageService', () => {
     expect(metadata.channels[0].mean).toBeGreaterThan(200);
   });
 
+  it('rechaza archivos con magic bytes incorrectos aunque extensión y MIME sean válidos (anti-spoofing, VOTAR-490)', async () => {
+    // PDF disfrazado de PNG: extensión .png y mimetype image/png pero bytes reales de PDF
+    const pdfBuffer = Buffer.from('%PDF-1.4 contenido falso');
+    await expect(
+      service.saveImage(
+        await makeImageFile({
+          originalname: 'imagen.png',
+          mimetype: 'image/png',
+          buffer: pdfBuffer,
+          size: pdfBuffer.length,
+        }),
+        'candidato-foto',
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    // GIF disfrazado de JPEG
+    const gifBuffer = Buffer.from('GIF89a fake gif content');
+    await expect(
+      service.saveImage(
+        await makeImageFile({
+          originalname: 'foto.jpg',
+          mimetype: 'image/jpeg',
+          buffer: gifBuffer,
+          size: gifBuffer.length,
+        }),
+        'lista-logo',
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
   it('calcula el checksum SHA-256 del contenido persistido', async () => {
     await service.saveImage(await makeImageFile(), 'candidato-foto');
 
