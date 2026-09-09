@@ -31,6 +31,7 @@ describe('OficializacionService', () => {
   const mockBlockchainService = {
     deployElectionStack: jest.fn(),
     hasElectionStackDeployed: jest.fn(),
+    assertWalletHasFunds: jest.fn().mockResolvedValue(undefined),
   };
   const mockBoletaService = {
     findBoletaByEleccion: jest.fn(),
@@ -350,6 +351,27 @@ describe('OficializacionService', () => {
       idEleccion: 1,
       desplegado: false,
     });
+  });
+
+  it('VOTAR-482: oficializar lanza 503 si la wallet no tiene fondos', async () => {
+    mockEleccionRepository.findOne.mockResolvedValue({
+      idEleccion: 1,
+      estado: EleccionEstado.BORRADOR,
+    });
+    mockPadronValido();
+    mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
+      undefined,
+    );
+    mockBlockchainService.assertWalletHasFunds.mockRejectedValue(
+      new ServiceUnavailableException(
+        'La wallet operativa no tiene fondos suficientes.',
+      ),
+    );
+
+    await expect(service.oficializar(1)).rejects.toThrow(
+      ServiceUnavailableException,
+    );
+    expect(mockDataSource.transaction).not.toHaveBeenCalled();
   });
 
   it('debe lanzar MinimoCandidatosViolationException si hay listas deficientes', async () => {
