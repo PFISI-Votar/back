@@ -14,6 +14,8 @@ import {
   ContractTransactionResponse,
   Interface,
   type InterfaceAbi,
+  formatEther,
+  parseEther,
   Log,
   type Provider,
   type TransactionReceipt,
@@ -123,6 +125,9 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const ZERO_MERKLE_ROOT =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
 
+//VOTAR-482: minimum ETH the operational wallet must hold before any on-chain write.
+const MIN_OPERATION_BALANCE = parseEther('0.005');
+
 /**
  * True when an eth_call failed because the selector is absent on the deployed
  * bytecode (typical for non-upgradeable contracts predating a new view).
@@ -217,12 +222,57 @@ export class BlockchainService {
   ) {}
 
   /**
+   * VOTAR-482: asserts the operational wallet has enough ETH to pay gas before
+   * any on-chain write. Throws ServiceUnavailableException with the current
+   * balance and address so the operator can act immediately.
+   * Called at the top of every write method AND as a DB-pre-check in
+   * OficializacionService to avoid committing state with an empty wallet.
+   */
+  async assertWalletHasFunds(): Promise<void> {
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
+    if (!privateKey || !rpcUrl) {
+      // Individual write methods will throw their own "not configured" error.
+      return;
+    }
+
+    let balance: bigint;
+    let address: string;
+    try {
+      const provider = this.createProvider();
+      const wallet = new Wallet(privateKey, provider);
+      address = wallet.address;
+      balance = await provider.getBalance(address);
+    } catch (error) {
+      // RPC failure during balance check — let the actual write fail with its own error.
+      this.logger.warn(
+        `No se pudo verificar el balance de la wallet operativa: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return;
+    }
+
+    if (balance < MIN_OPERATION_BALANCE) {
+      throw new ServiceUnavailableException(
+        `La wallet operativa (${address}) no tiene fondos suficientes para ejecutar la transacción on-chain. ` +
+          `Balance actual: ${formatEther(balance)} ETH — ` +
+          `mínimo requerido: ${formatEther(MIN_OPERATION_BALANCE)} ETH. ` +
+          `Cargá fondos en la wallet antes de continuar.`,
+      );
+    }
+  }
+
+  /**
    * Publishes the Merkle root for an election on Sepolia via MerkleRootStore.
    */
   async publishMerkleRoot(
     electionId: number,
     merkleRoot: string,
   ): Promise<PublishMerkleRootResult> {
+    // VOTAR-482
+    await this.assertWalletHasFunds();
+
     const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
@@ -256,6 +306,14 @@ export class BlockchainService {
         error,
         MERKLE_ROOT_STORE_ABI,
       );
+
+      // VOTAR-482: catch mid-operation insufficient funds (race condition)
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para publicar la raíz Merkle on-chain. Cargá fondos y reintentá.',
+        );
+      }
+
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -534,6 +592,9 @@ export class BlockchainService {
     electionId: number,
     estado: EleccionEstado,
   ): Promise<{ txHash: string; blockNumber: number }> {
+    // VOTAR-482
+    await this.assertWalletHasFunds();
+
     const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
@@ -579,6 +640,13 @@ export class BlockchainService {
         error,
         MERKLE_ROOT_STORE_ABI,
       );
+
+      // VOTAR-482
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para sincronizar el estado on-chain. Cargá fondos y reintentá.',
+        );
+      }
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -622,6 +690,9 @@ export class BlockchainService {
     idEleccion: number,
     revoteConfig: RevoteConfigOnChain,
   ): Promise<DeployElectionStackResult> {
+    // VOTAR-482
+    await this.assertWalletHasFunds();
+
     const rpcUrl = this.rpcProviderFactory.getUrls()[0];
 
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
@@ -707,6 +778,13 @@ export class BlockchainService {
         error,
         ELECTION_FACTORY_CONTRACT_ABI,
       );
+
+      // VOTAR-482
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para desplegar el stack electoral on-chain. Cargá fondos y reintentá.',
+        );
+      }
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -2684,5 +2762,19 @@ export class BlockchainService {
       };
     }
     return null;
+  }
+
+  /**
+   * VOTAR-482: detects ethers INSUFFICIENT_FUNDS errors that slip through the
+   * pre-check (race condition, wallet drained mid-operation, etc.).
+   */
+  private isInsufficientFundsError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code;
+    const message = error instanceof Error ? error.message : String(error);
+    return (
+      code === 'INSUFFICIENT_FUNDS' ||
+      message.toLowerCase().includes('insufficient funds') ||
+      message.toLowerCase().includes("sender doesn't have enough funds")
+    );
   }
 }
