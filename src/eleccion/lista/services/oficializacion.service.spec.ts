@@ -362,7 +362,7 @@ describe('OficializacionService', () => {
     mockCategoriasService.validarCategoriasParaOficializar.mockResolvedValue(
       undefined,
     );
-    mockBlockchainService.assertWalletHasFunds.mockRejectedValue(
+    mockBlockchainService.assertWalletHasFunds.mockRejectedValueOnce( // ← Once
       new ServiceUnavailableException(
         'La wallet operativa no tiene fondos suficientes.',
       ),
