@@ -60,6 +60,14 @@ export class OficializacionService {
     assertEleccionEditable(eleccion);
     await this.padronService.validarPadronParaOficializar(idEleccion);
     await this.categoriasService.validarCategoriasParaOficializar(idEleccion);
+
+    // VOTAR-482: check wallet funds BEFORE the DB transaction so the comicio
+    // stays in BORRADOR if the operational wallet is empty. Without this, the
+    // DB commit (BORRADOR→CONFIGURADA) happens first and the on-chain failure
+    // is swallowed by desplegarStackOnChainBestEffort, leaving the comicio in
+    // an inconsistent state with no deployed contracts.
+    await this.blockchainService.assertWalletHasFunds();
+
     const boleta = await this.boletaService.findBoletaByEleccion(idEleccion);
     if (!boleta) {
       throw new UnprocessableEntityException(
