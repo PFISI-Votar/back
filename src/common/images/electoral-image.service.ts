@@ -204,7 +204,7 @@ export class ElectoralImageService {
    * Verifica los magic bytes del buffer para detectar el formato real,
    * independientemente de la extensión o MIME type declarado por el cliente
    * (VOTAR-490 — anti-spoofing).
-  */
+   */
   private detectMimeFromMagicBytes(
     buffer: Buffer,
   ): 'image/png' | 'image/jpeg' | null {

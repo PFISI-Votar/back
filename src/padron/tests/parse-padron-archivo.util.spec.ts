@@ -59,7 +59,7 @@ describe('parse-padron-archivo.util', () => {
     });
   });
 
-    describe('validarMagicBytesPadron (VOTAR-490)', () => {
+  describe('validarMagicBytesPadron (VOTAR-490)', () => {
     it('rechaza un Excel con magic bytes incorrectos (PDF disfrazado de .xlsx)', () => {
       const pdfBuffer = Buffer.from('%PDF-1.4 contenido falso');
       expect(() =>
@@ -93,13 +93,15 @@ describe('parse-padron-archivo.util', () => {
     });
 
     it('rechaza un CSV con bytes NUL (binario disfrazado de .csv)', () => {
-      const binaryBuffer = Buffer.from([0x64, 0x6e, 0x69, 0x00, 0x65, 0x6d, 0x61, 0x69, 0x6c]);
+      const binaryBuffer = Buffer.from([
+        0x64, 0x6e, 0x69, 0x00, 0x65, 0x6d, 0x61, 0x69, 0x6c,
+      ]);
       expect(() =>
         validarMagicBytesPadron(binaryBuffer, 'padron.csv', 'text/csv'),
       ).toThrow(BadRequestException);
     });
 
-  it('sanitiza path traversal en el nombre al detectar el formato', () => {
+    it('sanitiza path traversal en el nombre al detectar el formato', () => {
       const xlsxBuffer = buildExcelBuffer([
         ['dni', 'email'],
         ['30111222', 'a@b.com'],

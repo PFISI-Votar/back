@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 
 /** Magic bytes de los formatos de archivo de padrón permitidos (VOTAR-490). */
 const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // ZIP / OOXML
-const XLS_MAGIC  = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]); // OLE2 compound document
+const XLS_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]); // OLE2 compound document
 
 /**
  * Extrae sólo el nombre base del archivo, descartando cualquier segmento de
