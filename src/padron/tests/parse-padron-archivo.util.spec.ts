@@ -4,6 +4,7 @@ import {
   esArchivoPadronSoportado,
   esExcel,
   extraerFilasIdentidad,
+  validarMagicBytesPadron,
 } from '../utils/parse-padron-archivo.util';
 
 function buildExcelBuffer(filas: string[][]): Buffer {
@@ -55,6 +56,63 @@ describe('parse-padron-archivo.util', () => {
     it('detecta excel por extensión', () => {
       expect(esExcel('a.xlsx', 'text/plain')).toBe(true);
       expect(esExcel('a.csv', 'text/csv')).toBe(false);
+    });
+  });
+
+  describe('validarMagicBytesPadron (VOTAR-490)', () => {
+    it('rechaza un Excel con magic bytes incorrectos (PDF disfrazado de .xlsx)', () => {
+      const pdfBuffer = Buffer.from('%PDF-1.4 contenido falso');
+      expect(() =>
+        validarMagicBytesPadron(
+          pdfBuffer,
+          'padron.xlsx',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it('acepta un .xlsx real (magic bytes PK)', () => {
+      const xlsxBuffer = buildExcelBuffer([
+        ['dni', 'email'],
+        ['30111222', 'a@b.com'],
+      ]);
+      expect(() =>
+        validarMagicBytesPadron(
+          xlsxBuffer,
+          'padron.xlsx',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ),
+      ).not.toThrow();
+    });
+
+    it('acepta un CSV de texto plano sin bytes NUL', () => {
+      const csvBuffer = Buffer.from('dni,email\n30111222,a@b.com\n', 'utf-8');
+      expect(() =>
+        validarMagicBytesPadron(csvBuffer, 'padron.csv', 'text/csv'),
+      ).not.toThrow();
+    });
+
+    it('rechaza un CSV con bytes NUL (binario disfrazado de .csv)', () => {
+      const binaryBuffer = Buffer.from([
+        0x64, 0x6e, 0x69, 0x00, 0x65, 0x6d, 0x61, 0x69, 0x6c,
+      ]);
+      expect(() =>
+        validarMagicBytesPadron(binaryBuffer, 'padron.csv', 'text/csv'),
+      ).toThrow(BadRequestException);
+    });
+
+    it('sanitiza path traversal en el nombre al detectar el formato', () => {
+      const xlsxBuffer = buildExcelBuffer([
+        ['dni', 'email'],
+        ['30111222', 'a@b.com'],
+      ]);
+      expect(() =>
+        validarMagicBytesPadron(
+          xlsxBuffer,
+          '../../../../padron.xlsx',
+          'application/octet-stream',
+        ),
+      ).not.toThrow();
     });
   });
 

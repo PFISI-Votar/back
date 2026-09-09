@@ -22,6 +22,10 @@ const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
 
+/** Magic bytes de los formatos de imagen permitidos (VOTAR-490). */
+const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+const JPEG_MAGIC = Buffer.from([0xff, 0xd8, 0xff]);
+
 /**
  * Calidades de WebP a intentar, de mayor a menor, hasta que el resultado
  * entre en el presupuesto de tamaño del tipo (VOTAR-466). Si ninguna entra,
@@ -178,12 +182,45 @@ export class ElectoralImageService {
     if (file.size > MAX_IMAGE_SIZE_BYTES) {
       throw new BadRequestException('La imagen no puede superar los 2MB.');
     }
+
+    // VOTAR-490: verificar magic bytes para detectar contenido spoofeado
+    if (!this.detectMimeFromMagicBytes(file.buffer)) {
+      throw new BadRequestException(
+        'El contenido del archivo no corresponde a una imagen PNG o JPG/JPEG válida.',
+      );
+    }
   }
 
   private getExtension(filename: string): string {
-    const normalized = filename.toLowerCase();
+    // VOTAR-490: descartar segmentos de path para neutralizar path traversal
+    // en el nombre de archivo declarado por el cliente.
+    const basename = filename.replace(/.*[/\\]/, '');
+    const normalized = basename.toLowerCase();
     const index = normalized.lastIndexOf('.');
     return index === -1 ? '' : normalized.slice(index);
+  }
+
+  /**
+   * Verifica los magic bytes del buffer para detectar el formato real,
+   * independientemente de la extensión o MIME type declarado por el cliente
+   * (VOTAR-490 — anti-spoofing).
+   */
+  private detectMimeFromMagicBytes(
+    buffer: Buffer,
+  ): 'image/png' | 'image/jpeg' | null {
+    if (
+      buffer.length >= PNG_MAGIC.length &&
+      PNG_MAGIC.every((b, i) => buffer[i] === b)
+    ) {
+      return 'image/png';
+    }
+    if (
+      buffer.length >= JPEG_MAGIC.length &&
+      JPEG_MAGIC.every((b, i) => buffer[i] === b)
+    ) {
+      return 'image/jpeg';
+    }
+    return null;
   }
 
   /**

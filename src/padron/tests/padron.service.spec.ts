@@ -412,6 +412,23 @@ describe('PadronService', () => {
     expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
   });
 
+  it('VOTAR-490: cancela (400) si el archivo tiene extensión .csv pero contenido binario (anti-spoofing)', async () => {
+    const binaryBuffer = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x00, 0x05]);
+    const inputArchivo = {
+      fieldname: 'file',
+      originalname: 'padron.csv',
+      encoding: '7bit',
+      mimetype: 'text/csv',
+      size: binaryBuffer.length,
+      buffer: binaryBuffer,
+    } as Express.Multer.File;
+
+    await expect(
+      service.importarPadron(ID_ELECCION, inputArchivo),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
+  });
+
   it('UAT-01: importa 100 únicas y omite 5 (3 campos nulos + 2 duplicados) sobre 105 filas', async () => {
     const inputArchivo = buildCsvUat01();
 

@@ -2,6 +2,19 @@ import { BadRequestException } from '@nestjs/common';
 import { parse as parseCsv } from 'csv-parse/sync';
 import * as XLSX from 'xlsx';
 
+/** Magic bytes de los formatos de archivo de padrón permitidos (VOTAR-490). */
+const XLSX_MAGIC = Buffer.from([0x50, 0x4b, 0x03, 0x04]); // ZIP / OOXML
+const XLS_MAGIC = Buffer.from([0xd0, 0xcf, 0x11, 0xe0]); // OLE2 compound document
+
+/**
+ * Extrae sólo el nombre base del archivo, descartando cualquier segmento de
+ * path para neutralizar ataques de path traversal en el nombre declarado por
+ * el cliente (VOTAR-490).
+ */
+function sanitizarNombreArchivo(originalname: string): string {
+  return originalname.replace(/.*[/\\]/, '');
+}
+
 export interface FilaPadronIdentidad {
   /** Número de fila 1-based en el archivo (incluye cabecera como fila 1). */
   linea: number;
@@ -16,7 +29,7 @@ export function esArchivoPadronSoportado(
   originalname: string,
   mimetype: string,
 ): boolean {
-  const nombre = originalname.toLowerCase();
+  const nombre = sanitizarNombreArchivo(originalname).toLowerCase();
   const mime = (mimetype ?? '').toLowerCase();
   const esCsvPorExtension = EXTENSIONES_CSV.some((ext) => nombre.endsWith(ext));
   // text/plain solo se acepta si la extensión es .csv (no cualquier plain text).
@@ -34,13 +47,50 @@ export function esArchivoPadronSoportado(
 }
 
 export function esExcel(originalname: string, mimetype: string): boolean {
-  const nombre = originalname.toLowerCase();
+  const nombre = sanitizarNombreArchivo(originalname).toLowerCase();
   const mime = (mimetype ?? '').toLowerCase();
   return (
     EXTENSIONES_EXCEL.some((ext) => nombre.endsWith(ext)) ||
     mime.includes('spreadsheet') ||
     mime.includes('excel')
   );
+}
+
+/**
+ * Verifica los magic bytes del buffer para detectar el formato real del
+ * archivo de padrón (VOTAR-490 — anti-spoofing).
+ * - Excel .xlsx: cabecera ZIP  (PK\x03\x04).
+ * - Excel .xls:  cabecera OLE2 (D0CF11E0).
+ * - CSV: no tiene magic bytes propios; se rechaza si el buffer contiene
+ *   bytes NUL, señal inequívoca de contenido binario disfrazado de texto.
+ * Lanza BadRequestException si el contenido no coincide con el formato
+ * declarado por extensión/MIME.
+ */
+export function validarMagicBytesPadron(
+  buffer: Buffer,
+  originalname: string,
+  mimetype: string,
+): void {
+  if (esExcel(originalname, mimetype)) {
+    const esXlsx =
+      buffer.length >= XLSX_MAGIC.length &&
+      XLSX_MAGIC.every((b, i) => buffer[i] === b);
+    const esXls =
+      buffer.length >= XLS_MAGIC.length &&
+      XLS_MAGIC.every((b, i) => buffer[i] === b);
+    if (!esXlsx && !esXls) {
+      throw new BadRequestException(
+        'El contenido del archivo no corresponde a un Excel (.xlsx/.xls) válido.',
+      );
+    }
+  } else {
+    // CSV: rechazar binarios disfrazados de texto plano.
+    if (buffer.includes(0x00)) {
+      throw new BadRequestException(
+        'El contenido del archivo no corresponde a un CSV válido.',
+      );
+    }
+  }
 }
 
 /**

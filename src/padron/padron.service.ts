@@ -34,6 +34,7 @@ import { hashVotante } from './utils/keccak.util';
 import {
   esArchivoPadronSoportado,
   extraerFilasIdentidad,
+  validarMagicBytesPadron,
 } from './utils/parse-padron-archivo.util';
 import { TotalVotantesResponseDto } from './dto/total-votantes-response.dto';
 import { ResumenPadronResponseDto } from './dto/resumen-padron-response.dto';
@@ -539,6 +540,13 @@ export class PadronService implements IPadronService {
         'El archivo debe tener formato CSV (.csv) o Excel (.xlsx, .xls).',
       );
     }
+
+    // VOTAR-490: verificar magic bytes para detectar contenido spoofeado
+    validarMagicBytesPadron(
+      archivo.buffer,
+      archivo.originalname,
+      archivo.mimetype,
+    );
   }
 
   /**
