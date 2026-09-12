@@ -1,6 +1,48 @@
 import pg from 'pg';
+import { readFileSync, existsSync } from 'node:fs';
 
 const { Client } = pg;
+
+// VOTAR-498: misma política TLS que src/config/database-ssl.config.ts.
+// Duplicada acá (no se puede importar el módulo TS desde un .mjs sin
+// compilación previa) — mantener en sync si se cambia la lógica original.
+const readCertMaterial = (value) => {
+  if (!value?.trim()) return undefined;
+  const trimmed = value.trim();
+  if (trimmed.includes('-----BEGIN')) return trimmed;
+  if (!existsSync(trimmed)) {
+    throw new Error(`VOTAR-498: ruta de certificado inexistente (${trimmed}).`);
+  }
+  return readFileSync(trimmed, 'utf8');
+};
+
+const resolveSsl = () => {
+  const mode = (process.env.DB_SSL_MODE ?? 'disable').trim();
+  if (mode === 'disable' || mode === '') return false;
+  const ca = readCertMaterial(process.env.DB_SSL_CA);
+  const cert = readCertMaterial(process.env.DB_SSL_CERT);
+  const key = readCertMaterial(process.env.DB_SSL_KEY);
+  if (mode === 'require') return { rejectUnauthorized: false, ca, cert, key };
+  if (!ca) {
+    throw new Error(`VOTAR-498: DB_SSL_MODE=${mode} requiere DB_SSL_CA.`);
+  }
+  if (mode === 'verify-ca') {
+    return {
+      ca,
+      cert,
+      key,
+      rejectUnauthorized: true,
+      checkServerIdentity: () => undefined,
+    };
+  }
+  return {
+    ca,
+    cert,
+    key,
+    rejectUnauthorized: true,
+    servername: process.env.DB_SSL_SERVERNAME?.trim() || undefined,
+  };
+};
 
 const getDbConfig = () => ({
   host: process.env.DB_HOST ?? 'localhost',
@@ -8,6 +50,7 @@ const getDbConfig = () => ({
   user: process.env.DB_USERNAME ?? 'postgres',
   password: process.env.DB_PASSWORD ?? 'postgres',
   database: process.env.DB_NAME ?? 'votar',
+  ssl: resolveSsl(),
 });
 
 const getAutogestionBaseUrl = () =>

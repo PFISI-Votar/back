@@ -5,6 +5,7 @@ import {
   Index,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { encryptedColumn } from '@/common/crypto/encrypted-column.transformer';
 
 @Entity('refresh_session')
 export class RefreshSession {
@@ -21,10 +22,22 @@ export class RefreshSession {
   @Column({ name: 'sub', type: 'varchar' })
   sub: string;
 
-  @Column({ name: 'email', type: 'varchar', nullable: true })
+  /** VOTAR-498: cifrado AES-256-GCM en reposo (no se usa en where/order/like). */
+  @Column({
+    name: 'email',
+    type: 'text',
+    nullable: true,
+    transformer: encryptedColumn(),
+  })
   email: string | null;
 
-  @Column({ name: 'nombre', type: 'varchar', nullable: true })
+  /** VOTAR-498: cifrado AES-256-GCM en reposo (no se usa en where/order/like). */
+  @Column({
+    name: 'nombre',
+    type: 'text',
+    nullable: true,
+    transformer: encryptedColumn(),
+  })
   nombre: string | null;
 
   @Column({ name: 'expires_at', type: 'timestamptz' })

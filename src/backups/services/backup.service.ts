@@ -17,6 +17,7 @@ import {
 } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { MailService } from '@/common/mail/mail.service';
+import { buildLibpqSslEnv } from '@/config/database-ssl.config';
 import {
   BACKUP_CHECKSUM_SUFFIX,
   BACKUP_FILE_SUFFIX,
@@ -82,6 +83,9 @@ export class BackupService {
     return {
       ...process.env,
       PGPASSWORD: this.configService.get<string>('DB_PASSWORD') ?? '',
+      // VOTAR-498: pg_dump/pg_restore no comparten el pool de TypeORM, así
+      // que necesitan la misma política TLS inyectada explícitamente.
+      ...buildLibpqSslEnv((key) => this.configService.get<string>(key)),
     };
   }
 

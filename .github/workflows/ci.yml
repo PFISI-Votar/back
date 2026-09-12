@@ -39,6 +39,10 @@ jobs:
       DB_NAME: votar_test
       JWT_SECRET: test-secret-for-ci-min-16-chars
       DEVELOPMENT: 'true'
+      # VOTAR-498: el servicio postgres:16 de CI no tiene certificados TLS
+      # configurados; DEVELOPMENT=true permite DB_SSL_MODE=disable.
+      DB_SSL_MODE: disable
+      DB_ENCRYPTION_KEY: test-field-encryption-key-for-ci-min-16-chars
 
     steps:
       - name: Checkout code
