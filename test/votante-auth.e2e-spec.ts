@@ -14,6 +14,7 @@ import { VOTER_ACCESS_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants
 import { VOTANTE_CREDENCIALES_INVALIDAS } from '@/auth/constants/votante-auth.constants';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
@@ -50,6 +51,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
 ];
 

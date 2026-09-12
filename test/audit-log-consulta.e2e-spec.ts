@@ -15,6 +15,7 @@ import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
@@ -38,6 +39,7 @@ import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
 import { PadronEstado } from '@/padron/enums/padron-estado.enum';
 import {
   createAuthedRequest,
+  issueTestSessionToken,
   type AuthedRequest,
 } from './helpers/auth-test.helper';
 
@@ -52,6 +54,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
   PadronElectoral,
   PadronVotante,
@@ -171,7 +174,7 @@ describe('Consulta Audit Log (e2e) — VOTAR-371', () => {
     auditLogger = app.get(AuditLoggerService);
     jwtService = app.get(JwtService);
 
-    const adminToken = jwtService.sign({
+    const adminToken = await issueTestSessionToken(dataSource, jwtService, {
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
     });
@@ -280,7 +283,7 @@ describe('Consulta Audit Log (e2e) — VOTAR-371', () => {
   });
 
   it('returns 403 for voter role and logs ACCESO_DENEGADO', async () => {
-    const voterToken = jwtService.sign({
+    const voterToken = await issueTestSessionToken(dataSource, jwtService, {
       sub: 'voter-1',
       role: JwtRole.VOTER,
     });

@@ -7,13 +7,14 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { newDb } from 'pg-mem';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, IsNull, Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
@@ -27,7 +28,7 @@ import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { ConfiguracionDatosCandidato } from '@/eleccion/candidato/entities/configuracion-datos-candidato.entity';
 import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
-import { withBearer } from './helpers/auth-test.helper';
+import { issueTestSessionToken, withBearer } from './helpers/auth-test.helper';
 
 type TwoFactorLoginBody = {
   user?: { role: string; sub: string };
@@ -59,6 +60,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
 ];
 
@@ -137,6 +139,8 @@ describe('AuthAdmin (e2e) — US-313', () => {
               JWT_SECRET: 'test-secret-for-e2e-tests-min-16',
               JWT_ACCESS_EXPIRES_IN: '15m',
               JWT_REFRESH_EXPIRES_IN: '8h',
+              SESSION_IDLE_TIMEOUT: '30m',
+              SESSION_ACTIVITY_WRITE_INTERVAL: '60s',
               AUTOGESTION_BASE_URL: 'https://autogestion.test',
               DEVELOPMENT: true,
             }),
@@ -174,12 +178,12 @@ describe('AuthAdmin (e2e) — US-313', () => {
 
     jwtService = app.get(JwtService);
     totpService = app.get(TotpService);
-    adminToken = jwtService.sign({
+    adminToken = await issueTestSessionToken(dataSource, jwtService, {
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
       email: 'admin@test.local',
     });
-    voterToken = jwtService.sign({
+    voterToken = await issueTestSessionToken(dataSource, jwtService, {
       sub: '15079',
       role: JwtRole.VOTER,
       email: 'voter@test.local',
@@ -296,6 +300,71 @@ describe('AuthAdmin (e2e) — US-313', () => {
 
     await agent.post('/auth/logout').expect(204);
     await agent.post('/auth/refresh').expect(401);
+  });
+
+  it('VOTAR-492: logout limpia ambas cookies y es idempotente (204 en la 2da llamada)', async () => {
+    const agent = request.agent(app.getHttpServer());
+    await loginAdminCompleting2fa(agent);
+
+    const primerLogout = await agent.post('/auth/logout').expect(204);
+    const cookies = (primerLogout.headers['set-cookie'] as string[]).join(';');
+    expect(cookies).toMatch(/votar_access_token=;/);
+    expect(cookies).toMatch(/votar_refresh_token=;/);
+
+    // Idempotencia: la sesión ya está revocada, igual devuelve 204 y no 401.
+    await agent.post('/auth/logout').expect(204);
+  });
+
+  it('VOTAR-492: revocar la sesión invalida el access token vigente de inmediato', async () => {
+    const agent = request.agent(app.getHttpServer());
+    await loginAdminCompleting2fa(agent);
+
+    await agent.get('/auth/me').expect(200);
+
+    // Revocación fuera de banda (contención de incidente): marca revoked_at.
+    const sessionRepo = dataSource.getRepository(RefreshSession);
+    await sessionRepo.update(
+      { revokedAt: IsNull() },
+      { revokedAt: new Date(), revokedReason: 'REVOCACION_ADMIN' },
+    );
+
+    // La MISMA cookie de access (no expirada) ahora es rechazada.
+    await agent.get('/auth/me').expect(401);
+  });
+
+  it('VOTAR-492: una sesión inactiva más allá del timeout es rechazada en /auth/me y /auth/refresh', async () => {
+    const agent = request.agent(app.getHttpServer());
+    await loginAdminCompleting2fa(agent);
+
+    // Simula 31 min de inactividad (SESSION_IDLE_TIMEOUT = 30m).
+    const sessionRepo = dataSource.getRepository(RefreshSession);
+    await sessionRepo.update(
+      { revokedAt: IsNull() },
+      { lastActivityAt: new Date(Date.now() - 31 * 60_000) },
+    );
+
+    await agent.get('/auth/me').expect(401);
+    await agent.post('/auth/refresh').expect(401);
+  });
+
+  it('VOTAR-492: /auth/refresh no extiende expires_at ni cambia id_session', async () => {
+    const agent = request.agent(app.getHttpServer());
+    await loginAdminCompleting2fa(agent);
+
+    const sessionRepo = dataSource.getRepository(RefreshSession);
+    const antes = await sessionRepo.findOne({
+      where: { revokedAt: IsNull() },
+      order: { idSession: 'DESC' },
+    });
+
+    await agent.post('/auth/refresh').expect(200);
+
+    const despues = await sessionRepo.findOne({
+      where: { idSession: antes!.idSession },
+    });
+    expect(despues).not.toBeNull();
+    expect(despues!.revokedAt).toBeNull();
+    expect(despues!.expiresAt.getTime()).toBe(antes!.expiresAt.getTime());
   });
 
   it('POST /auth/login emite JWT con role voter para usuario sin autoridad', async () => {
