@@ -11,6 +11,7 @@ import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -35,6 +36,7 @@ import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import {
   createAuthedRequest,
   type AuthedRequest,
+  issueTestSessionToken,
 } from './helpers/auth-test.helper';
 
 const entities = [
@@ -48,6 +50,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
   PadronElectoral,
   PadronVotante,
@@ -147,7 +150,7 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
     );
     await app.init();
 
-    adminToken = app.get(JwtService).sign({
+    adminToken = await issueTestSessionToken(dataSource, app.get(JwtService), {
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
     });
@@ -487,10 +490,14 @@ describe('AbrirEleccion (e2e) - POST /elecciones/:id/abrir', () => {
     it('debe rechazar si el usuario no tiene rol ELECTION_ADMIN', async () => {
       const { eleccion } = await seedEleccionConfigurada();
 
-      const voterToken = app.get(JwtService).sign({
-        sub: '99999',
-        role: 'VOTER',
-      });
+      const voterToken = await issueTestSessionToken(
+        dataSource,
+        app.get(JwtService),
+        {
+          sub: '99999',
+          role: 'VOTER',
+        },
+      );
 
       await createAuthedRequest(app, voterToken)
         .post(`/elecciones/${eleccion.idEleccion}/abrir`)

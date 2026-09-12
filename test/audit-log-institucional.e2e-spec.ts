@@ -16,6 +16,7 @@ import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
@@ -40,6 +41,7 @@ import { PadronEstado } from '@/padron/enums/padron-estado.enum';
 import {
   createAuthedRequest,
   type AuthedRequest,
+  issueTestSessionToken,
 } from './helpers/auth-test.helper';
 
 const entities = [
@@ -53,6 +55,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
   PadronElectoral,
   PadronVotante,
@@ -180,10 +183,14 @@ describe('Audit Log institucional (e2e) — VOTAR-370', () => {
     auditRepo = dataSource.getRepository(AuditLog);
     auditLogger = app.get(AuditLoggerService);
 
-    const adminToken = app.get(JwtService).sign({
-      sub: '14988',
-      role: JwtRole.ELECTION_ADMIN,
-    });
+    const adminToken = await issueTestSessionToken(
+      dataSource,
+      app.get(JwtService),
+      {
+        sub: '14988',
+        role: JwtRole.ELECTION_ADMIN,
+      },
+    );
     req = createAuthedRequest(app, adminToken);
   }, 60000);
 

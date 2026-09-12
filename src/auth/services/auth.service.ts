@@ -183,14 +183,17 @@ export class AuthService {
   }
 
   async refreshSession(refreshToken: string): Promise<AuthSessionResult> {
-    const { refreshToken: nextRefreshToken, identity } =
-      await this.refreshTokenService.rotateSession(refreshToken);
+    const {
+      refreshToken: nextRefreshToken,
+      identity,
+      idSession,
+    } = await this.refreshTokenService.rotateSession(refreshToken);
     const autoridad = await this.findAutoridad(
       identity.identificadorSso,
       identity.sub,
     );
     const role = this.resolveJwtRole(autoridad);
-    const response = await this.buildAuthResponse(identity, role);
+    const response = await this.buildAuthResponse(identity, role, idSession);
     return { response, refreshToken: nextRefreshToken };
   }
 
@@ -206,9 +209,9 @@ export class AuthService {
     role: JwtRole,
     auditContext?: LoginAuditContext,
   ): Promise<AuthSessionResult> {
-    const response = await this.buildAuthResponse(identity, role);
-    const { refreshToken } =
+    const { refreshToken, idSession } =
       await this.refreshTokenService.issueSession(identity);
+    const response = await this.buildAuthResponse(identity, role, idSession);
 
     await this.auditLoggerService.logLogin({
       actorId: identity.sub,
@@ -271,6 +274,7 @@ export class AuthService {
   private async buildAuthResponse(
     identity: RefreshSessionIdentity,
     role: JwtRole,
+    idSession: number,
   ): Promise<AuthTokensResponse> {
     this.jwksService.assertCanIssueLocalAccessTokens();
     const payload: JwtPayload = {
@@ -278,6 +282,7 @@ export class AuthService {
       role,
       email: identity.email,
       name: identity.name,
+      sid: idSession,
     };
     const accessToken = await this.jwtService.signAsync(payload, {
       audience: DEFAULT_JWT_AUDIENCE,
