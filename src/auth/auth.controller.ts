@@ -15,6 +15,7 @@ import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { REFRESH_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
+import { AuthLockdownScope } from '@/auth/decorators/auth-lockdown-scope.decorator';
 import { LoginDto } from '@/auth/dto/login.dto';
 import { AuthResponseDto, AuthUserDto } from '@/auth/dto/auth-response.dto';
 import {
@@ -22,6 +23,7 @@ import {
   TwoFactorStatusDto,
   VerifyTwoFactorDto,
 } from '@/auth/dto/two-factor.dto';
+import { AuthLockdownGuard } from '@/auth/guards/auth-lockdown.guard';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { AuthService } from '@/auth/services/auth.service';
@@ -49,7 +51,8 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(IpRateLimitGuard)
+  @UseGuards(IpRateLimitGuard, AuthLockdownGuard)
+  @AuthLockdownScope('ADMIN')
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-login' })
   @ApiOperation({
     summary: 'Iniciar sesión con credenciales de Autogestión UTN',
@@ -86,7 +89,8 @@ export class AuthController {
 
   @Post('2fa/verify')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(IpRateLimitGuard)
+  @UseGuards(IpRateLimitGuard, AuthLockdownGuard)
+  @AuthLockdownScope('ADMIN')
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-2fa-verify' })
   @ApiOperation({
     summary: 'Completar login admin verificando el código TOTP',
@@ -143,7 +147,8 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(IpRateLimitGuard)
+  @UseGuards(IpRateLimitGuard, AuthLockdownGuard)
+  @AuthLockdownScope('ADMIN')
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-refresh' })
   @ApiOperation({
     summary: 'Renovar sesión usando la cookie de refresh HttpOnly',
@@ -190,15 +195,26 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Cerrar sesión y revocar refresh token' })
-  @ApiResponse({ status: 204, description: 'Sesión cerrada' })
+  @ApiResponse({
+    status: 204,
+    description:
+      'Sesión cerrada (idempotente: 204 aunque la sesión ya estuviera revocada o expirada)',
+  })
   async logout(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
       string | undefined;
-    await this.authService.logout(refreshToken);
-    clearAuthCookies(response, this.isProduction());
+    // VOTAR-492: revocar en DB primero, limpiar cookies SIEMPRE. `logout` ya no
+    // lanza si la sesión no está activa (revocación idempotente); el try/finally
+    // cubre un fallo real de DB — las cookies se limpian igual y el error se
+    // propaga en vez de dejar cookies vivas sin aviso.
+    try {
+      await this.authService.logout(refreshToken);
+    } finally {
+      clearAuthCookies(response, this.isProduction());
+    }
   }
 
   private extractRefreshToken(request: Request): string {

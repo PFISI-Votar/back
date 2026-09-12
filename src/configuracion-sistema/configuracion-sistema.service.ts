@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ElectoralImageService } from '@/common/images/electoral-image.service';
@@ -6,11 +6,13 @@ import { ActualizarFormatoPersonalizadoActaAperturaDto } from '@/configuracion-s
 import { ActualizarFormatoPersonalizadoActaCierreDto } from '@/configuracion-sistema/dto/actualizar-formato-personalizado-acta-cierre.dto';
 import { ActualizarPlantillaActaAperturaDto } from '@/configuracion-sistema/dto/actualizar-plantilla-acta-apertura.dto';
 import { ActualizarPlantillaActaCierreDto } from '@/configuracion-sistema/dto/actualizar-plantilla-acta-cierre.dto';
+import { ActualizarAuthBloqueoDto } from '@/configuracion-sistema/dto/actualizar-auth-bloqueo.dto';
 import { ConfiguracionSistemaResponseDto } from '@/configuracion-sistema/dto/configuracion-sistema-response.dto';
 import {
   ACTA_APERTURA_MODO_DEFAULT,
   ACTA_APERTURA_PLANTILLA_DEFAULT,
   ACTA_CIERRE_PLANTILLA_DEFAULT,
+  AUTH_BLOQUEO_ALCANCE_DEFAULT,
   ConfiguracionSistema,
 } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 
@@ -115,6 +117,32 @@ export class ConfiguracionSistemaService {
     return this.toResponse(saved);
   }
 
+  /**
+   * VOTAR-492 §12.2 — activa/desactiva el bloqueo de flujos de autenticación
+   * institucional. `actorOfuscado` ya viene hasheado por el controller (nunca
+   * el identificador SSO en claro).
+   */
+  async actualizarAuthBloqueo(
+    dto: ActualizarAuthBloqueoDto,
+    actorOfuscado: string,
+  ): Promise<ConfiguracionSistemaResponseDto> {
+    if (dto.alcance !== 'NINGUNO' && (dto.motivo?.trim().length ?? 0) < 10) {
+      throw new BadRequestException(
+        'El motivo del bloqueo es obligatorio (mínimo 10 caracteres).',
+      );
+    }
+    const configuracion = await this.getOrCreate();
+    const activando = dto.alcance !== 'NINGUNO';
+    configuracion.authBloqueoAlcance = dto.alcance;
+    configuracion.authBloqueoMotivo = activando
+      ? (dto.motivo?.trim() ?? null)
+      : null;
+    configuracion.authBloqueoDesde = activando ? new Date() : null;
+    configuracion.authBloqueoPor = activando ? actorOfuscado : null;
+    const saved = await this.repository.save(configuracion);
+    return this.toResponse(saved);
+  }
+
   private async getOrCreate(): Promise<ConfiguracionSistema> {
     const existente = await this.repository.findOne({
       where: { id: CONFIGURACION_ID },
@@ -132,6 +160,10 @@ export class ConfiguracionSistemaService {
         actaCierrePlantilla: ACTA_CIERRE_PLANTILLA_DEFAULT,
         actaCierreModo: ACTA_APERTURA_MODO_DEFAULT,
         actaCierrePlantillaTexto: null,
+        authBloqueoAlcance: AUTH_BLOQUEO_ALCANCE_DEFAULT,
+        authBloqueoMotivo: null,
+        authBloqueoDesde: null,
+        authBloqueoPor: null,
       }),
     );
   }
@@ -148,6 +180,12 @@ export class ConfiguracionSistemaService {
       actaCierreModo: configuracion.actaCierreModo,
       actaCierrePlantillaTexto: configuracion.actaCierrePlantillaTexto,
       fechaActualizacion: configuracion.fechaActualizacion.toISOString(),
+      authBloqueoAlcance: configuracion.authBloqueoAlcance,
+      authBloqueoMotivo: configuracion.authBloqueoMotivo,
+      authBloqueoDesde: configuracion.authBloqueoDesde
+        ? configuracion.authBloqueoDesde.toISOString()
+        : null,
+      authBloqueoPor: configuracion.authBloqueoPor,
     };
   }
 }
