@@ -14,6 +14,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
+import { GlobalExceptionFilter } from '@/common/filters/global-exception.filter';
 import { UploadTooLargeFilter } from '@/common/filters/upload-too-large.filter';
 import { ImagenElectoral } from '@/common/images/entities/imagen-electoral.entity';
 import { ConfiguracionSistemaModule } from '@/configuracion-sistema/configuracion-sistema.module';
@@ -140,7 +141,10 @@ describe('Uploads security (e2e) — VOTAR-490', () => {
         transform: true,
       }),
     );
-    app.useGlobalFilters(new UploadTooLargeFilter());
+    app.useGlobalFilters(
+      new GlobalExceptionFilter(),
+      new UploadTooLargeFilter(),
+    );
     await app.init();
 
     const adminToken = app.get(JwtService).sign({
