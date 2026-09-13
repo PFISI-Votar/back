@@ -193,6 +193,60 @@ describe('ElectoralImageService', () => {
         'lista-logo',
       ),
     ).rejects.toThrow(BadRequestException);
+    expect(mockRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('rechaza un JPEG real declarado como PNG (extensión vs magic bytes, VOTAR-490)', async () => {
+    const jpeg = await sharp({
+      create: {
+        width: 8,
+        height: 8,
+        channels: 3,
+        background: '#112233',
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    await expect(
+      service.saveImage(
+        await makeImageFile({
+          originalname: 'foto.png',
+          mimetype: 'image/png',
+          buffer: jpeg,
+          size: jpeg.length,
+        }),
+        'candidato-foto',
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('acepta un JPEG con filename de path traversal y persiste URL por UUID (VOTAR-490)', async () => {
+    const jpeg = await sharp({
+      create: {
+        width: 8,
+        height: 8,
+        channels: 3,
+        background: '#112233',
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const url = await service.saveImage(
+      await makeImageFile({
+        originalname: '../../../../etc/passwd.jpg',
+        mimetype: 'image/jpeg',
+        buffer: jpeg,
+        size: jpeg.length,
+      }),
+      'lista-logo',
+    );
+
+    expect(url).toMatch(/^\/imagenes\/[0-9a-f-]{36}$/i);
+    expect(url).not.toContain('..');
+    expect(url).not.toContain('passwd');
   });
 
   it('calcula el checksum SHA-256 del contenido persistido', async () => {

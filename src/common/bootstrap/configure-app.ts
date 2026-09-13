@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { UploadTooLargeFilter } from '@/common/filters/upload-too-large.filter';
 import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
 import { buildCorsOptions } from '@/config/cors.config';
 import {
@@ -35,6 +36,7 @@ export const configureApp = (app: NestExpressApplication): void => {
       transform: true,
     }),
   );
+  app.useGlobalFilters(new UploadTooLargeFilter());
 
   // VOTAR-466: las imágenes electorales dejaron de servirse desde el disco
   // local (/uploads) y ahora viven en Postgres, servidas por

@@ -1,9 +1,10 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import sharp from 'sharp';
 import { ImagenElectoral } from '@/common/images/entities/imagen-electoral.entity';
+import { sanitizarNombreArchivo } from '@/common/uploads/sanitizar-nombre-archivo';
 
 export type ElectoralImageKind =
   'candidato-foto' | 'lista-logo' | 'logo-institucional';
@@ -21,6 +22,11 @@ const UUID_PATTERN =
 const MAX_IMAGE_SIZE_BYTES = 2 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png']);
+const EXTENSION_TO_MIME: Record<string, 'image/png' | 'image/jpeg'> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+};
 
 /** Magic bytes de los formatos de imagen permitidos (VOTAR-490). */
 const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -124,10 +130,21 @@ export class ElectoralImageService {
     this.validateFile(file);
 
     const config = IMAGE_CONFIG[kind];
-    const { data, info } = await optimizarImagenElectoral(file.buffer, config);
+    let data: Buffer;
+    let info: sharp.OutputInfo;
+    try {
+      ({ data, info } = await optimizarImagenElectoral(file.buffer, config));
+    } catch {
+      // Un JPEG truncado puede pasar los magic bytes y hacer que sharp tire
+      // 500. El cliente mandó un archivo inválido: es 400, no un error interno.
+      throw new BadRequestException(
+        'El contenido del archivo no corresponde a una imagen PNG o JPG/JPEG válida.',
+      );
+    }
 
     const guardada = await this.repository.save(
       this.repository.create({
+        idImagen: randomUUID(),
         tipo: kind,
         mimeType: 'image/webp',
         contenido: data,
@@ -183,21 +200,27 @@ export class ElectoralImageService {
       throw new BadRequestException('La imagen no puede superar los 2MB.');
     }
 
-    // VOTAR-490: verificar magic bytes para detectar contenido spoofeado
-    if (!this.detectMimeFromMagicBytes(file.buffer)) {
+    // VOTAR-490: el formato real tiene que coincidir con la extensión y el
+    // MIME declarado. Un JPEG con nombre `.png` no pasa aunque los bytes
+    // sean una imagen.
+    const detected = this.detectMimeFromMagicBytes(file.buffer);
+    const expected = EXTENSION_TO_MIME[extension];
+    if (!detected) {
       throw new BadRequestException(
         'El contenido del archivo no corresponde a una imagen PNG o JPG/JPEG válida.',
+      );
+    }
+    if (detected !== expected || file.mimetype !== detected) {
+      throw new BadRequestException(
+        'La extensión o el tipo MIME declarado no coincide con el formato real de la imagen.',
       );
     }
   }
 
   private getExtension(filename: string): string {
-    // VOTAR-490: descartar segmentos de path para neutralizar path traversal
-    // en el nombre de archivo declarado por el cliente.
-    const basename = filename.replace(/.*[/\\]/, '');
-    const normalized = basename.toLowerCase();
-    const index = normalized.lastIndexOf('.');
-    return index === -1 ? '' : normalized.slice(index);
+    const basename = sanitizarNombreArchivo(filename).toLowerCase();
+    const index = basename.lastIndexOf('.');
+    return index === -1 ? '' : basename.slice(index);
   }
 
   /**

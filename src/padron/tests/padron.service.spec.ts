@@ -412,6 +412,20 @@ describe('PadronService', () => {
     expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
   });
 
+  it('VOTAR-490: no persiste path traversal ni controles en el nombre auditado', async () => {
+    const archivo = buildCsvValido(1);
+    archivo.originalname = '../../../../etc/passwd.csv\r\n';
+
+    await service.importarPadron(ID_ELECCION, archivo, {
+      actorId: '14988',
+      ipOrigen: '10.0.0.5',
+    });
+
+    const payload = mockAuditLoggerService.logPadronCargado.mock.calls[0][0];
+    expect(payload.nombreArchivo).toBe('passwd.csv');
+    expect(payload.nombreArchivo).not.toMatch(/\.\.|[\0\r\n]/);
+  });
+
   it('VOTAR-490: cancela (400) si el archivo tiene extensión .csv pero contenido binario (anti-spoofing)', async () => {
     const binaryBuffer = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x00, 0x05]);
     const inputArchivo = {
