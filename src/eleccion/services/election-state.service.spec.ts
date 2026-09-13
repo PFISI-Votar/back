@@ -14,12 +14,14 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { OfertaElectoralQueryService } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
 
 describe('ElectionStateService', () => {
   let service: ElectionStateService;
   let eleccionRepository: jest.Mocked<Repository<Eleccion>>;
   let blockchainService: jest.Mocked<BlockchainService>;
   let ofertaElectoralQueryService: jest.Mocked<OfertaElectoralQueryService>;
+  let eleccionGateway: jest.Mocked<EleccionGateway>;
 
   const mockEleccion: Eleccion = {
     idEleccion: 1,
@@ -57,6 +59,11 @@ describe('ElectionStateService', () => {
       }),
     };
 
+    const mockEleccionGateway = {
+      emitTransaccionEnProgreso: jest.fn(),
+      emitTransaccionConflicto: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ElectionStateService,
@@ -72,6 +79,10 @@ describe('ElectionStateService', () => {
           provide: OfertaElectoralQueryService,
           useValue: mockOfertaElectoralQueryService,
         },
+        {
+          provide: EleccionGateway,
+          useValue: mockEleccionGateway,
+        },
       ],
     }).compile();
 
@@ -79,6 +90,7 @@ describe('ElectionStateService', () => {
     eleccionRepository = module.get(getRepositoryToken(Eleccion));
     blockchainService = module.get(BlockchainService);
     ofertaElectoralQueryService = module.get(OfertaElectoralQueryService);
+    eleccionGateway = module.get(EleccionGateway);
   });
 
   afterEach(() => {
@@ -162,6 +174,14 @@ describe('ElectionStateService', () => {
       expect(lockRevoteOrder).toBeLessThan(syncOrder);
       expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.ABIERTA);
+      // VOTAR-481: feedback WebSocket de "transacción en curso" antes de tocar blockchain.
+      expect(eleccionGateway.emitTransaccionEnProgreso).toHaveBeenCalledWith(
+        1,
+        'APERTURA',
+      );
+      const progressOrder =
+        eleccionGateway.emitTransaccionEnProgreso.mock.invocationCallOrder[0];
+      expect(progressOrder).toBeLessThan(registerOrder);
     });
 
     it('should throw NotFoundException when election does not exist', async () => {
@@ -185,6 +205,8 @@ describe('ElectionStateService', () => {
       await expect(service.transitionToAbierta(1)).rejects.toThrow(
         /debe estar en estado CONFIGURADA/,
       );
+      // VOTAR-481: no debe avisar "en progreso" si la precondición de estado falla.
+      expect(eleccionGateway.emitTransaccionEnProgreso).not.toHaveBeenCalled();
     });
 
     it('should not persist DB state when blockchain sync fails', async () => {
@@ -334,6 +356,13 @@ describe('ElectionStateService', () => {
         /transición de estado en curso/,
       );
       expect(blockchainService.registerCandidates).toHaveBeenCalledTimes(1);
+      // VOTAR-481: el rechazo por lock debe avisarse por WebSocket, no solo
+      // devolverse como 409 silencioso.
+      expect(eleccionGateway.emitTransaccionConflicto).toHaveBeenCalledWith(
+        1,
+        'APERTURA',
+        expect.stringMatching(/transición de estado en curso/),
+      );
 
       // Libera la primera llamada y confirma que termina bien.
       resolveRegisterCandidates!();
@@ -375,6 +404,14 @@ describe('ElectionStateService', () => {
       const saveOrder = eleccionRepository.save.mock.invocationCallOrder[0];
       expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.CERRADA);
+      // VOTAR-481: feedback WebSocket de "transacción en curso" antes de tocar blockchain.
+      expect(eleccionGateway.emitTransaccionEnProgreso).toHaveBeenCalledWith(
+        1,
+        'CIERRE',
+      );
+      const progressOrder =
+        eleccionGateway.emitTransaccionEnProgreso.mock.invocationCallOrder[0];
+      expect(progressOrder).toBeLessThan(syncOrder);
     });
 
     it('should throw when election is not in ABIERTA state', async () => {
@@ -384,6 +421,7 @@ describe('ElectionStateService', () => {
       await expect(service.transitionToCerrada(1)).rejects.toThrow(
         UnprocessableEntityException,
       );
+      expect(eleccionGateway.emitTransaccionEnProgreso).not.toHaveBeenCalled();
     });
 
     it('should not persist DB state when blockchain sync fails', async () => {
@@ -398,6 +436,44 @@ describe('ElectionStateService', () => {
       );
 
       expect(eleccionRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('rejects a concurrent cierre for the same election with ConflictException (VOTAR-481)', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.ABIERTA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      eleccionRepository.save.mockResolvedValue({
+        ...eleccion,
+        estado: EleccionEstado.CERRADA,
+      });
+
+      // Deja la primera llamada "colgada" a propósito, para simular que el
+      // cierre automático del scheduler sigue en curso cuando llega un
+      // intento de cierre manual para el mismo comicio.
+      let resolveSync: () => void;
+      const pending = new Promise<void>((resolve) => {
+        resolveSync = resolve;
+      });
+      blockchainService.syncElectionState.mockImplementation(async () => {
+        await pending;
+        return { txHash: '0xdef456', blockNumber: 1 };
+      });
+
+      const firstCall = service.transitionToCerrada(1);
+
+      await expect(service.transitionToCerrada(1)).rejects.toThrow(
+        ConflictException,
+      );
+      expect(eleccionGateway.emitTransaccionConflicto).toHaveBeenCalledWith(
+        1,
+        'CIERRE',
+        expect.stringMatching(/transición de estado en curso/),
+      );
+      expect(blockchainService.syncElectionState).toHaveBeenCalledTimes(1);
+
+      resolveSync!();
+      await expect(firstCall).resolves.toMatchObject({
+        estado: EleccionEstado.CERRADA,
+      });
     });
   });
 
