@@ -26,6 +26,13 @@ export type ResultadosActualizadosPayload = {
 };
 
 /**
+ * VOTAR-481: distingue qué transición on-chain está en curso o en conflicto,
+ * para que el cliente pueda mostrar un mensaje específico ("abriendo",
+ * "cerrando") en lugar de un spinner genérico.
+ */
+export type TransaccionEleccionTipo = 'APERTURA' | 'CIERRE';
+
+/**
  * Gateway WebSocket para eventos de elecciones en tiempo real.
  * Emite eventos cuando una elección cambia de estado (ej: apertura automática).
  * VOTAR-364: rooms por comicio para push de resultados del Dashboard público.
@@ -110,6 +117,45 @@ export class EleccionGateway
   emitEleccionAbierta(idEleccion: number): void {
     this.logger.log(`Emitiendo evento de apertura para elección ${idEleccion}`);
     this.server.emit('eleccion:abierta', { idEleccion });
+  }
+
+  /**
+   * VOTAR-481 — avisa a los clientes que una transacción on-chain de
+   * apertura/cierre (manual o automática) fue tomada por el backend y está
+   * en curso, para que el usuario no interprete la demora de confirmación
+   * en Sepolia como una falla silenciosa.
+   */
+  emitTransaccionEnProgreso(
+    idEleccion: number,
+    tipo: TransaccionEleccionTipo,
+  ): void {
+    this.logger.log(
+      `Emitiendo transacción en progreso (${tipo}) para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:transaccion-en-progreso', {
+      idEleccion,
+      tipo,
+    });
+  }
+
+  /**
+   * VOTAR-481 — avisa que una transacción fue rechazada porque otra
+   * transición (manual o del scheduler automático) ya está en curso para
+   * el mismo comicio, para diferenciar este caso de una falla real.
+   */
+  emitTransaccionConflicto(
+    idEleccion: number,
+    tipo: TransaccionEleccionTipo,
+    mensaje: string,
+  ): void {
+    this.logger.warn(
+      `Emitiendo conflicto de transacción (${tipo}) para elección ${idEleccion}: ${mensaje}`,
+    );
+    this.server.emit('eleccion:transaccion-conflicto', {
+      idEleccion,
+      tipo,
+      mensaje,
+    });
   }
 
   /**
