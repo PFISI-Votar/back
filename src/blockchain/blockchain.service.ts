@@ -14,6 +14,7 @@ import {
   ContractTransactionResponse,
   Interface,
   type InterfaceAbi,
+  formatEther,
   Log,
   type Provider,
   type TransactionReceipt,
@@ -123,6 +124,11 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 const ZERO_MERKLE_ROOT =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
 
+// VOTAR-482: 20% headroom on the createElection gas estimate. The factory
+// deploys Ballot + VoteRegistry + AuditView; EIP-1559 fees can move between
+// estimate and send, and a too-low threshold is what lets oficializar commit.
+const CREATE_ELECTION_GAS_BUFFER_BPS = 120n;
+
 /**
  * True when an eth_call failed because the selector is absent on the deployed
  * bytecode (typical for non-upgradeable contracts predating a new view).
@@ -217,6 +223,122 @@ export class BlockchainService {
   ) {}
 
   /**
+   * VOTAR-482: fail-closed check that the operational wallet can pay `requiredWei`.
+   * Missing key/RPC or a balance RPC error throws 503 — never lets oficializar
+   * commit BORRADOR→CONFIGURADA without affirming there are funds.
+   */
+  async assertWalletHasFunds(requiredWei: bigint): Promise<void> {
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
+    if (!privateKey || !rpcUrl) {
+      throw new ServiceUnavailableException(
+        'No se puede verificar el saldo de la wallet operativa (PRIVATE_KEY / SEPOLIA_RPC_URL). ' +
+          'Sin esa verificación no se oficializa el comicio.',
+      );
+    }
+
+    let balance: bigint;
+    let address: string;
+    try {
+      const provider = this.createProvider();
+      const wallet = new Wallet(privateKey, provider);
+      address = wallet.address;
+      balance = await provider.getBalance(address);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudo verificar el balance de la wallet operativa: ${message}`,
+      );
+      throw new ServiceUnavailableException(
+        `No se pudo verificar el balance de la wallet operativa: ${message}. ` +
+          'Sin esa verificación no se oficializa el comicio.',
+      );
+    }
+
+    if (balance < requiredWei) {
+      throw new ServiceUnavailableException(
+        `La wallet operativa (${address}) no tiene fondos suficientes para ejecutar createElection on-chain. ` +
+          `Balance actual: ${formatEther(balance)} ETH — ` +
+          `mínimo estimado: ${formatEther(requiredWei)} ETH. ` +
+          `Cargá fondos en la wallet antes de continuar.`,
+      );
+    }
+  }
+
+  /**
+   * VOTAR-482: estimates gas of ElectionFactory.createElection (plus buffer)
+   * and asserts the operational wallet can pay it. If the stack is already
+   * deployed, returns without requiring funds. If on-chain is not configured
+   * (no PRIVATE_KEY/RPC or no ElectionFactory), returns so oficializar can
+   * still commit and best-effort skip the deploy. Fail-closed once the chain
+   * is configured: a balance/estimate RPC error or a low balance throws 503.
+   */
+  async assertWalletCanPayCreateElection(
+    idEleccion: number,
+    revoteConfig: RevoteConfigOnChain,
+  ): Promise<void> {
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
+    if (!privateKey || !rpcUrl) {
+      // On-chain is disabled (e2e / local without RPC). Best-effort deploy
+      // already skips; the ticket bug is an empty wallet with chain configured.
+      return;
+    }
+
+    let factoryAddress: string;
+    try {
+      const factoryPayload =
+        await this.contratoBlockchainService.getElectionFactory();
+      factoryAddress = factoryPayload.direccionContrato;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return;
+      }
+      throw error;
+    }
+
+    const provider = this.createProvider();
+    const readFactory = new Contract(
+      factoryAddress,
+      ELECTION_FACTORY_CONTRACT_ABI,
+      provider,
+    ) as unknown as ElectionFactoryContract;
+
+    let existing: Awaited<ReturnType<ElectionFactoryContract['getElection']>>;
+    try {
+      existing = await readFactory.getElection(idEleccion);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar el deployment del comicio on-chain: ${message}`,
+      );
+    }
+
+    if (
+      existing.exists &&
+      existing.ballot &&
+      existing.ballot !== ZeroAddress &&
+      existing.voteRegistry &&
+      existing.voteRegistry !== ZeroAddress
+    ) {
+      return;
+    }
+
+    const wallet = new Wallet(privateKey, provider);
+    const requiredWei = await this.estimateCreateElectionCost(
+      factoryAddress,
+      wallet,
+      provider,
+      idEleccion,
+      revoteConfig,
+    );
+    await this.assertWalletHasFunds(requiredWei);
+  }
+
+  /**
    * Publishes the Merkle root for an election on Sepolia via MerkleRootStore.
    */
   async publishMerkleRoot(
@@ -256,6 +378,14 @@ export class BlockchainService {
         error,
         MERKLE_ROOT_STORE_ABI,
       );
+
+      // VOTAR-482: catch mid-operation insufficient funds (race condition)
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para publicar la raíz Merkle on-chain. Cargá fondos y reintentá.',
+        );
+      }
+
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -579,6 +709,13 @@ export class BlockchainService {
         error,
         MERKLE_ROOT_STORE_ABI,
       );
+
+      // VOTAR-482
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para sincronizar el estado on-chain. Cargá fondos y reintentá.',
+        );
+      }
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -683,6 +820,15 @@ export class BlockchainService {
     }
 
     const wallet = new Wallet(privateKey, provider);
+    const requiredWei = await this.estimateCreateElectionCost(
+      factoryAddress,
+      wallet,
+      provider,
+      idEleccion,
+      revoteConfig,
+    );
+    await this.assertWalletHasFunds(requiredWei);
+
     const writeFactory = new Contract(
       factoryAddress,
       ELECTION_FACTORY_CONTRACT_ABI,
@@ -707,6 +853,13 @@ export class BlockchainService {
         error,
         ELECTION_FACTORY_CONTRACT_ABI,
       );
+
+      // VOTAR-482
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para desplegar el stack electoral on-chain. Cargá fondos y reintentá.',
+        );
+      }
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -2684,5 +2837,59 @@ export class BlockchainService {
       };
     }
     return null;
+  }
+
+  /**
+   * VOTAR-482: gasLimit × maxFeePerGas of createElection, plus buffer.
+   * Fail-closed: any estimate/fee RPC error becomes 503.
+   */
+  private async estimateCreateElectionCost(
+    factoryAddress: string,
+    wallet: Wallet,
+    provider: Provider,
+    idEleccion: number,
+    revoteConfig: RevoteConfigOnChain,
+  ): Promise<bigint> {
+    try {
+      const iface = new Interface(ELECTION_FACTORY_CONTRACT_ABI);
+      const data = iface.encodeFunctionData('createElection', [
+        idEleccion,
+        revoteConfig,
+      ]);
+      const gasLimit = await provider.estimateGas({
+        from: wallet.address,
+        to: factoryAddress,
+        data,
+      });
+      const feeData = await provider.getFeeData();
+      const feePerGas = feeData.maxFeePerGas ?? feeData.gasPrice;
+      if (feePerGas == null || feePerGas === 0n) {
+        throw new Error('el RPC no devolvió maxFeePerGas ni gasPrice');
+      }
+      return (gasLimit * feePerGas * CREATE_ELECTION_GAS_BUFFER_BPS) / 100n;
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ServiceUnavailableException(
+        `No se pudo estimar el gas de createElection: ${message}. ` +
+          'Sin esa estimación no se oficializa el comicio.',
+      );
+    }
+  }
+
+  /**
+   * VOTAR-482: detects ethers INSUFFICIENT_FUNDS errors that slip through the
+   * pre-check (race condition, wallet drained mid-operation, etc.).
+   */
+  private isInsufficientFundsError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code;
+    const message = error instanceof Error ? error.message : String(error);
+    return (
+      code === 'INSUFFICIENT_FUNDS' ||
+      message.toLowerCase().includes('insufficient funds') ||
+      message.toLowerCase().includes("sender doesn't have enough funds")
+    );
   }
 }
