@@ -268,8 +268,10 @@ export class BlockchainService {
   /**
    * VOTAR-482: estimates gas of ElectionFactory.createElection (plus buffer)
    * and asserts the operational wallet can pay it. If the stack is already
-   * deployed, returns without requiring funds. Fail-closed: any inability
-   * to estimate or read the balance throws 503.
+   * deployed, returns without requiring funds. If on-chain is not configured
+   * (no PRIVATE_KEY/RPC or no ElectionFactory), returns so oficializar can
+   * still commit and best-effort skip the deploy. Fail-closed once the chain
+   * is configured: a balance/estimate RPC error or a low balance throws 503.
    */
   async assertWalletCanPayCreateElection(
     idEleccion: number,
@@ -278,10 +280,9 @@ export class BlockchainService {
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!privateKey || !rpcUrl) {
-      throw new ServiceUnavailableException(
-        'No se puede verificar el saldo de la wallet operativa (PRIVATE_KEY / SEPOLIA_RPC_URL). ' +
-          'Sin esa verificación no se oficializa el comicio.',
-      );
+      // On-chain is disabled (e2e / local without RPC). Best-effort deploy
+      // already skips; the ticket bug is an empty wallet with chain configured.
+      return;
     }
 
     let factoryAddress: string;
@@ -291,9 +292,7 @@ export class BlockchainService {
       factoryAddress = factoryPayload.direccionContrato;
     } catch (error) {
       if (error instanceof NotFoundException) {
-        throw new ServiceUnavailableException(
-          'ElectionFactory no registrada en PostgreSQL. Sin factory no se puede estimar el gas de createElection ni oficializar.',
-        );
+        return;
       }
       throw error;
     }

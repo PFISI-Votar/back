@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import {
+  NotFoundException,
   ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -753,7 +754,7 @@ describe('BlockchainService', () => {
       ).rejects.toThrow(/No se pudo verificar el balance/);
     });
 
-    it('throws 503 when PRIVATE_KEY is missing instead of failing open', async () => {
+    it('skips the funds check when on-chain is not configured', async () => {
       mockConfig.get.mockImplementation((key: string) => {
         if (key === 'PRIVATE_KEY') {
           return undefined;
@@ -768,7 +769,19 @@ describe('BlockchainService', () => {
 
       await expect(
         service.assertWalletCanPayCreateElection(42, revoteConfig),
-      ).rejects.toThrow(/PRIVATE_KEY/);
+      ).resolves.toBeUndefined();
+      expect(mockGetBalance).not.toHaveBeenCalled();
+    });
+
+    it('skips the funds check when ElectionFactory is not registered', async () => {
+      mockContratoBlockchain.getElectionFactory.mockRejectedValue(
+        new NotFoundException('ElectionFactory no registrada'),
+      );
+
+      await expect(
+        service.assertWalletCanPayCreateElection(42, revoteConfig),
+      ).resolves.toBeUndefined();
+      expect(mockGetBalance).not.toHaveBeenCalled();
     });
 
     it('skips the funds check when the stack is already deployed', async () => {
