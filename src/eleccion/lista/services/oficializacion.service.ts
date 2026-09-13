@@ -61,13 +61,6 @@ export class OficializacionService {
     await this.padronService.validarPadronParaOficializar(idEleccion);
     await this.categoriasService.validarCategoriasParaOficializar(idEleccion);
 
-    // VOTAR-482: check wallet funds BEFORE the DB transaction so the comicio
-    // stays in BORRADOR if the operational wallet is empty. Without this, the
-    // DB commit (BORRADOR→CONFIGURADA) happens first and the on-chain failure
-    // is swallowed by desplegarStackOnChainBestEffort, leaving the comicio in
-    // an inconsistent state with no deployed contracts.
-    await this.blockchainService.assertWalletHasFunds();
-
     const boleta = await this.boletaService.findBoletaByEleccion(idEleccion);
     if (!boleta) {
       throw new UnprocessableEntityException(
@@ -109,6 +102,20 @@ export class OficializacionService {
     if (!minimoValidation.valid) {
       throw new MinimoCandidatosViolationException(minimoValidation.violations);
     }
+
+    // VOTAR-482: after local 422s (boleta / mínimo de candidatos), check that
+    // the wallet can pay createElection BEFORE opening the DB transaction.
+    // desplegarStackOnChainBestEffort swallows the 503 after commit.
+    const config = await this.configuracionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (config) {
+      await this.blockchainService.assertWalletCanPayCreateElection(
+        idEleccion,
+        mapConfiguracionToRevoteConfig(config),
+      );
+    }
+
     const now = new Date();
     const mapeo: ListaMapeoItemDto[] = [];
     return this.dataSource

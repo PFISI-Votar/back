@@ -9,6 +9,7 @@ import { ContratoBlockchainService } from './services/contrato-blockchain.servic
 import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
 import { RpcProviderFactory } from './rpc/rpc-provider.factory';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
+import { parseEther } from 'ethers';
 
 const mockPublishRoot = jest.fn();
 const mockSetElectionState = jest.fn();
@@ -17,6 +18,9 @@ const mockCreateElection = jest.fn();
 const mockWait = jest.fn();
 const mockGetBlock = jest.fn();
 const mockGetTransactionReceipt = jest.fn();
+const mockGetBalance = jest.fn();
+const mockEstimateGas = jest.fn();
+const mockGetFeeData = jest.fn();
 const mockParseLog = jest.fn();
 const mockGetParticipationStats = jest.fn();
 const mockGetRevoteStats = jest.fn();
@@ -151,18 +155,25 @@ jest.mock('ethers', () => {
         lockConfig: mockLockConfigMerkle,
       };
     }),
-    Wallet: jest.fn().mockImplementation(() => ({})),
+    Wallet: jest.fn().mockImplementation(() => ({
+      address: '0x1111111111111111111111111111111111111111',
+    })),
     JsonRpcProvider: jest.fn().mockImplementation(() => ({
       getBlock: mockGetBlock,
       getTransactionReceipt: mockGetTransactionReceipt,
+      getBalance: mockGetBalance,
+      estimateGas: mockEstimateGas,
+      getFeeData: mockGetFeeData,
     })),
-    Interface: jest.fn().mockImplementation((abi: unknown) => ({
-      parseLog: mockParseLog,
-      // Delegate to the real ethers Interface so decodeContractErrorName's
-      // custom-error decoding is exercised faithfully in tests, not stubbed.
-      parseError: (data: string) =>
-        new actual.Interface(abi as never).parseError(data),
-    })),
+    Interface: jest.fn().mockImplementation((abi: unknown) => {
+      const real = new actual.Interface(abi as never);
+      return {
+        parseLog: mockParseLog,
+        parseError: (data: string) => real.parseError(data),
+        encodeFunctionData: (name: string, values?: readonly unknown[]) =>
+          real.encodeFunctionData(name, values as never),
+      };
+    }),
   };
 });
 
@@ -233,6 +244,12 @@ describe('BlockchainService', () => {
     mockBallotQueryFilter.mockResolvedValue([]);
     mockRegistryQueryFilter.mockResolvedValue([]);
     mockMerkleQueryFilter.mockResolvedValue([]);
+    mockGetBalance.mockResolvedValue(parseEther('1'));
+    mockEstimateGas.mockResolvedValue(2_000_000n);
+    mockGetFeeData.mockResolvedValue({
+      maxFeePerGas: 2_000_000_000n,
+      gasPrice: 2_000_000_000n,
+    });
     mockGetElection.mockResolvedValue({
       ballot: '0x4444444444444444444444444444444444444444',
       voteRegistry: '0x5555555555555555555555555555555555555555',
@@ -690,6 +707,97 @@ describe('BlockchainService', () => {
         blockNumber: 0,
         alreadyDeployed: true,
       });
+    });
+  });
+
+  describe('assertWalletCanPayCreateElection — VOTAR-482', () => {
+    const revoteConfig = {
+      enabled: false,
+      maxVotesPerVoter: 1,
+      minIntervalSeconds: 0,
+      policy: 0,
+    };
+
+    it('throws 503 when the wallet balance is below the createElection estimate', async () => {
+      mockGetBalance.mockResolvedValue(0n);
+
+      await expect(
+        service.assertWalletCanPayCreateElection(42, revoteConfig),
+      ).rejects.toThrow(ServiceUnavailableException);
+    });
+
+    it('passes when the wallet balance covers the createElection estimate', async () => {
+      await expect(
+        service.assertWalletCanPayCreateElection(42, revoteConfig),
+      ).resolves.toBeUndefined();
+    });
+
+    it('throws 503 when balance is above 0.005 ETH but below the estimate', async () => {
+      mockEstimateGas.mockResolvedValue(10_000_000n);
+      mockGetFeeData.mockResolvedValue({
+        maxFeePerGas: 3_000_000_000n,
+        gasPrice: 3_000_000_000n,
+      });
+      mockGetBalance.mockResolvedValue(parseEther('0.01'));
+
+      await expect(
+        service.assertWalletCanPayCreateElection(42, revoteConfig),
+      ).rejects.toThrow(/mínimo estimado/);
+    });
+
+    it('throws 503 when getBalance fails so oficializar cannot proceed', async () => {
+      mockGetBalance.mockRejectedValue(new Error('RPC timeout'));
+
+      await expect(
+        service.assertWalletCanPayCreateElection(42, revoteConfig),
+      ).rejects.toThrow(/No se pudo verificar el balance/);
+    });
+
+    it('throws 503 when PRIVATE_KEY is missing instead of failing open', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        if (key === 'PRIVATE_KEY') {
+          return undefined;
+        }
+        const values: Record<string, string> = {
+          SEPOLIA_RPC_URL: 'https://sepolia.example.com',
+          MERKLE_ROOT_STORE_ADDRESS:
+            '0x55d1d115309872C16B9646362C82fFa246F3F652',
+        };
+        return values[key];
+      });
+
+      await expect(
+        service.assertWalletCanPayCreateElection(42, revoteConfig),
+      ).rejects.toThrow(/PRIVATE_KEY/);
+    });
+
+    it('skips the funds check when the stack is already deployed', async () => {
+      mockGetElection.mockResolvedValue({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        exists: true,
+      });
+      mockGetBalance.mockRejectedValue(new Error('should not be called'));
+
+      await expect(
+        service.assertWalletCanPayCreateElection(42, revoteConfig),
+      ).resolves.toBeUndefined();
+      expect(mockGetBalance).not.toHaveBeenCalled();
+    });
+
+    it('leaves the comicio undeployed when balance cannot cover createElection', async () => {
+      mockEstimateGas.mockResolvedValue(10_000_000n);
+      mockGetFeeData.mockResolvedValue({
+        maxFeePerGas: 3_000_000_000n,
+        gasPrice: 3_000_000_000n,
+      });
+      mockGetBalance.mockResolvedValue(parseEther('0.01'));
+
+      await expect(
+        service.deployElectionStack(42, revoteConfig),
+      ).rejects.toThrow(ServiceUnavailableException);
+      expect(mockCreateElection).not.toHaveBeenCalled();
     });
   });
 
