@@ -48,7 +48,7 @@ export class VotanteAuthController {
   @ApiResponse({
     status: 200,
     description:
-      'Autenticación exitosa. JWT de votante en cookie HttpOnly (30 min, sin refresh).',
+      'Autenticación exitosa. JWT de votante en cookie HttpOnly, Secure y SameSite=Strict (30 min, sin refresh).',
     type: VotanteAuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })

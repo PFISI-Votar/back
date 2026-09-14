@@ -60,7 +60,7 @@ export class AuthController {
   @ApiResponse({
     status: 200,
     description:
-      'Autenticación exitosa o desafío 2FA pendiente. Access y refresh token en cookies HttpOnly solo si la sesión quedó completa.',
+      'Autenticación exitosa o desafío 2FA pendiente. Access y refresh token en cookies HttpOnly, Secure y SameSite=Strict solo si la sesión quedó completa.',
     type: AuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })

@@ -21,7 +21,7 @@ export class AuthResponseDto {
     type: AuthUserDto,
     required: false,
     description:
-      'Perfil del usuario autenticado. Presente solo cuando la sesión quedó completa. Los tokens se entregan en cookies HttpOnly.',
+      'Perfil del usuario autenticado. Presente solo cuando la sesión quedó completa. Los tokens se entregan en cookies HttpOnly, Secure y SameSite=Strict.',
   })
   user?: AuthUserDto;
 
