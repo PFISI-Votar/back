@@ -34,6 +34,8 @@ import { hashVotante } from './utils/keccak.util';
 import {
   esArchivoPadronSoportado,
   extraerFilasIdentidad,
+  sanitizarNombreArchivo,
+  validarMagicBytesPadron,
 } from './utils/parse-padron-archivo.util';
 import { TotalVotantesResponseDto } from './dto/total-votantes-response.dto';
 import { ResumenPadronResponseDto } from './dto/resumen-padron-response.dto';
@@ -72,7 +74,7 @@ export class PadronService implements IPadronService {
         await this.auditLoggerService.logPadronCargaFallida({
           idEleccion,
           actorId: auditContext.actorId,
-          nombreArchivo: archivo?.originalname ?? 'desconocido',
+          nombreArchivo: sanitizarNombreArchivo(archivo?.originalname),
           razon: this.extraerMensajeError(error),
           ipOrigen: auditContext.ipOrigen,
         });
@@ -151,7 +153,7 @@ export class PadronService implements IPadronService {
       await this.auditLoggerService.logPadronCargado({
         idEleccion,
         actorId: auditContext.actorId,
-        nombreArchivo: archivo.originalname,
+        nombreArchivo: sanitizarNombreArchivo(archivo.originalname),
         totalProcesados,
         totalImportados: hashesHoja.length,
         duplicadosExcluidos,
@@ -539,6 +541,13 @@ export class PadronService implements IPadronService {
         'El archivo debe tener formato CSV (.csv) o Excel (.xlsx, .xls).',
       );
     }
+
+    // VOTAR-490: verificar magic bytes para detectar contenido spoofeado
+    validarMagicBytesPadron(
+      archivo.buffer,
+      archivo.originalname,
+      archivo.mimetype,
+    );
   }
 
   /**

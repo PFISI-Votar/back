@@ -4,6 +4,8 @@ import {
   esArchivoPadronSoportado,
   esExcel,
   extraerFilasIdentidad,
+  sanitizarNombreArchivo,
+  validarMagicBytesPadron,
 } from '../utils/parse-padron-archivo.util';
 
 function buildExcelBuffer(filas: string[][]): Buffer {
@@ -55,6 +57,141 @@ describe('parse-padron-archivo.util', () => {
     it('detecta excel por extensión', () => {
       expect(esExcel('a.xlsx', 'text/plain')).toBe(true);
       expect(esExcel('a.csv', 'text/csv')).toBe(false);
+    });
+  });
+
+  describe('validarMagicBytesPadron (VOTAR-490)', () => {
+    it('rechaza un Excel con magic bytes incorrectos (PDF disfrazado de .xlsx)', () => {
+      const pdfBuffer = Buffer.from('%PDF-1.4 contenido falso');
+      expect(() =>
+        validarMagicBytesPadron(
+          pdfBuffer,
+          'padron.xlsx',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it('acepta un .xlsx real (magic bytes PK)', () => {
+      const xlsxBuffer = buildExcelBuffer([
+        ['dni', 'email'],
+        ['30111222', 'a@b.com'],
+      ]);
+      expect(() =>
+        validarMagicBytesPadron(
+          xlsxBuffer,
+          'padron.xlsx',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ),
+      ).not.toThrow();
+    });
+
+    it('acepta un CSV de texto plano sin bytes NUL', () => {
+      const csvBuffer = Buffer.from('dni,email\n30111222,a@b.com\n', 'utf-8');
+      expect(() =>
+        validarMagicBytesPadron(csvBuffer, 'padron.csv', 'text/csv'),
+      ).not.toThrow();
+    });
+
+    it('rechaza un CSV con bytes NUL (binario disfrazado de .csv)', () => {
+      const binaryBuffer = Buffer.from([
+        0x64, 0x6e, 0x69, 0x00, 0x65, 0x6d, 0x61, 0x69, 0x6c,
+      ]);
+      expect(() =>
+        validarMagicBytesPadron(binaryBuffer, 'padron.csv', 'text/csv'),
+      ).toThrow(BadRequestException);
+    });
+
+    it('sanitiza path traversal y NUL antes de decidir el formato', () => {
+      expect(sanitizarNombreArchivo('../../../../etc/passwd.xlsx')).toBe(
+        'passwd.xlsx',
+      );
+      expect(sanitizarNombreArchivo('padron.xlsx\0.csv')).toBe('padron.xlsx');
+      expect(sanitizarNombreArchivo('padron.csv\r\n')).toBe('padron.csv');
+      expect(sanitizarNombreArchivo('../../../../etc/passwd.xlsx')).not.toMatch(
+        /\.\./,
+      );
+
+      const xlsxBuffer = buildExcelBuffer([
+        ['dni', 'email'],
+        ['30111222', 'a@b.com'],
+      ]);
+      expect(() =>
+        validarMagicBytesPadron(
+          xlsxBuffer,
+          '../../../../etc/passwd.xlsx\n',
+          'application/octet-stream',
+        ),
+      ).not.toThrow();
+      expect(() =>
+        validarMagicBytesPadron(
+          Buffer.from('dni,email\n1,a@b.com\n'),
+          'padron.xlsx\0.csv',
+          'text/csv',
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rechaza un zip/docx disfrazado de .xlsx', () => {
+      const nombre = Buffer.from('word/document.xml');
+      const header = Buffer.alloc(30);
+      header.writeUInt32LE(0x04034b50, 0);
+      header.writeUInt16LE(nombre.length, 26);
+      const zipQueNoEsLibro = Buffer.concat([
+        header,
+        nombre,
+        Buffer.from('falso'),
+      ]);
+
+      expect(() =>
+        validarMagicBytesPadron(
+          zipQueNoEsLibro,
+          'padron.xlsx',
+          'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        ),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rechaza un .xlsx cuyo contenido es OLE y un .xls cuyo contenido es ZIP', () => {
+      const ole = Buffer.concat([
+        Buffer.from([0xd0, 0xcf, 0x11, 0xe0]),
+        Buffer.from('Workbook', 'utf16le'),
+      ]);
+      const xlsx = buildExcelBuffer([
+        ['dni', 'email'],
+        ['30111222', 'a@b.com'],
+      ]);
+
+      expect(() =>
+        validarMagicBytesPadron(ole, 'padron.xlsx', 'application/octet-stream'),
+      ).toThrow(BadRequestException);
+      expect(() =>
+        validarMagicBytesPadron(xlsx, 'padron.xls', 'application/vnd.ms-excel'),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rechaza un PDF, un ZIP y markup subidos como .csv', () => {
+      expect(() =>
+        validarMagicBytesPadron(
+          Buffer.from('%PDF-1.4 contenido falso'),
+          'padron.csv',
+          'text/csv',
+        ),
+      ).toThrow(BadRequestException);
+      expect(() =>
+        validarMagicBytesPadron(
+          Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00]),
+          'padron.csv',
+          'text/csv',
+        ),
+      ).toThrow(BadRequestException);
+      expect(() =>
+        validarMagicBytesPadron(
+          Buffer.from('<html><script>alert(1)</script></html>'),
+          'padron.csv',
+          'text/csv',
+        ),
+      ).toThrow(BadRequestException);
     });
   });
 
