@@ -17,6 +17,7 @@ import { RefreshSession } from '@/auth/entities/refresh-session.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
+import { TotpService } from '@/auth/services/totp.service';
 import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
@@ -60,6 +61,7 @@ describe('Sesiones — contención de incidentes (e2e) — VOTAR-492 §12.2', ()
   let app: INestApplication<App>;
   let dataSource: DataSource;
   let jwtService: JwtService;
+  let totpService: TotpService;
   let sessionRepo: Repository<RefreshSession>;
   let auditRepo: Repository<AuditLog>;
   let auditLogger: AuditLoggerService;
@@ -102,6 +104,7 @@ describe('Sesiones — contención de incidentes (e2e) — VOTAR-492 §12.2', ()
               SESSION_IDLE_TIMEOUT: '30m',
               SESSION_ACTIVITY_WRITE_INTERVAL: '60s',
               AUTH_LOCKDOWN_CACHE_TTL_MS: 0,
+              AUTH_LOCKDOWN_ALLOWLIST: 'break.glass.pauser',
               AUTOGESTION_BASE_URL: 'https://autogestion.test',
               DEVELOPMENT: true,
             }),
@@ -138,6 +141,7 @@ describe('Sesiones — contención de incidentes (e2e) — VOTAR-492 §12.2', ()
     await app.init();
 
     jwtService = app.get(JwtService);
+    totpService = app.get(TotpService);
     sessionRepo = dataSource.getRepository(RefreshSession);
     auditRepo = dataSource.getRepository(AuditLog);
     auditLogger = app.get(AuditLoggerService);
@@ -178,6 +182,18 @@ describe('Sesiones — contención de incidentes (e2e) — VOTAR-492 §12.2', ()
       const body = res.body as Array<{ actual: boolean; sub: string }>;
       expect(body.some((s) => s.actual && s.sub === 'pauser.admin')).toBe(true);
       expect(body.every((s) => s.sub !== undefined)).toBe(true);
+    });
+
+    it('GET /auth/sessions sin rol PAUSER solo devuelve la propia (sin datos de otras autoridades)', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/auth/sessions')
+        .set(withBearer(adminSinPauserToken))
+        .expect(200);
+
+      const body = res.body as Array<{ actual: boolean; sub: string }>;
+      expect(body.length).toBeGreaterThan(0);
+      expect(body.every((s) => s.sub === 'plain.admin')).toBe(true);
+      expect(body.some((s) => s.actual)).toBe(true);
     });
 
     it('revocar-todas sin rol PAUSER → 403 y ACCESO_DENEGADO', async () => {
@@ -357,6 +373,95 @@ describe('Sesiones — contención de incidentes (e2e) — VOTAR-492 §12.2', ()
         order: { idLog: 'DESC' },
       });
       expect(entrada).not.toBeNull();
+    });
+
+    it('refresh de una sesión ya emitida sigue funcionando con alcance ADMIN activo (no es login nuevo)', async () => {
+      const agent = request.agent(app.getHttpServer());
+      mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
+        persona: {
+          legajo: '77001',
+          nombre: 'Ya',
+          apellido: 'Logueado',
+          email: 'ya.logueado@test.local',
+        },
+      });
+      await seedAutoridad('ya.logueado', RolAutoridad.ELECTION_ADMIN);
+      const loginRes = await agent
+        .post('/auth/login')
+        .send({ nick: 'ya.logueado', password: 'secret' })
+        .expect(200);
+      const twoFactor = (
+        loginRes.body as {
+          twoFactor?: { challengeToken: string; secret?: string };
+        }
+      ).twoFactor;
+      expect(twoFactor).toBeDefined();
+      await agent
+        .post('/auth/2fa/verify')
+        .send({
+          challengeToken: twoFactor!.challengeToken,
+          code: totpService.generateCode(twoFactor!.secret!),
+        })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .put('/configuracion-sistema/auth-bloqueo')
+        .set(withBearer(pauserToken))
+        .send({ alcance: 'ADMIN', motivo: 'incidente — sesión ya emitida' })
+        .expect(200);
+
+      await agent.post('/auth/refresh').expect(200);
+    });
+
+    it('break-glass: un operador allowlisted completa login + 2FA con bloqueo ADMIN activo y puede desactivarlo', async () => {
+      await seedAutoridad('break.glass.pauser', RolAutoridad.PAUSER);
+
+      await request(app.getHttpServer())
+        .put('/configuracion-sistema/auth-bloqueo')
+        .set(withBearer(pauserToken))
+        .send({ alcance: 'ADMIN', motivo: 'incidente — break-glass e2e' })
+        .expect(200);
+
+      // `legajo` == identificadorSso: así el `sub` que termina en el JWT
+      // coincide con la fila de `autoridad_electoral` (PauserRoleGuard busca
+      // por `identificadorSso: user.sub`), igual que en un login real donde
+      // la autoridad ya está registrada por su legajo institucional.
+      mockAutogestionService.fetchUsuario.mockResolvedValueOnce({
+        persona: {
+          legajo: 'break.glass.pauser',
+          nombre: 'Break',
+          apellido: 'Glass',
+          email: 'break.glass.pauser@test.local',
+        },
+      });
+
+      const agent = request.agent(app.getHttpServer());
+      const loginRes = await agent
+        .post('/auth/login')
+        .send({ nick: 'break.glass.pauser', password: 'secret' })
+        .expect(200);
+
+      const twoFactor = (
+        loginRes.body as {
+          twoFactor?: { challengeToken: string; secret?: string };
+        }
+      ).twoFactor;
+      expect(twoFactor).toBeDefined();
+
+      await agent
+        .post('/auth/2fa/verify')
+        .send({
+          challengeToken: twoFactor!.challengeToken,
+          code: totpService.generateCode(twoFactor!.secret!),
+        })
+        .expect(200);
+
+      // Con la sesión recién emitida, el break-glass puede desactivar el
+      // bloqueo que él mismo (u otro PAUSER) activó.
+      await agent
+        .put('/configuracion-sistema/auth-bloqueo')
+        .send({ alcance: 'NINGUNO' })
+        .expect(200);
     });
   });
 
