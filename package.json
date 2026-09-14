@@ -33,6 +33,7 @@
     "db:reset": "ts-node -r tsconfig-paths/register scripts/reset-db.ts && npm run seed",
     "db:backup": "ts-node -r tsconfig-paths/register scripts/backup-db.ts",
     "db:restore": "ts-node -r tsconfig-paths/register scripts/restore-db-backup.ts",
+    "db:certs": "sh deploy/postgres/generate-dev-certs.sh",
     "admin:register": "node scripts/register-election-admin.mjs",
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs",
     "sync:election-factory": "ts-node -r tsconfig-paths/register scripts/sync-election-factory.ts",
