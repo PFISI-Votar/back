@@ -14,6 +14,15 @@ export class AuthUserDto {
 
   @ApiProperty({ example: 'Bruno Lucarelli', required: false })
   name?: string;
+
+  @ApiProperty({
+    example: false,
+    required: false,
+    description:
+      'VOTAR-492 §12.2: true si la cuenta tiene rol PAUSER en autoridad_electoral ' +
+      '(habilita revocación masiva de sesiones y bloqueo de autenticación en el panel).',
+  })
+  esPauser?: boolean;
 }
 
 export class AuthResponseDto {

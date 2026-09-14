@@ -26,10 +26,12 @@ import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import {
   createAuthedRequest,
   type AuthedRequest,
+  issueTestSessionToken,
 } from './helpers/auth-test.helper';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
@@ -50,6 +52,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
   PadronElectoral,
   PadronVotante,
@@ -162,7 +165,7 @@ describe('ListaCandidato (e2e)', () => {
     );
     await app.init();
 
-    adminToken = app.get(JwtService).sign({
+    adminToken = await issueTestSessionToken(dataSource, app.get(JwtService), {
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
     });
