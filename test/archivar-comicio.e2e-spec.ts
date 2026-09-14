@@ -10,6 +10,7 @@ import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -30,6 +31,7 @@ import { TipoEventoAudit } from '@/audit/enums/tipo-evento-audit.enum';
 import {
   createAuthedRequest,
   type AuthedRequest,
+  issueTestSessionToken,
 } from './helpers/auth-test.helper';
 
 const entities = [
@@ -43,6 +45,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
   PadronElectoral,
   PadronVotante,
@@ -130,10 +133,14 @@ describe('ArchivarComicio (e2e) - POST /elecciones/:id/archivar (VOTAR-322)', ()
     );
     await app.init();
 
-    const adminToken = app.get(JwtService).sign({
-      sub: '14988',
-      role: JwtRole.ELECTION_ADMIN,
-    });
+    const adminToken = await issueTestSessionToken(
+      dataSource,
+      app.get(JwtService),
+      {
+        sub: '14988',
+        role: JwtRole.ELECTION_ADMIN,
+      },
+    );
     req = createAuthedRequest(app, adminToken);
 
     blockchainService = app.get(BlockchainService);
@@ -278,10 +285,14 @@ describe('ArchivarComicio (e2e) - POST /elecciones/:id/archivar (VOTAR-322)', ()
 
     it('debe rechazar el archivado si el usuario no tiene rol ELECTION_ADMIN (403)', async () => {
       const eleccion = await seedEleccion(EleccionEstado.CERRADA);
-      const voterToken = app.get(JwtService).sign({
-        sub: '99999',
-        role: 'VOTER',
-      });
+      const voterToken = await issueTestSessionToken(
+        dataSource,
+        app.get(JwtService),
+        {
+          sub: '99999',
+          role: 'VOTER',
+        },
+      );
 
       await createAuthedRequest(app, voterToken)
         .post(`/elecciones/${eleccion.idEleccion}/archivar`)
