@@ -341,6 +341,52 @@ describe('AuthService', () => {
 
     expect(rotateSessionMock).toHaveBeenCalledWith('refresh-token');
     expect(actualResult.response.user.role).toBe(JwtRole.ELECTION_ADMIN);
+    expect(actualResult.response.user.esPauser).toBe(false);
     expect(actualResult.refreshToken).toBe('next-refresh-token');
+  });
+
+  it('carries esPauser=true through refresh when the account has rol PAUSER', async () => {
+    rotateSessionMock.mockResolvedValue({
+      refreshToken: 'next-refresh-token',
+      idSession: 202,
+      identity: { identificadorSso: '14988', sub: '14988' },
+    });
+    autoridadRepository.findOne.mockResolvedValue({
+      ...baseAutoridad(),
+      rol: RolAutoridad.PAUSER,
+    });
+
+    const actualResult = await service.refreshSession('refresh-token');
+
+    expect(actualResult.response.user.esPauser).toBe(true);
+  });
+
+  describe('esPauser', () => {
+    it('resolves true only for accounts with rol PAUSER', async () => {
+      autoridadRepository.findOne.mockResolvedValue({
+        ...baseAutoridad(),
+        rol: RolAutoridad.PAUSER,
+      });
+
+      await expect(
+        service.esPauser({ sub: '14988', role: JwtRole.ELECTION_ADMIN }),
+      ).resolves.toBe(true);
+    });
+
+    it('resolves false for a plain ELECTION_ADMIN', async () => {
+      autoridadRepository.findOne.mockResolvedValue(baseAutoridad());
+
+      await expect(
+        service.esPauser({ sub: '14988', role: JwtRole.ELECTION_ADMIN }),
+      ).resolves.toBe(false);
+    });
+
+    it('resolves false when there is no matching autoridad', async () => {
+      autoridadRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.esPauser({ sub: 'desconocido', role: JwtRole.VOTER }),
+      ).resolves.toBe(false);
+    });
   });
 });

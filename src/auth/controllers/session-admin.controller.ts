@@ -20,6 +20,7 @@ import {
 } from '@/auth/dto/session-admin.dto';
 import { RevocacionMotivo } from '@/auth/enums/revocacion-motivo.enum';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
+import { AuthService } from '@/auth/services/auth.service';
 import { RefreshTokenService } from '@/auth/services/refresh-token.service';
 import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
 import { resolveClientIp } from '@/common/utils/resolve-client-ip.util';
@@ -27,7 +28,9 @@ import { resolveClientIp } from '@/common/utils/resolve-client-ip.util';
 /**
  * VOTAR-492 §12.2 (Plan de respuesta a incidentes — Contención). Operación
  * administrativa para revocar sesiones de refresh activas:
- * - listar y cerrar las propias: cualquier `ELECTION_ADMIN`.
+ * - listar y cerrar las propias: cualquier `ELECTION_ADMIN` (el listado solo
+ *   trae la/s sesión/es propia/s salvo que tenga rol `PAUSER`, que ve el
+ *   listado global con datos de contacto de todas las autoridades).
  * - revocar por usuario / global: solo rol `PAUSER` (misma capacidad de
  *   contención que la pausa de emergencia, VOTAR-347).
  */
@@ -36,6 +39,7 @@ import { resolveClientIp } from '@/common/utils/resolve-client-ip.util';
 export class SessionAdminController {
   constructor(
     private readonly refreshTokenService: RefreshTokenService,
+    private readonly authService: AuthService,
     private readonly auditLogger: AuditLoggerService,
   ) {}
 
@@ -44,14 +48,18 @@ export class SessionAdminController {
   @HttpCode(HttpStatus.OK)
   @ApiOperation({
     summary:
-      'Listar las sesiones de refresh activas de autoridades electorales',
+      'Listar las sesiones de refresh activas propias, o de todas las ' +
+      'autoridades electorales si la cuenta tiene rol PAUSER',
   })
   @ApiResponse({ status: 200, type: SesionActivaDto, isArray: true })
   async listar(
     @Req() request: AuthenticatedRequest,
   ): Promise<SesionActivaDto[]> {
     const user = assertAuthenticatedUser(request.user);
-    const sesiones = await this.refreshTokenService.listActiveSessions();
+    const esPauser = await this.authService.esPauser(user);
+    const sesiones = await this.refreshTokenService.listActiveSessions(
+      esPauser ? undefined : { sub: user.sub },
+    );
     return sesiones.map((sesion) => ({
       idSession: sesion.idSession,
       identificadorSso: sesion.identificadorSso,

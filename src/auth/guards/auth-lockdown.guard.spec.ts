@@ -1,6 +1,7 @@
 import { ExecutionContext, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -21,11 +22,13 @@ const buildContext = (body: Record<string, unknown> = {}): ExecutionContext =>
 describe('AuthLockdownGuard', () => {
   let findOne: jest.Mock;
   let reflectorValue: jest.Mock;
+  let verifyAsync: jest.Mock;
   let allowlist: string;
 
   const build = async (): Promise<AuthLockdownGuard> => {
     findOne = jest.fn();
     reflectorValue = jest.fn();
+    verifyAsync = jest.fn().mockRejectedValue(new Error('invalid token'));
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthLockdownGuard,
@@ -42,6 +45,7 @@ describe('AuthLockdownGuard', () => {
           },
         },
         { provide: Reflector, useValue: { getAllAndOverride: reflectorValue } },
+        { provide: JwtService, useValue: { verifyAsync } },
       ],
     }).compile();
     return module.get(AuthLockdownGuard);
@@ -108,6 +112,74 @@ describe('AuthLockdownGuard', () => {
     await expect(
       guard.canActivate(buildContext({ nick: 'break.glass' })),
     ).resolves.toBe(true);
+  });
+
+  it('blocks a non-allowlisted nick', async () => {
+    allowlist = 'break.glass';
+    const guard = await build();
+    scope('ADMIN');
+    withState('ADMIN');
+    await expect(
+      guard.canActivate(buildContext({ nick: 'otro.operador' })),
+    ).rejects.toThrow(ServiceUnavailableException);
+  });
+
+  it('lets an allowlisted operator through 2FA verify via the challengeToken nick claim (no body.nick on this step)', async () => {
+    allowlist = 'break.glass';
+    const guard = await build();
+    verifyAsync.mockResolvedValue({ nick: 'break.glass' });
+    scope('ADMIN');
+    withState('ADMIN');
+    await expect(
+      guard.canActivate(
+        buildContext({ challengeToken: 'jwt-challenge', code: '123456' }),
+      ),
+    ).resolves.toBe(true);
+    expect(verifyAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('blocks 2FA verify when the challengeToken nick is not allowlisted', async () => {
+    allowlist = 'break.glass';
+    const guard = await build();
+    verifyAsync.mockResolvedValue({ nick: 'otro.operador' });
+    scope('ADMIN');
+    withState('ADMIN');
+    await expect(
+      guard.canActivate(
+        buildContext({ challengeToken: 'jwt-challenge', code: '123456' }),
+      ),
+    ).rejects.toThrow(ServiceUnavailableException);
+  });
+
+  it('blocks 2FA verify when the challengeToken cannot be decoded', async () => {
+    allowlist = 'break.glass';
+    const guard = await build();
+    verifyAsync.mockRejectedValue(new Error('expired'));
+    scope('ADMIN');
+    withState('ADMIN');
+    await expect(
+      guard.canActivate(
+        buildContext({ challengeToken: 'bad-token', code: '123456' }),
+      ),
+    ).rejects.toThrow(ServiceUnavailableException);
+  });
+
+  it('never leaks motivo/desde on the public 503 body', async () => {
+    const guard = await build();
+    scope('ADMIN');
+    withState('ADMIN');
+    try {
+      await guard.canActivate(buildContext());
+      throw new Error('expected canActivate to throw');
+    } catch (error) {
+      expect(error).toBeInstanceOf(ServiceUnavailableException);
+      const response = (
+        error as ServiceUnavailableException
+      ).getResponse() as Record<string, unknown>;
+      expect(response.motivo).toBeUndefined();
+      expect(response.desde).toBeUndefined();
+      expect(typeof response.message).toBe('string');
+    }
   });
 
   it('fails open when the config lookup throws', async () => {

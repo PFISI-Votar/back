@@ -147,11 +147,14 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(IpRateLimitGuard, AuthLockdownGuard)
-  @AuthLockdownScope('ADMIN')
+  @UseGuards(IpRateLimitGuard)
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-refresh' })
   @ApiOperation({
     summary: 'Renovar sesión usando la cookie de refresh HttpOnly',
+    description:
+      'VOTAR-492 §12.2: nunca se corta por bloqueo de autenticación — es la ' +
+      'vía de salida de una autoridad ya autenticada. El corte de sesiones ' +
+      'comprometidas es `POST /auth/sessions/revocar` / `revocar-todas`.',
   })
   @ApiResponse({
     status: 200,
@@ -182,13 +185,17 @@ export class AuthController {
   })
   @ApiResponse({ status: 200, type: AuthUserDto })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  getCurrentUser(@Req() request: AuthenticatedRequest): AuthUserDto {
+  async getCurrentUser(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<AuthUserDto> {
     const user = assertAuthenticatedUser(request.user);
+    const esPauser = await this.authService.esPauser(user);
     return {
       sub: user.sub,
       role: user.role,
       email: user.email,
       name: user.name,
+      esPauser,
     };
   }
 

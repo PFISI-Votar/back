@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
+import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import type { Request } from 'express';
 import { Repository } from 'typeorm';
@@ -14,6 +15,8 @@ import {
   AUTH_LOCKDOWN_SCOPE_KEY,
   AuthLockdownScopeValue,
 } from '@/auth/decorators/auth-lockdown-scope.decorator';
+import { DEFAULT_JWT_ISSUER } from '@/auth/constants/jwt-identity.constants';
+import { TWO_FACTOR_CHALLENGE_AUDIENCE } from '@/auth/constants/two-factor.constants';
 import {
   AuthBloqueoAlcance,
   ConfiguracionSistema,
@@ -24,22 +27,31 @@ const DEFAULT_CACHE_TTL_MS = 5_000;
 
 type BloqueoState = {
   alcance: AuthBloqueoAlcance;
-  motivo: string | null;
-  desde: Date | null;
 };
 
 /**
  * VOTAR-492 §12.2 (Contención — "bloqueo de flujos de autenticación SSO
- * institucionales"). Corta login / 2FA / refresh (y, en alcance TODOS, el login
- * de votantes) mientras dura un incidente. Nunca bloquea `logout` ni el flujo
- * anónimo de VOTAR-377 FASE 2.
+ * institucionales"). Corta login y 2FA (y, en alcance TODOS, el login de
+ * votantes) mientras dura un incidente.
+ *
+ * NUNCA corta `refresh` de sesiones ya emitidas: esa es la vía de salida real
+ * del operador que activó el bloqueo (y de cualquier autoridad ya
+ * autenticada) para poder volver a entrar y desactivarlo. El corte de
+ * sesiones comprometidas es responsabilidad de `revocar` / `revocar-todas`
+ * (`SessionAdminController`), instantáneo vía `sid` — no de este guard.
+ * Tampoco bloquea `logout` ni el flujo anónimo de VOTAR-377 FASE 2.
  *
  * - Caché en proceso de 5 s sobre el singleton (endpoints rate-limited a 10/s
  *   por IP → propagación aceptable entre instancias).
  * - Fail-open: si la consulta falla, deja pasar (fail-closed encerraría a las
  *   autoridades fuera del panel justo cuando deben entrar a resolver).
  * - Break-glass: `AUTH_LOCKDOWN_ALLOWLIST` (CSV de identificadorSso) puede
- *   loguear con el bloqueo activo.
+ *   loguear con el bloqueo activo. Se resuelve desde `body.nick` en login y
+ *   desde el claim `nick` del `challengeToken` en 2FA — ninguno de los dos
+ *   pasos trae el nick del otro.
+ * - El 503 público no incluye `motivo` ni `desde`: esos datos son la
+ *   justificación del incidente y quedan reservados a la bitácora y al panel
+ *   autenticado (`GET /configuracion-sistema`).
  */
 @Injectable()
 export class AuthLockdownGuard implements CanActivate {
@@ -53,6 +65,7 @@ export class AuthLockdownGuard implements CanActivate {
     private readonly repository: Repository<ConfiguracionSistema>,
     private readonly configService: ConfigService,
     private readonly reflector: Reflector,
+    private readonly jwtService: JwtService,
   ) {
     this.allowlist = new Set(
       (this.configService.get<string>('AUTH_LOCKDOWN_ALLOWLIST') ?? '')
@@ -83,7 +96,7 @@ export class AuthLockdownGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<Request>();
-    if (this.isAllowlisted(request)) {
+    if (await this.isAllowlisted(request)) {
       this.logger.warn(
         'Acceso break-glass durante bloqueo de autenticación (AUTH_LOCKDOWN_ALLOWLIST)',
       );
@@ -94,8 +107,6 @@ export class AuthLockdownGuard implements CanActivate {
       statusCode: 503,
       message:
         'Autenticación institucional temporalmente bloqueada por incidente de seguridad',
-      motivo: state.motivo,
-      desde: state.desde ? state.desde.toISOString() : null,
     });
   }
 
@@ -112,13 +123,47 @@ export class AuthLockdownGuard implements CanActivate {
     return false;
   }
 
-  private isAllowlisted(request: Request): boolean {
+  private async isAllowlisted(request: Request): Promise<boolean> {
     if (this.allowlist.size === 0) {
       return false;
     }
-    const body = request.body as { nick?: unknown } | undefined;
-    const nick = typeof body?.nick === 'string' ? body.nick.trim() : '';
-    return nick.length > 0 && this.allowlist.has(nick);
+    const nick = await this.resolveNick(request);
+    return nick !== null && this.allowlist.has(nick);
+  }
+
+  /**
+   * `POST /auth/login` manda `nick` en el body; `POST /auth/2fa/verify` no
+   * (solo `challengeToken` + `code`), así que para ese paso el nick se
+   * resuelve decodificando el claim `nick` del propio `challengeToken`
+   * (mismo JWT que emite `AuthService.issueTwoFactorChallenge`).
+   */
+  private async resolveNick(request: Request): Promise<string | null> {
+    const body = request.body as
+      { nick?: unknown; challengeToken?: unknown } | undefined;
+    const bodyNick = typeof body?.nick === 'string' ? body.nick.trim() : '';
+    if (bodyNick.length > 0) {
+      return bodyNick;
+    }
+
+    const challengeToken =
+      typeof body?.challengeToken === 'string' ? body.challengeToken : '';
+    if (challengeToken.length === 0) {
+      return null;
+    }
+    try {
+      const payload = await this.jwtService.verifyAsync<{ nick?: string }>(
+        challengeToken,
+        {
+          audience: TWO_FACTOR_CHALLENGE_AUDIENCE,
+          issuer: DEFAULT_JWT_ISSUER,
+        },
+      );
+      return typeof payload.nick === 'string' && payload.nick.length > 0
+        ? payload.nick
+        : null;
+    } catch {
+      return null;
+    }
   }
 
   private async getBloqueoState(): Promise<BloqueoState> {
@@ -132,8 +177,6 @@ export class AuthLockdownGuard implements CanActivate {
       });
       const state: BloqueoState = {
         alcance: config?.authBloqueoAlcance ?? 'NINGUNO',
-        motivo: config?.authBloqueoMotivo ?? null,
-        desde: config?.authBloqueoDesde ?? null,
       };
       this.cache = { state, expiresAt: now + this.cacheTtlMs };
       return state;
@@ -143,7 +186,7 @@ export class AuthLockdownGuard implements CanActivate {
           error instanceof Error ? error.message : String(error)
         }`,
       );
-      return { alcance: 'NINGUNO', motivo: null, desde: null };
+      return { alcance: 'NINGUNO' };
     }
   }
 }

@@ -4,6 +4,7 @@ import { RevocacionMotivo } from '@/auth/enums/revocacion-motivo.enum';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { PauserRoleGuard } from '@/auth/guards/pauser-role.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
+import { AuthService } from '@/auth/services/auth.service';
 import { RefreshTokenService } from '@/auth/services/refresh-token.service';
 import { SessionAdminController } from '@/auth/controllers/session-admin.controller';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
@@ -24,6 +25,7 @@ describe('SessionAdminController', () => {
       'listActiveSessions' | 'revokeSessionsByUser' | 'revokeAllSessions'
     >
   >;
+  let authService: jest.Mocked<Pick<AuthService, 'esPauser'>>;
   let auditLogger: jest.Mocked<Pick<AuditLoggerService, 'logSesionRevocada'>>;
 
   beforeEach(async () => {
@@ -32,12 +34,14 @@ describe('SessionAdminController', () => {
       revokeSessionsByUser: jest.fn().mockResolvedValue(2),
       revokeAllSessions: jest.fn().mockResolvedValue(4),
     };
+    authService = { esPauser: jest.fn().mockResolvedValue(false) };
     auditLogger = { logSesionRevocada: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [SessionAdminController],
       providers: [
         { provide: RefreshTokenService, useValue: refreshTokenService },
+        { provide: AuthService, useValue: authService },
         { provide: AuditLoggerService, useValue: auditLogger },
       ],
     })
@@ -52,7 +56,8 @@ describe('SessionAdminController', () => {
     controller = module.get(SessionAdminController);
   });
 
-  it('marks the requesting session as `actual` in the listing', async () => {
+  it('marks the requesting session as `actual` in the listing (PAUSER sees everyone)', async () => {
+    authService.esPauser.mockResolvedValue(true);
     refreshTokenService.listActiveSessions.mockResolvedValue([
       {
         idSession: 1,
@@ -78,8 +83,34 @@ describe('SessionAdminController', () => {
 
     const result = await controller.listar(request(1));
 
+    expect(refreshTokenService.listActiveSessions).toHaveBeenCalledWith(
+      undefined,
+    );
     expect(result.find((s) => s.idSession === 1)?.actual).toBe(true);
     expect(result.find((s) => s.idSession === 2)?.actual).toBe(false);
+  });
+
+  it('a non-PAUSER ELECTION_ADMIN only lists their own sessions', async () => {
+    authService.esPauser.mockResolvedValue(false);
+    refreshTokenService.listActiveSessions.mockResolvedValue([
+      {
+        idSession: 1,
+        identificadorSso: '14988',
+        sub: '14988',
+        email: null,
+        nombre: null,
+        createdAt: new Date(),
+        lastActivityAt: new Date(),
+        expiresAt: new Date(),
+      },
+    ] as never);
+
+    const result = await controller.listar(request(1));
+
+    expect(refreshTokenService.listActiveSessions).toHaveBeenCalledWith({
+      sub: '14988',
+    });
+    expect(result).toHaveLength(1);
   });
 
   it('cerrarOtras excludes the current session and logs alcance PROPIA', async () => {

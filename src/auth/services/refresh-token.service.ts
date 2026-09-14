@@ -77,12 +77,31 @@ export class RefreshTokenService {
    * toda la vida de la sesión) y `expires_at` (el tope absoluto de 8h es real,
    * no se extiende en cada refresh). NO toca `last_activity_at`: renovar el
    * access token no cuenta como actividad del usuario.
+   *
+   * El UPDATE es un compare-and-swap sobre `token_hash`: dos pestañas pueden
+   * llegar acá con el mismo refresh token vigente (el front dispara un timer
+   * de renovación en cada una). Si solo se leyera con `findOne` y se guardara
+   * con `save`, la última escritura ganaría y la cookie que le quedó a la
+   * pestaña perdedora no coincidiría con lo persistido. En vez de eso, la
+   * escritura exige `token_hash = <el que se leyó>`; si ninguna fila matchea
+   * (`affected === 0`), este refresh ya fue consumido por otra rotación
+   * concurrente y se rechaza con 401 en lugar de devolver una sesión que la
+   * cookie del cliente no puede sostener.
    */
   async rotateSession(refreshToken: string): Promise<RefreshRotationResult> {
     const session = await this.findActiveSession(refreshToken);
     const nextRefreshToken = this.generateRefreshToken();
-    session.tokenHash = this.hashToken(nextRefreshToken);
-    await this.refreshSessionRepository.save(session);
+    const result = await this.refreshSessionRepository
+      .createQueryBuilder()
+      .update(RefreshSession)
+      .set({ tokenHash: this.hashToken(nextRefreshToken) })
+      .where('id_session = :id', { id: session.idSession })
+      .andWhere('token_hash = :current', { current: session.tokenHash })
+      .andWhere('revoked_at IS NULL')
+      .execute();
+    if ((result.affected ?? 0) === 0) {
+      throw new UnauthorizedException('Sesión de refresco inválida');
+    }
     const identity: RefreshSessionIdentity = {
       identificadorSso: session.identificadorSso,
       sub: session.sub,

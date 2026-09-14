@@ -90,6 +90,7 @@ describe('RefreshTokenService', () => {
     const expiresAt = new Date(Date.now() + 7_200_000);
     const activeSession = buildSession({ idSession: 5, expiresAt });
     repository.findOne.mockResolvedValueOnce(activeSession);
+    updateExecute.mockResolvedValueOnce({ affected: 1 });
 
     const issued = { refreshToken: 'seed' };
     const rotated = await service.rotateSession(issued.refreshToken);
@@ -98,6 +99,17 @@ describe('RefreshTokenService', () => {
     expect(rotated.refreshToken).not.toBe(issued.refreshToken);
     expect(activeSession.expiresAt).toBe(expiresAt);
     expect(activeSession.revokedAt).toBeNull();
+    expect(repository.save).not.toHaveBeenCalled();
+  });
+
+  it('rotateSession rejects a losing concurrent rotation as already consumed (compare-and-swap)', async () => {
+    const activeSession = buildSession({ idSession: 5 });
+    repository.findOne.mockResolvedValueOnce(activeSession);
+    updateExecute.mockResolvedValueOnce({ affected: 0 });
+
+    await expect(service.rotateSession('seed')).rejects.toThrow(
+      UnauthorizedException,
+    );
   });
 
   it('rotateSession rejects an idle session and marks it INACTIVIDAD', async () => {
