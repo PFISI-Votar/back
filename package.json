@@ -1,10 +1,10 @@
 {
   "name": "votar.back",
-  "version": "0.0.1",
-  "description": "",
-  "author": "",
+  "version": "2.1.0",
+  "description": "API off-chain de VOTAR (UTN FRVM)",
+  "author": "Equipo 09 — Five Stack, UTN FRVM",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "dev:api": "nest start --watch",
@@ -37,7 +37,8 @@
     "admin:register": "node scripts/register-election-admin.mjs",
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs",
     "sync:election-factory": "ts-node -r tsconfig-paths/register scripts/sync-election-factory.ts",
-    "validate:exported-abis": "ts-node -r tsconfig-paths/register scripts/validate-exported-abis.ts"
+    "validate:exported-abis": "ts-node -r tsconfig-paths/register scripts/validate-exported-abis.ts",
+    "licenses:check": "node scripts/check-oss-licenses.mjs"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",
