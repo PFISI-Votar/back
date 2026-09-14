@@ -56,10 +56,15 @@ describe('database-ssl.config', () => {
       expect(() => resolveDatabaseSsl(get, false)).toThrow(/DB_SSL_MODE/);
     });
 
-    it('"require" encrypts without validating the certificate chain', () => {
+    it('"require" encrypts without validating the certificate chain (development only)', () => {
       const get = makeGetter({ DB_SSL_MODE: 'require' });
       const ssl = resolveDatabaseSsl(get, false);
       expect(ssl).toMatchObject({ rejectUnauthorized: false });
+    });
+
+    it('throws when DB_SSL_MODE is require in production (fail-closed, not real TLS)', () => {
+      const get = makeGetter({ DB_SSL_MODE: 'require' });
+      expect(() => resolveDatabaseSsl(get, true)).toThrow(/VOTAR-498/);
     });
 
     it('"verify-ca" accepts an inline PEM and validates without checking hostname', () => {
@@ -116,9 +121,9 @@ describe('database-ssl.config', () => {
   });
 
   describe('buildLibpqSslEnv', () => {
-    it('sets PGSSLMODE=disable when disabled', () => {
+    it('sets PGSSLMODE=disable when disabled (development)', () => {
       const get = makeGetter({ DB_SSL_MODE: 'disable' });
-      expect(buildLibpqSslEnv(get)).toEqual({ PGSSLMODE: 'disable' });
+      expect(buildLibpqSslEnv(get, false)).toEqual({ PGSSLMODE: 'disable' });
     });
 
     it('maps file-path certs to PGSSLROOTCERT for pg_dump/pg_restore', () => {
@@ -126,7 +131,7 @@ describe('database-ssl.config', () => {
       const caPath = join(dir, 'ca.crt');
       writeFileSync(caPath, FAKE_CA_PEM);
       const get = makeGetter({ DB_SSL_MODE: 'verify-ca', DB_SSL_CA: caPath });
-      expect(buildLibpqSslEnv(get)).toEqual({
+      expect(buildLibpqSslEnv(get, false)).toEqual({
         PGSSLMODE: 'verify-ca',
         PGSSLROOTCERT: caPath,
       });
@@ -137,7 +142,17 @@ describe('database-ssl.config', () => {
         DB_SSL_MODE: 'verify-ca',
         DB_SSL_CA: FAKE_CA_PEM,
       });
-      expect(buildLibpqSslEnv(get)).toEqual({ PGSSLMODE: 'verify-ca' });
+      expect(buildLibpqSslEnv(get, false)).toEqual({ PGSSLMODE: 'verify-ca' });
+    });
+
+    it('throws when DB_SSL_MODE is disable in production (fail-closed)', () => {
+      const get = makeGetter({ DB_SSL_MODE: 'disable' });
+      expect(() => buildLibpqSslEnv(get, true)).toThrow(/VOTAR-498/);
+    });
+
+    it('throws when DB_SSL_MODE is require in production (fail-closed)', () => {
+      const get = makeGetter({ DB_SSL_MODE: 'require' });
+      expect(() => buildLibpqSslEnv(get, true)).toThrow(/VOTAR-498/);
     });
   });
 });

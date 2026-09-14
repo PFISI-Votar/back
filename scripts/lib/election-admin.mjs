@@ -16,9 +16,20 @@ const readCertMaterial = (value) => {
   return readFileSync(trimmed, 'utf8');
 };
 
+// VOTAR-498: misma política fail-closed que isDatabaseProductionEnv en
+// src/config/database-ssl.config.ts — producción a menos que DEVELOPMENT
+// sea explícitamente 'true'.
+const isProduction = () => process.env.DEVELOPMENT !== 'true';
+
 const resolveSsl = () => {
-  const mode = (process.env.DB_SSL_MODE ?? 'disable').trim();
-  if (mode === 'disable' || mode === '') return false;
+  const mode = (process.env.DB_SSL_MODE ?? 'disable').trim() || 'disable';
+  if (isProduction() && (mode === 'disable' || mode === 'require')) {
+    throw new Error(
+      `VOTAR-498: DB_SSL_MODE=${mode} no está permitido en producción (DEVELOPMENT!=true). ` +
+        'Configurar "verify-ca" o "verify-full".',
+    );
+  }
+  if (mode === 'disable') return false;
   const ca = readCertMaterial(process.env.DB_SSL_CA);
   const cert = readCertMaterial(process.env.DB_SSL_CERT);
   const key = readCertMaterial(process.env.DB_SSL_KEY);

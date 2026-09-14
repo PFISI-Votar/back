@@ -92,10 +92,10 @@ export const resolveDatabaseSsl = (
 ): false | TlsConnectionOptions => {
   const mode = parseMode(get('DB_SSL_MODE'));
 
-  if (isProduction && mode === 'disable') {
+  if (isProduction && (mode === 'disable' || mode === 'require')) {
     throw new Error(
-      'VOTAR-498: DB_SSL_MODE=disable no está permitido en producción (DEVELOPMENT=false). ' +
-        'Configurar "require", "verify-ca" o "verify-full".',
+      `VOTAR-498: DB_SSL_MODE=${mode} no está permitido en producción (DEVELOPMENT=false). ` +
+        'Configurar "verify-ca" o "verify-full".',
     );
   }
 
@@ -108,7 +108,8 @@ export const resolveDatabaseSsl = (
 
   if (mode === 'require') {
     // Cifra el canal pero no valida la cadena de certificados: solo protege
-    // contra un sniffer pasivo, no contra un MITM activo.
+    // contra un sniffer pasivo, no contra un MITM activo. Rechazado en
+    // producción arriba; solo llega acá en desarrollo.
     return { rejectUnauthorized: false, ca, cert, key };
   }
 
@@ -145,11 +146,23 @@ export const resolveDatabaseSsl = (
  * Variables de entorno equivalentes para los subprocesos `pg_dump`/`pg_restore`
  * (libpq), que no comparten el pool de conexión de TypeORM y por lo tanto
  * quedarían fuera de esta política si no se les inyectan explícitamente.
+ *
+ * Mismo fail-closed que {@link resolveDatabaseSsl}: en producción rechaza
+ * `disable` y `require` (TLS sin autenticar al servidor no es suficiente).
  */
 export const buildLibpqSslEnv = (
   get: EnvGetter,
+  isProduction: boolean,
 ): Partial<NodeJS.ProcessEnv> => {
   const mode = parseMode(get('DB_SSL_MODE'));
+
+  if (isProduction && (mode === 'disable' || mode === 'require')) {
+    throw new Error(
+      `VOTAR-498: DB_SSL_MODE=${mode} no está permitido en producción (DEVELOPMENT=false). ` +
+        'Configurar "verify-ca" o "verify-full".',
+    );
+  }
+
   if (mode === 'disable') {
     return { PGSSLMODE: 'disable' };
   }

@@ -10,7 +10,7 @@
 
 | Riesgo Threagile | Implementación |
 | --- | --- |
-| `unencrypted-communication` | TLS obligatorio en las tres rutas de conexión a PostgreSQL: TypeORM runtime (`src/config/database.config.ts`), CLI de migraciones (`src/database/data-source.ts`) y subprocesos `pg_dump`/`pg_restore` (`src/backups/services/backup.service.ts`). Fail-closed: en producción (`DEVELOPMENT=false`) el arranque aborta si `DB_SSL_MODE=disable` o si falta `DB_SSL_CA` en modo `verify-ca`/`verify-full`. |
+| `unencrypted-communication` | TLS obligatorio en las tres rutas de conexión a PostgreSQL: TypeORM runtime (`src/config/database.config.ts`), CLI de migraciones (`src/database/data-source.ts`) y subprocesos `pg_dump`/`pg_restore` (`src/backups/services/backup.service.ts`). Fail-closed: en producción (`DEVELOPMENT=false`) el arranque aborta si `DB_SSL_MODE` es `disable` o `require` (este último cifra pero no autentica al servidor: no es TLS estricto), o si falta `DB_SSL_CA` en modo `verify-ca`/`verify-full`. |
 | `unencrypted-asset` (columnas) | Cifrado AES-256-GCM a nivel de columna (`src/common/crypto/field-encryption.ts` + `encryptedColumn()` transformer de TypeORM) sobre `autoridad_electoral.totp_secret`, `autoridad_electoral.nombre`, `refresh_session.email` y `refresh_session.nombre`. |
 | `unguarded-direct-datastore-access` | Configuración versionada de PostgreSQL (`deploy/postgres/`: TLS del servidor, `pg_hba.conf` restringido al backend, `scram-sha-256`) + reglas de firewall (`deploy/firewall/`) que limitan el puerto 5432 al host del backend. |
 
@@ -46,9 +46,12 @@ DB_SSL_SERVERNAME=              # hostname esperado (solo verify-full)
 DB_ENCRYPTION_KEY=cambiar-por-secreto-largo-o-64-hex
 ```
 
-`DB_SSL_MODE=disable` solo es válido cuando `DEVELOPMENT=true`. En
-producción se exige `verify-ca` o `verify-full`, y `DB_ENCRYPTION_KEY` es
-obligatoria (arranque falla si falta cualquiera de las dos).
+`DB_SSL_MODE=disable` y `DB_SSL_MODE=require` solo son válidos cuando
+`DEVELOPMENT=true`. En producción se exige `verify-ca` o `verify-full` en
+las tres rutas de conexión (TypeORM, migraciones, `pg_dump`/`pg_restore`
+vía `buildLibpqSslEnv`, y el script `scripts/lib/election-admin.mjs`), y
+`DB_ENCRYPTION_KEY` es obligatoria (arranque falla si falta cualquiera de
+las dos).
 
 `DB_ENCRYPTION_KEY` admite passphrase arbitraria (scrypt) o 64 caracteres hex
 (32 bytes crudos) — mismo formato que `BACKUP_ENCRYPTION_KEY`, pero es un
