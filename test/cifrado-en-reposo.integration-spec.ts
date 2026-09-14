@@ -59,9 +59,16 @@ describe('cifrado en reposo — VOTAR-498', () => {
   it('persiste totp_secret y nombre cifrados, ilegibles con SQL crudo', async () => {
     if (!runIfPostgres()) return;
 
-    await dataSource.query('BEGIN');
+    // `dataSource.query('BEGIN')` toma y suelta una conexión del pool; el
+    // `repo.save()` y el `SELECT` crudo de abajo tomarían otras conexiones
+    // distintas, así que un `ROLLBACK` posterior no envolvería el insert.
+    // Un `QueryRunner` dedicado ata la transacción, el repositorio y el SQL
+    // crudo a la misma conexión.
+    const queryRunner = dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
     try {
-      const repo = dataSource.getRepository(AutoridadElectoral);
+      const repo = queryRunner.manager.getRepository(AutoridadElectoral);
       const saved = await repo.save(
         repo.create({
           identificadorSso: `votar-498-test-${Date.now()}`,
@@ -79,7 +86,7 @@ describe('cifrado en reposo — VOTAR-498', () => {
 
       // Leído con SQL crudo (lo que vería un DBA con acceso directo al
       // disco/backup): debe estar cifrado, nunca el secreto en claro.
-      const rows: TotpSecretRow[] = await dataSource.query(
+      const rows: TotpSecretRow[] = await queryRunner.query(
         `SELECT totp_secret, nombre FROM autoridad_electoral WHERE id_autoridad = $1`,
         [saved.idAutoridad],
       );
@@ -102,7 +109,8 @@ describe('cifrado en reposo — VOTAR-498', () => {
       expect(reloaded.totpSecret).toBe(TEST_SECRET);
       expect(reloaded.nombre).toBe(TEST_NOMBRE);
     } finally {
-      await dataSource.query('ROLLBACK');
+      await queryRunner.rollbackTransaction();
+      await queryRunner.release();
     }
   });
 });
