@@ -16,8 +16,8 @@ para el detalle de variables de entorno y procedimientos, y
 | Archivo | Uso |
 | --- | --- |
 | `postgresql.conf` | Fragmento de configuración del servidor (TLS, `scram-sha-256`, logging de conexiones). Producción y desarrollo. |
-| `pg_hba.conf` | Reglas de acceso de **producción**: `hostssl` + certificado de cliente (`clientcert=verify-ca`) desde el CIDR del backend únicamente. Placeholders `<DB_NAME>`, `<DB_APP_USER>`, `<BACKEND_CIDR>` a reemplazar antes de desplegar. |
-| `pg_hba.dev.conf` | Reglas de acceso de **desarrollo**: `hostssl` sin certificado de cliente (no obliga a emitir certs de cliente para levantar el stack local). |
+| `pg_hba.conf` | Reglas de acceso de **producción**: `hostssl` + `scram-sha-256` desde el CIDR del backend únicamente, más `local ... peer` acotado para administración desde el propio host. Sin `clientcert` (`DB_SSL_CERT`/`DB_SSL_KEY` son mTLS opcional en el backend, no exigido por Joi en producción — ver `back/docs/VOTAR-498-hardening-db.md`). Placeholders `<DB_NAME>`, `<DB_APP_USER>`, `<BACKEND_CIDR>` a reemplazar antes de desplegar. |
+| `pg_hba.dev.conf` | Reglas de acceso de **desarrollo**: igual política que producción sin CIDR fijo (no obliga a emitir certs de cliente para levantar el stack local). |
 | `generate-dev-certs.sh` | Genera CA + certificado de servidor self-signed en `certs/` (gitignored) para desarrollo. `npm run db:certs` desde `back/`. **No usar en producción** — ahí el certificado debe emitirlo la CA institucional. |
 | `docker-compose.db-tls.yml` | Plantilla de override para el servicio `db` del `docker-compose.yml` de la raíz del monorepo (no versionado en ningún repo). Ver instrucciones abajo. |
 
