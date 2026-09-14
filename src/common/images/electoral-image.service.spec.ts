@@ -165,6 +165,90 @@ describe('ElectoralImageService', () => {
     expect(metadata.channels[0].mean).toBeGreaterThan(200);
   });
 
+  it('rechaza archivos con magic bytes incorrectos aunque extensión y MIME sean válidos (anti-spoofing, VOTAR-490)', async () => {
+    // PDF disfrazado de PNG: extensión .png y mimetype image/png pero bytes reales de PDF
+    const pdfBuffer = Buffer.from('%PDF-1.4 contenido falso');
+    await expect(
+      service.saveImage(
+        await makeImageFile({
+          originalname: 'imagen.png',
+          mimetype: 'image/png',
+          buffer: pdfBuffer,
+          size: pdfBuffer.length,
+        }),
+        'candidato-foto',
+      ),
+    ).rejects.toThrow(BadRequestException);
+
+    // GIF disfrazado de JPEG
+    const gifBuffer = Buffer.from('GIF89a fake gif content');
+    await expect(
+      service.saveImage(
+        await makeImageFile({
+          originalname: 'foto.jpg',
+          mimetype: 'image/jpeg',
+          buffer: gifBuffer,
+          size: gifBuffer.length,
+        }),
+        'lista-logo',
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('rechaza un JPEG real declarado como PNG (extensión vs magic bytes, VOTAR-490)', async () => {
+    const jpeg = await sharp({
+      create: {
+        width: 8,
+        height: 8,
+        channels: 3,
+        background: '#112233',
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    await expect(
+      service.saveImage(
+        await makeImageFile({
+          originalname: 'foto.png',
+          mimetype: 'image/png',
+          buffer: jpeg,
+          size: jpeg.length,
+        }),
+        'candidato-foto',
+      ),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockRepository.save).not.toHaveBeenCalled();
+  });
+
+  it('acepta un JPEG con filename de path traversal y persiste URL por UUID (VOTAR-490)', async () => {
+    const jpeg = await sharp({
+      create: {
+        width: 8,
+        height: 8,
+        channels: 3,
+        background: '#112233',
+      },
+    })
+      .jpeg()
+      .toBuffer();
+
+    const url = await service.saveImage(
+      await makeImageFile({
+        originalname: '../../../../etc/passwd.jpg',
+        mimetype: 'image/jpeg',
+        buffer: jpeg,
+        size: jpeg.length,
+      }),
+      'lista-logo',
+    );
+
+    expect(url).toMatch(/^\/imagenes\/[0-9a-f-]{36}$/i);
+    expect(url).not.toContain('..');
+    expect(url).not.toContain('passwd');
+  });
+
   it('calcula el checksum SHA-256 del contenido persistido', async () => {
     await service.saveImage(await makeImageFile(), 'candidato-foto');
 

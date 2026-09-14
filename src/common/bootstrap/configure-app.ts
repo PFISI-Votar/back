@@ -4,6 +4,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { GlobalExceptionFilter } from '@/common/filters/global-exception.filter';
+import { UploadTooLargeFilter } from '@/common/filters/upload-too-large.filter';
 import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
 import { buildCorsOptions } from '@/config/cors.config';
 import {
@@ -36,10 +37,10 @@ export const configureApp = (app: NestExpressApplication): void => {
       transform: true,
     }),
   );
-
-  // VOTAR-491: falla segura — ningún error HTTP filtra stack traces, PII ni
-  // detalles internos al cliente; el detalle completo sólo va a logs.
-  app.useGlobalFilters(new GlobalExceptionFilter());
+  // Nest invierte el array y usa el primero que matchea. UploadTooLargeFilter
+  // va último para ganar el 413 de multer (contrato VOTAR-490: 400) antes
+  // que el catch-all de VOTAR-491, que no filtra stack/PII al cliente.
+  app.useGlobalFilters(new GlobalExceptionFilter(), new UploadTooLargeFilter());
 
   // VOTAR-466: las imágenes electorales dejaron de servirse desde el disco
   // local (/uploads) y ahora viven en Postgres, servidas por
