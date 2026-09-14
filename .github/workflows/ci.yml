@@ -91,6 +91,7 @@ jobs:
     needs: [quality, codeql, secret-scanning]
     if: always()
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - name: Require quality, CodeQL and secret scanning
         env:
