@@ -14,7 +14,9 @@
     "common/validators/**/*.ts",
     "eleccion/rules-engine/rules-engine.service.ts",
     "eleccion/rules-engine/exceptions/**/*.ts",
-    "eleccion/candidato/services/candidato-datos-validator.service.ts"
+    "eleccion/candidato/services/candidato-datos-validator.service.ts",
+    "common/crypto/**/*.ts",
+    "config/database-ssl.config.ts"
   ],
   "coverageDirectory": "../coverage/critical",
   "coverageThreshold": {
