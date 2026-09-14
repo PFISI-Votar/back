@@ -15,3 +15,11 @@ regexes = [
   '''(?i)7f6529cef5733fdd43f39cba31ad045ba66dae37266ffb9683b0793e25f1105f''',
   '''(?i)201a8e81e858f368259d1fac0ca309a1a70e722031c355f55860af059a04d012''',
 ]
+
+[[allowlists]]
+description = "Placeholders de CI y de documentación, no credenciales"
+regexTarget = "line"
+regexes = [
+  '''JWT_SECRET: test-secret-for-ci-min-16-chars''',
+  '''BACKUP_ENCRYPTION_KEY=cambiar-por-secreto-largo-o-64-hex''',
+]
