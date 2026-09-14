@@ -21,6 +21,8 @@ import { AuditModule } from '@/audit/audit.module';
 import { EntidadFirmasModule } from '@/entidad-firmas/entidad-firmas.module';
 import { FaucetModule } from '@/faucet/faucet.module';
 import { BackupModule } from '@/backups/backup.module';
+import { RelayerModule } from '@/relayer/relayer.module';
+import { VaultModule } from '@/vault/vault.module';
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { BackupModule } from '@/backups/backup.module';
       validationSchema: envValidationSchema,
       validationOptions: { allowUnknown: true, abortEarly: true },
     }),
+    VaultModule,
     CommonRateLimitModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -50,6 +53,7 @@ import { BackupModule } from '@/backups/backup.module';
     ConfiguracionSistemaModule,
     FaucetModule,
     BackupModule,
+    RelayerModule,
   ],
   controllers: [AppController],
   providers: [AppService],

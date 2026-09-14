@@ -71,6 +71,31 @@ export const envValidationSchema = Joi.object({
   MERKLE_ROOT_STORE_ADDRESS: Joi.string().optional(),
 
   PRIVATE_KEY: Joi.string().optional(),
+  /**
+   * VOTAR-497 — clave dedicada del relayer que paga el gas de castSignedVote.
+   * No va al frontend. En producción vive en el vault, no en .env en claro.
+   */
+  RELAYER_PRIVATE_KEY: Joi.string().optional(),
+  /** TTL de la capacidad anónima de un solo uso del relayer. */
+  RELAYER_CAPABILITY_TTL_MS: Joi.number()
+    .integer()
+    .min(15_000)
+    .max(600_000)
+    .default(120_000),
+  /**
+   * VOTAR-497 — de dónde salen las claves operativas y de validación.
+   * `env` sólo en desarrollo. Producción: `encrypted-file` o `kms`.
+   */
+  SECRETS_VAULT_PROVIDER: Joi.string()
+    .valid('env', 'encrypted-file', 'kms')
+    .default('env'),
+  VAULT_FILE_PATH: Joi.string().allow('').optional(),
+  VAULT_MASTER_KEY: Joi.string().allow('').optional(),
+  VAULT_KMS_MODE: Joi.string().valid('software', 'http').optional(),
+  VAULT_KMS_KEY: Joi.string().allow('').optional(),
+  VAULT_KMS_KEY_FILE: Joi.string().allow('').optional(),
+  VAULT_KMS_ENDPOINT: Joi.string().uri().allow('').optional(),
+  VAULT_KMS_TOKEN: Joi.string().allow('').optional(),
   ADMIN_MULTISIG_ADDRESS: Joi.string().optional(),
   PAUSER_OPERATOR_ADDRESS: Joi.string().optional(),
   /**
