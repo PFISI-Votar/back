@@ -1,4 +1,5 @@
-import { createHash, randomBytes, writeFileSync, mkdirSync } from 'node:fs';
+import { createHash, randomBytes } from 'node:crypto';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { config } from 'dotenv';
 import {
