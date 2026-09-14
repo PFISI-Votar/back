@@ -75,5 +75,17 @@ describe('field-encryption (VOTAR-498)', () => {
       process.env.DEVELOPMENT = 'false';
       expect(() => resolveFieldKey()).toThrow(FieldEncryptionKeyMissingError);
     });
+
+    it('cachea la clave derivada y la recalcula si DB_ENCRYPTION_KEY rota', () => {
+      process.env.DB_ENCRYPTION_KEY = 'a'.repeat(64);
+      const first = resolveFieldKey();
+      const again = resolveFieldKey();
+      expect(again).toBe(first); // misma instancia de Buffer: no se recalculó
+
+      process.env.DB_ENCRYPTION_KEY = 'b'.repeat(64);
+      const rotated = resolveFieldKey();
+      expect(rotated).not.toBe(first);
+      expect(rotated?.equals(deriveFieldKey('b'.repeat(64)))).toBe(true);
+    });
   });
 });

@@ -47,6 +47,15 @@ export const deriveFieldKey = (secret: string): Buffer => {
   return scryptSync(trimmed, 'votar-field-v1', KEY_LENGTH);
 };
 
+// VOTAR-498: `deriveFieldKey` corre `scryptSync` (N=16384) cuando el secreto
+// es passphrase, no hex de 64. `resolveFieldKey` se llama en cada `to()`/
+// `from()` del transformer (login/refresh leen totp_secret + nombre + email
+// en el mismo request), así que se cachea el Buffer derivado y se invalida
+// solo si `DB_ENCRYPTION_KEY` cambia (rotación) — no si simplemente se borra
+// (ese caso ya es un error de configuración que `resolveFieldKey` reporta).
+let cachedSecret: string | undefined;
+let cachedKey: Buffer | undefined;
+
 /**
  * Lee `DB_ENCRYPTION_KEY` de `process.env` en el momento del uso (no en
  * tiempo de import/decorador), para que los tests puedan setearla antes de
@@ -59,7 +68,15 @@ export const deriveFieldKey = (secret: string): Buffer => {
  */
 export const resolveFieldKey = (): Buffer | null => {
   const secret = process.env.DB_ENCRYPTION_KEY;
-  if (secret?.trim()) return deriveFieldKey(secret);
+  if (secret?.trim()) {
+    if (cachedSecret !== secret) {
+      cachedKey = deriveFieldKey(secret);
+      cachedSecret = secret;
+    }
+    return cachedKey as Buffer;
+  }
+  cachedSecret = undefined;
+  cachedKey = undefined;
   if (process.env.DEVELOPMENT === 'true') return null;
   throw new FieldEncryptionKeyMissingError();
 };
