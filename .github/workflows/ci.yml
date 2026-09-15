@@ -12,7 +12,23 @@ on:
       - master
 
 jobs:
-  ci:
+  # VOTAR-488: el ruleset exige el check `ci`. El job homónimo más abajo
+  # solo pasa si calidad, CodeQL y secret scanning pasan, así que un
+  # hallazgo crítico o un secreto bloquean el merge sin cambiar el ruleset.
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+      packages: read
+
+  secret-scanning:
+    uses: ./.github/workflows/secret-scanning.yml
+    permissions:
+      contents: read
+
+  quality:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -79,3 +95,26 @@ jobs:
 
       - name: Enforce coverage on validation and crypto modules
         run: npm run test:cov:critical
+
+  ci:
+    needs: [quality, codeql, secret-scanning]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require quality, CodeQL and secret scanning
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          SECRETS: ${{ needs.secret-scanning.result }}
+        run: |
+          set -eu
+          failed=0
+          for name in QUALITY CODEQL SECRETS; do
+            result="${!name}"
+            echo "$name=$result"
+            if [ "$result" != "success" ]; then
+              failed=1
+            fi
+          done
+          exit "$failed"
