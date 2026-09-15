@@ -139,22 +139,25 @@ export class EleccionGateway
   }
 
   /**
-   * VOTAR-481 — avisa que una transacción fue rechazada porque otra
-   * transición (manual o del scheduler automático) ya está en curso para
-   * el mismo comicio, para diferenciar este caso de una falla real.
+   * VOTAR-481 — avisa que la transacción on-chain de apertura/cierre que
+   * estaba en curso (ver `emitTransaccionEnProgreso`) terminó en falla o
+   * revert, para que el cliente pueda limpiar el spinner/toast de carga en
+   * vez de dejarlo colgado indefinidamente. El conflicto de lock (409) NO
+   * emite este evento ni ninguno por WebSocket: ya le llega al solicitante
+   * por la respuesta HTTP, y transmitirlo a todos los clientes conectados
+   * pisaría el feedback de "en progreso" de la transacción que sí tiene
+   * el lock.
    */
-  emitTransaccionConflicto(
+  emitTransaccionFallida(
     idEleccion: number,
     tipo: TransaccionEleccionTipo,
-    mensaje: string,
   ): void {
     this.logger.warn(
-      `Emitiendo conflicto de transacción (${tipo}) para elección ${idEleccion}: ${mensaje}`,
+      `Emitiendo falla de transacción (${tipo}) para elección ${idEleccion}`,
     );
-    this.server.emit('eleccion:transaccion-conflicto', {
+    this.server.emit('eleccion:transaccion-fallida', {
       idEleccion,
       tipo,
-      mensaje,
     });
   }
 

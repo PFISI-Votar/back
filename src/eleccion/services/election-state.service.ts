@@ -50,27 +50,34 @@ export class ElectionStateService {
    * the published boleta plus VOTO_BLANCO/VOTO_NULO.
    */
   async transitionToAbierta(idEleccion: number): Promise<Eleccion> {
-    return this.withTransitionLock(idEleccion, 'APERTURA', async () => {
-      const eleccion = await this.findEleccionOrFail(idEleccion);
-      if (eleccion.estado !== EleccionEstado.CONFIGURADA) {
-        throw new UnprocessableEntityException(
-          `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
+    return this.withTransitionLock(
+      idEleccion,
+      'APERTURA',
+      async (marcarEnProgreso) => {
+        const eleccion = await this.findEleccionOrFail(idEleccion);
+        if (eleccion.estado !== EleccionEstado.CONFIGURADA) {
+          throw new UnprocessableEntityException(
+            `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
+          );
+        }
+        marcarEnProgreso();
+        const candidateIds = await this.resolveCandidateIds(idEleccion);
+        await this.blockchainService.registerCandidates(
+          idEleccion,
+          candidateIds,
         );
-      }
-      this.eleccionGateway.emitTransaccionEnProgreso(idEleccion, 'APERTURA');
-      const candidateIds = await this.resolveCandidateIds(idEleccion);
-      await this.blockchainService.registerCandidates(idEleccion, candidateIds);
-      await this.blockchainService.syncElectionWindow(
-        eleccion.idEleccion,
-        eleccion.fechaInicio,
-        eleccion.fechaFin,
-      );
-      // VOTAR-327: seal RevoteConfig + voting window before the DB flips to
-      // ABIERTA, same hermetic-seal-before-persist principle as VOTAR-336.
-      await this.blockchainService.lockElectionWindow(idEleccion);
-      await this.blockchainService.lockRevoteConfig(idEleccion);
-      return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
-    });
+        await this.blockchainService.syncElectionWindow(
+          eleccion.idEleccion,
+          eleccion.fechaInicio,
+          eleccion.fechaFin,
+        );
+        // VOTAR-327: seal RevoteConfig + voting window before the DB flips to
+        // ABIERTA, same hermetic-seal-before-persist principle as VOTAR-336.
+        await this.blockchainService.lockElectionWindow(idEleccion);
+        await this.blockchainService.lockRevoteConfig(idEleccion);
+        return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
+      },
+    );
   }
 
   /**
@@ -81,16 +88,20 @@ export class ElectionStateService {
    * lock esa carrera terminaba en colisión de nonce.
    */
   async transitionToCerrada(idEleccion: number): Promise<Eleccion> {
-    return this.withTransitionLock(idEleccion, 'CIERRE', async () => {
-      const eleccion = await this.findEleccionOrFail(idEleccion);
-      if (eleccion.estado !== EleccionEstado.ABIERTA) {
-        throw new UnprocessableEntityException(
-          `La elección debe estar en estado ABIERTA para cerrarse. Estado actual: ${eleccion.estado}`,
-        );
-      }
-      this.eleccionGateway.emitTransaccionEnProgreso(idEleccion, 'CIERRE');
-      return this.syncOnChainThenPersist(eleccion, EleccionEstado.CERRADA);
-    });
+    return this.withTransitionLock(
+      idEleccion,
+      'CIERRE',
+      async (marcarEnProgreso) => {
+        const eleccion = await this.findEleccionOrFail(idEleccion);
+        if (eleccion.estado !== EleccionEstado.ABIERTA) {
+          throw new UnprocessableEntityException(
+            `La elección debe estar en estado ABIERTA para cerrarse. Estado actual: ${eleccion.estado}`,
+          );
+        }
+        marcarEnProgreso();
+        return this.syncOnChainThenPersist(eleccion, EleccionEstado.CERRADA);
+      },
+    );
   }
 
   /**
@@ -159,25 +170,42 @@ export class ElectionStateService {
   }
 
   /**
-   * @dev VOTAR-481: emite feedback WebSocket en ambos desenlaces del lock —
-   * "conflicto" inmediato si otra transición ya está en curso (en vez de
-   * dejar que el cliente interprete el 409 como una falla silenciosa), y se
-   * apoya en que cada `fn()` emite su propio "en progreso" recién después de
-   * validar el estado de la elección (ver transitionToAbierta/Cerrada).
+   * @dev VOTAR-481: el conflicto de lock (409) queda solo en la excepción
+   * que recibe el caller por HTTP — no se emite por WebSocket, porque un
+   * broadcast global le llegaría también a la transición que sí tiene el
+   * lock, pisando su feedback de "en progreso" con un "Reintentá" que no
+   * le corresponde.
+   *
+   * `fn` recibe `marcarEnProgreso` para emitir "en progreso" recién después
+   * de validar el estado de la elección (ver transitionToAbierta/Cerrada):
+   * si la precondición de estado falla, nunca se mostró un spinner y no
+   * corresponde emitir una falla que lo "limpie". Si `fn` falla después de
+   * haber llamado a `marcarEnProgreso`, se emite `transaccion-fallida` para
+   * que el cliente cierre ese spinner en vez de dejarlo colgado.
    */
   private async withTransitionLock<T>(
     idEleccion: number,
     tipo: TransaccionEleccionTipo,
-    fn: () => Promise<T>,
+    fn: (marcarEnProgreso: () => void) => Promise<T>,
   ): Promise<T> {
     if (this.transicionesEnCurso.has(idEleccion)) {
-      const mensaje = `Ya hay una transición de estado en curso para la elección ${idEleccion}. Reintentá en unos segundos.`;
-      this.eleccionGateway.emitTransaccionConflicto(idEleccion, tipo, mensaje);
-      throw new ConflictException(mensaje);
+      throw new ConflictException(
+        `Ya hay una transición de estado en curso para la elección ${idEleccion}. Reintentá en unos segundos.`,
+      );
     }
     this.transicionesEnCurso.add(idEleccion);
+    let progresoEmitido = false;
+    const marcarEnProgreso = () => {
+      progresoEmitido = true;
+      this.eleccionGateway.emitTransaccionEnProgreso(idEleccion, tipo);
+    };
     try {
-      return await fn();
+      return await fn(marcarEnProgreso);
+    } catch (error) {
+      if (progresoEmitido) {
+        this.eleccionGateway.emitTransaccionFallida(idEleccion, tipo);
+      }
+      throw error;
     } finally {
       this.transicionesEnCurso.delete(idEleccion);
     }
