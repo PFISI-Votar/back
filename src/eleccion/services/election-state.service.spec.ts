@@ -14,12 +14,14 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { OfertaElectoralQueryService } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
 
 describe('ElectionStateService', () => {
   let service: ElectionStateService;
   let eleccionRepository: jest.Mocked<Repository<Eleccion>>;
   let blockchainService: jest.Mocked<BlockchainService>;
   let ofertaElectoralQueryService: jest.Mocked<OfertaElectoralQueryService>;
+  let eleccionGateway: jest.Mocked<EleccionGateway>;
 
   const mockEleccion: Eleccion = {
     idEleccion: 1,
@@ -57,6 +59,11 @@ describe('ElectionStateService', () => {
       }),
     };
 
+    const mockEleccionGateway = {
+      emitTransaccionEnProgreso: jest.fn(),
+      emitTransaccionFallida: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         ElectionStateService,
@@ -72,6 +79,10 @@ describe('ElectionStateService', () => {
           provide: OfertaElectoralQueryService,
           useValue: mockOfertaElectoralQueryService,
         },
+        {
+          provide: EleccionGateway,
+          useValue: mockEleccionGateway,
+        },
       ],
     }).compile();
 
@@ -79,6 +90,7 @@ describe('ElectionStateService', () => {
     eleccionRepository = module.get(getRepositoryToken(Eleccion));
     blockchainService = module.get(BlockchainService);
     ofertaElectoralQueryService = module.get(OfertaElectoralQueryService);
+    eleccionGateway = module.get(EleccionGateway);
   });
 
   afterEach(() => {
@@ -162,6 +174,14 @@ describe('ElectionStateService', () => {
       expect(lockRevoteOrder).toBeLessThan(syncOrder);
       expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.ABIERTA);
+      // VOTAR-481: feedback WebSocket de "transacción en curso" antes de tocar blockchain.
+      expect(eleccionGateway.emitTransaccionEnProgreso).toHaveBeenCalledWith(
+        1,
+        'APERTURA',
+      );
+      const progressOrder =
+        eleccionGateway.emitTransaccionEnProgreso.mock.invocationCallOrder[0];
+      expect(progressOrder).toBeLessThan(registerOrder);
     });
 
     it('should throw NotFoundException when election does not exist', async () => {
@@ -185,6 +205,10 @@ describe('ElectionStateService', () => {
       await expect(service.transitionToAbierta(1)).rejects.toThrow(
         /debe estar en estado CONFIGURADA/,
       );
+      // VOTAR-481: no debe avisar "en progreso" si la precondición de estado falla.
+      expect(eleccionGateway.emitTransaccionEnProgreso).not.toHaveBeenCalled();
+      // VOTAR-481: tampoco "fallida" — nunca se mostró un spinner que limpiar.
+      expect(eleccionGateway.emitTransaccionFallida).not.toHaveBeenCalled();
     });
 
     it('should not persist DB state when blockchain sync fails', async () => {
@@ -222,6 +246,12 @@ describe('ElectionStateService', () => {
         EleccionEstado.ABIERTA,
       );
       expect(eleccionRepository.save).not.toHaveBeenCalled();
+      // VOTAR-481: el revert después de "en progreso" debe avisarse como
+      // falla, no dejar el spinner del cliente colgado.
+      expect(eleccionGateway.emitTransaccionFallida).toHaveBeenCalledWith(
+        1,
+        'APERTURA',
+      );
     });
 
     it('should not sync window/state when registerCandidates fails (VOTAR-345)', async () => {
@@ -334,6 +364,10 @@ describe('ElectionStateService', () => {
         /transición de estado en curso/,
       );
       expect(blockchainService.registerCandidates).toHaveBeenCalledTimes(1);
+      // VOTAR-481: el rechazo por lock queda solo en la excepción HTTP — un
+      // broadcast por WebSocket le pisaría el "en progreso" a la primera
+      // llamada, que sí tiene el lock.
+      expect(eleccionGateway.emitTransaccionFallida).not.toHaveBeenCalled();
 
       // Libera la primera llamada y confirma que termina bien.
       resolveRegisterCandidates!();
@@ -375,6 +409,14 @@ describe('ElectionStateService', () => {
       const saveOrder = eleccionRepository.save.mock.invocationCallOrder[0];
       expect(syncOrder).toBeLessThan(saveOrder);
       expect(result.estado).toBe(EleccionEstado.CERRADA);
+      // VOTAR-481: feedback WebSocket de "transacción en curso" antes de tocar blockchain.
+      expect(eleccionGateway.emitTransaccionEnProgreso).toHaveBeenCalledWith(
+        1,
+        'CIERRE',
+      );
+      const progressOrder =
+        eleccionGateway.emitTransaccionEnProgreso.mock.invocationCallOrder[0];
+      expect(progressOrder).toBeLessThan(syncOrder);
     });
 
     it('should throw when election is not in ABIERTA state', async () => {
@@ -384,6 +426,8 @@ describe('ElectionStateService', () => {
       await expect(service.transitionToCerrada(1)).rejects.toThrow(
         UnprocessableEntityException,
       );
+      expect(eleccionGateway.emitTransaccionEnProgreso).not.toHaveBeenCalled();
+      expect(eleccionGateway.emitTransaccionFallida).not.toHaveBeenCalled();
     });
 
     it('should not persist DB state when blockchain sync fails', async () => {
@@ -398,6 +442,46 @@ describe('ElectionStateService', () => {
       );
 
       expect(eleccionRepository.save).not.toHaveBeenCalled();
+      expect(eleccionGateway.emitTransaccionFallida).toHaveBeenCalledWith(
+        1,
+        'CIERRE',
+      );
+    });
+
+    it('rejects a concurrent cierre for the same election with ConflictException (VOTAR-481)', async () => {
+      const eleccion = { ...mockEleccion, estado: EleccionEstado.ABIERTA };
+      eleccionRepository.findOne.mockResolvedValue(eleccion);
+      eleccionRepository.save.mockResolvedValue({
+        ...eleccion,
+        estado: EleccionEstado.CERRADA,
+      });
+
+      // Deja la primera llamada "colgada" a propósito, para simular que el
+      // cierre automático del scheduler sigue en curso cuando llega un
+      // intento de cierre manual para el mismo comicio.
+      let resolveSync: () => void;
+      const pending = new Promise<void>((resolve) => {
+        resolveSync = resolve;
+      });
+      blockchainService.syncElectionState.mockImplementation(async () => {
+        await pending;
+        return { txHash: '0xdef456', blockNumber: 1 };
+      });
+
+      const firstCall = service.transitionToCerrada(1);
+
+      await expect(service.transitionToCerrada(1)).rejects.toThrow(
+        ConflictException,
+      );
+      // VOTAR-481: sin broadcast por WebSocket — pisaría el "en progreso"
+      // del cierre automático del scheduler, que sigue en curso.
+      expect(eleccionGateway.emitTransaccionFallida).not.toHaveBeenCalled();
+      expect(blockchainService.syncElectionState).toHaveBeenCalledTimes(1);
+
+      resolveSync!();
+      await expect(firstCall).resolves.toMatchObject({
+        estado: EleccionEstado.CERRADA,
+      });
     });
   });
 
