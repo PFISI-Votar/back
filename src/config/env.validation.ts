@@ -22,6 +22,41 @@ export const envValidationSchema = Joi.object({
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
 
+  /**
+   * VOTAR-498 — TLS estricto hacia PostgreSQL. En producción
+   * (DEVELOPMENT=false) se exige "verify-ca" o "verify-full"; "disable" solo
+   * se permite en desarrollo. Ver `resolveDatabaseSsl` en
+   * `src/config/database-ssl.config.ts`.
+   */
+  DB_SSL_MODE: Joi.when('DEVELOPMENT', {
+    is: false,
+    then: Joi.string().valid('verify-ca', 'verify-full').required(),
+    otherwise: Joi.string()
+      .valid('disable', 'require', 'verify-ca', 'verify-full')
+      .default('disable'),
+  }),
+  /** Ruta de archivo o PEM inline de la CA que firmó el certificado del servidor. */
+  DB_SSL_CA: Joi.string().allow('').optional(),
+  /** Certificado de cliente (mTLS opcional). */
+  DB_SSL_CERT: Joi.string().allow('').optional(),
+  /** Clave privada del certificado de cliente (mTLS opcional). */
+  DB_SSL_KEY: Joi.string().allow('').optional(),
+  /** Hostname esperado en el certificado del servidor (solo verify-full). */
+  DB_SSL_SERVERNAME: Joi.string().allow('').optional(),
+
+  /**
+   * VOTAR-498 — clave de cifrado a nivel de columna (AES-256-GCM) para
+   * secretos/PII que no se usan como criterio de búsqueda (totp_secret,
+   * autoridad_electoral.nombre, refresh_session.email/nombre). Distinta de
+   * BACKUP_ENCRYPTION_KEY (separación de funciones). Requerida en
+   * producción; opcional en desarrollo (passthrough en claro con warning).
+   */
+  DB_ENCRYPTION_KEY: Joi.when('DEVELOPMENT', {
+    is: false,
+    then: Joi.string().min(16).required(),
+    otherwise: Joi.string().min(16).optional(),
+  }),
+
   LOAD_BLOCKCHAIN_LOCAL: Joi.boolean()
     .truthy('true')
     .falsy('false')
@@ -41,6 +76,25 @@ export const envValidationSchema = Joi.object({
   JWT_VOTER_ACCESS_EXPIRES_IN: Joi.string().default('30m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('8h'),
   JWT_EXPIRES_IN: Joi.string().optional(),
+  /**
+   * VOTAR-492 §12.2 — timeout por inactividad de la sesión admin. El patrón
+   * matchea exactamente lo que soporta `parseDurationToSeconds` (evita el
+   * fallback silencioso a 3600 s). Tope absoluto: JWT_REFRESH_EXPIRES_IN.
+   */
+  SESSION_IDLE_TIMEOUT: Joi.string()
+    .pattern(/^\d+[smhd]$/)
+    .default('30m'),
+  /** Throttle de escritura de `refresh_session.last_activity_at`. */
+  SESSION_ACTIVITY_WRITE_INTERVAL: Joi.string()
+    .pattern(/^\d+[smhd]$/)
+    .default('60s'),
+  /**
+   * VOTAR-492 §12.2 — break-glass: identificadorSso separados por coma que
+   * pueden autenticarse con el bloqueo SSO activo.
+   */
+  AUTH_LOCKDOWN_ALLOWLIST: Joi.string().allow('').default(''),
+  /** TTL de la caché en proceso del estado de bloqueo (ms). Solo para tests. */
+  AUTH_LOCKDOWN_CACHE_TTL_MS: Joi.number().optional(),
   /** Emisor (iss) esperado en tokens de sesión / OIDC (VOTAR-314). */
   JWT_ISSUER: Joi.string().default('https://votar.local/idp'),
   /** Audiencia (aud) esperada en tokens de sesión / OIDC (VOTAR-314). */

@@ -18,4 +18,8 @@ export enum TipoEventoAudit {
   CREDENCIAL_VALIDACION_EMITIDA = 'CREDENCIAL_VALIDACION_EMITIDA',
   /** VOTAR-377: la Entidad de Firmas Digitales certificó un sufragio (FASE 2, actor = ANONIMO). */
   FIRMA_VALIDACION_EMITIDA = 'FIRMA_VALIDACION_EMITIDA',
+  /** VOTAR-492 §12.2: revocación de sesiones de refresh (individual / por usuario / global). */
+  SESION_REVOCADA = 'SESION_REVOCADA',
+  /** VOTAR-492 §12.2: activación/desactivación del bloqueo de flujos de autenticación SSO. */
+  BLOQUEO_AUTENTICACION = 'BLOQUEO_AUTENTICACION',
 }
