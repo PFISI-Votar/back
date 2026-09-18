@@ -16,10 +16,12 @@ regexes = [
   '''(?i)201a8e81e858f368259d1fac0ca309a1a70e722031c355f55860af059a04d012''',
 ]
 
+# Placeholders de CI y documentación (VOTAR-388 / VOTAR-498), no credenciales.
 [[allowlists]]
 description = "Placeholders de CI y de documentación, no credenciales"
 regexTarget = "line"
 regexes = [
   '''JWT_SECRET: test-secret-for-ci-min-16-chars''',
-  '''BACKUP_ENCRYPTION_KEY=cambiar-por-secreto-largo-o-64-hex''',
+  '''DB_ENCRYPTION_KEY: test-field-encryption-key-for-ci-min-16-chars''',
+  '''(?:BACKUP|DB)_ENCRYPTION_KEY=cambiar-por-secreto-largo-o-64-hex''',
 ]
