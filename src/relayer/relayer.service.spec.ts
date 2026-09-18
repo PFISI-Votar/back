@@ -144,11 +144,11 @@ describe('RelayerService — VOTAR-497', () => {
       proximoReintentoEnSegundos: 42,
     });
 
-    await expect(service.emitirAutorizacion(7, votanteHash)).rejects.toMatchObject(
-      {
-        status: HttpStatus.TOO_MANY_REQUESTS,
-      },
-    );
+    await expect(
+      service.emitirAutorizacion(7, votanteHash),
+    ).rejects.toMatchObject({
+      status: HttpStatus.TOO_MANY_REQUESTS,
+    });
     expect(capacidadRepository.save).not.toHaveBeenCalled();
   });
 

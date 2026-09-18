@@ -51,9 +51,9 @@ describe('VOTAR-497 relayer errors', () => {
     it('marca errores de nonce/replacement/timeout como posiblemente enviados', () => {
       expect(isLikelySubmittedError(new Error('nonce too low'))).toBe(true);
       expect(isLikelySubmittedError(new Error('already known'))).toBe(true);
-      expect(
-        isLikelySubmittedError(new Error('replacement underpriced')),
-      ).toBe(true);
+      expect(isLikelySubmittedError(new Error('replacement underpriced'))).toBe(
+        true,
+      );
       expect(isLikelySubmittedError(new Error('timeout waiting for tx'))).toBe(
         true,
       );

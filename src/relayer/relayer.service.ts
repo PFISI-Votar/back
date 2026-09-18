@@ -5,10 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
-import {
-  stripBytes32Prefix,
-  toBytes32Hex,
-} from '@/padron/utils/merkle.util';
+import { stripBytes32Prefix, toBytes32Hex } from '@/padron/utils/merkle.util';
 import { PadronService } from '@/padron/padron.service';
 import { RelayCastDto } from '@/relayer/dto/relay-cast.dto';
 import {
@@ -73,7 +70,8 @@ export class RelayerService {
       throw new HttpException(
         {
           statusCode: HttpStatus.FORBIDDEN,
-          message: 'No quedan intentos de sufragio disponibles para este comicio.',
+          message:
+            'No quedan intentos de sufragio disponibles para este comicio.',
         },
         HttpStatus.FORBIDDEN,
       );

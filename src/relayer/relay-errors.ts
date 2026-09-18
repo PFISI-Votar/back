@@ -152,7 +152,11 @@ export const isLikelySubmittedError = (error: unknown): boolean => {
     return true;
   }
   if (error && typeof error === 'object' && 'code' in error) {
-    const code = String((error as { code?: unknown }).code ?? '');
+    const rawCode = (error as { code?: unknown }).code;
+    const code =
+      typeof rawCode === 'string' || typeof rawCode === 'number'
+        ? String(rawCode)
+        : '';
     if (
       /TIMEOUT|NONCE|REPLACEMENT|NETWORK_ERROR|SERVER_ERROR|UNKNOWN_ERROR/i.test(
         code,

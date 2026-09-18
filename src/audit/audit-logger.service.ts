@@ -366,7 +366,8 @@ export class AuditLoggerService {
       idEleccion: input.idEleccion,
       tipoEvento: TipoEventoAudit.RELAYER_CAST_ENVIADO,
       actorId: 'ANONIMO',
-      descripcion: 'Cast transmitido por el relayer (registro anónimo off-chain)',
+      descripcion:
+        'Cast transmitido por el relayer (registro anónimo off-chain)',
       endpoint: input.endpoint ?? '/relayer/:idEleccion/transmitir',
       ipOrigenRaw: null,
       datosAdicionales: null,
