@@ -26,6 +26,13 @@ export type ResultadosActualizadosPayload = {
 };
 
 /**
+ * VOTAR-481: distingue qué transición on-chain está en curso o en conflicto,
+ * para que el cliente pueda mostrar un mensaje específico ("abriendo",
+ * "cerrando") en lugar de un spinner genérico.
+ */
+export type TransaccionEleccionTipo = 'APERTURA' | 'CIERRE';
+
+/**
  * Gateway WebSocket para eventos de elecciones en tiempo real.
  * Emite eventos cuando una elección cambia de estado (ej: apertura automática).
  * VOTAR-364: rooms por comicio para push de resultados del Dashboard público.
@@ -110,6 +117,48 @@ export class EleccionGateway
   emitEleccionAbierta(idEleccion: number): void {
     this.logger.log(`Emitiendo evento de apertura para elección ${idEleccion}`);
     this.server.emit('eleccion:abierta', { idEleccion });
+  }
+
+  /**
+   * VOTAR-481 — avisa a los clientes que una transacción on-chain de
+   * apertura/cierre (manual o automática) fue tomada por el backend y está
+   * en curso, para que el usuario no interprete la demora de confirmación
+   * en Sepolia como una falla silenciosa.
+   */
+  emitTransaccionEnProgreso(
+    idEleccion: number,
+    tipo: TransaccionEleccionTipo,
+  ): void {
+    this.logger.log(
+      `Emitiendo transacción en progreso (${tipo}) para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:transaccion-en-progreso', {
+      idEleccion,
+      tipo,
+    });
+  }
+
+  /**
+   * VOTAR-481 — avisa que la transacción on-chain de apertura/cierre que
+   * estaba en curso (ver `emitTransaccionEnProgreso`) terminó en falla o
+   * revert, para que el cliente pueda limpiar el spinner/toast de carga en
+   * vez de dejarlo colgado indefinidamente. El conflicto de lock (409) NO
+   * emite este evento ni ninguno por WebSocket: ya le llega al solicitante
+   * por la respuesta HTTP, y transmitirlo a todos los clientes conectados
+   * pisaría el feedback de "en progreso" de la transacción que sí tiene
+   * el lock.
+   */
+  emitTransaccionFallida(
+    idEleccion: number,
+    tipo: TransaccionEleccionTipo,
+  ): void {
+    this.logger.warn(
+      `Emitiendo falla de transacción (${tipo}) para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:transaccion-fallida', {
+      idEleccion,
+      tipo,
+    });
   }
 
   /**
