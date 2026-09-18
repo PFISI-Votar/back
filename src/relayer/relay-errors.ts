@@ -102,9 +102,7 @@ export const mapCastFailure = (error: unknown): RelayErrorBody => {
       canResign: false,
     });
   }
-  if (
-    /timeout|ETIMEDOUT|ECONNRESET|network|fetch failed|503|429/i.test(message)
-  ) {
+  if (isTransientNetworkMessage(message)) {
     return body({
       statusCode: 503,
       code: 'network',
@@ -125,6 +123,45 @@ export const mapCastFailure = (error: unknown): RelayErrorBody => {
     canRetrySend: true,
     canResign: true,
   });
+};
+
+/** Mensajes de red/transitorios; evita falsos positivos como "unsupported network". */
+const isTransientNetworkMessage = (message: string): boolean =>
+  /ETIMEDOUT|ECONNRESET|fetch failed|socket hang up/i.test(message) ||
+  /\btimeout\b/i.test(message) ||
+  /\b(503|429)\b/.test(message) ||
+  /\bnetwork (error|request failed|unreachable)\b/i.test(message) ||
+  /failed to fetch|networkerror/i.test(message);
+
+/**
+ * True cuando el fallo del broadcast sugiere que la tx pudo haber salido
+ * (nonce/replacement/timeout/already known): no liberar la capacidad.
+ */
+export const isLikelySubmittedError = (error: unknown): boolean => {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === 'string'
+        ? error
+        : '';
+  if (
+    /already known|nonce|replacement|timeout|underpriced|replacement underpriced/i.test(
+      message,
+    )
+  ) {
+    return true;
+  }
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = String((error as { code?: unknown }).code ?? '');
+    if (
+      /TIMEOUT|NONCE|REPLACEMENT|NETWORK_ERROR|SERVER_ERROR|UNKNOWN_ERROR/i.test(
+        code,
+      )
+    ) {
+      return true;
+    }
+  }
+  return false;
 };
 
 export const mapRevertName = (

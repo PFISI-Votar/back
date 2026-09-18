@@ -16,8 +16,9 @@ import {
 
 const DEFAULT_VAULT_PATH = 'vault/secrets.vault.json';
 
+/** Alineado con resolveIsProduction: DEVELOPMENT=false ⇒ producción (salvo Jest). */
 export const isProductionRuntime = (): boolean =>
-  process.env.NODE_ENV !== 'test' && process.env.DEVELOPMENT !== 'true';
+  process.env.DEVELOPMENT === 'false' && process.env.NODE_ENV !== 'test';
 
 export const resolveVaultProvider = (): string =>
   (process.env.SECRETS_VAULT_PROVIDER ?? 'env').trim().toLowerCase();
@@ -96,6 +97,14 @@ export const hydrateSecretsFromVault = async (): Promise<void> => {
       throw new Error(
         `Claves clasificadas presentes en el entorno y ausentes del vault: ${leaked.join(', ')}. ` +
           'Sellalas con npm run vault:seal y eliminalas del .env.',
+      );
+    }
+    const stillInEnv = CLASSIFIED_SECRET_NAMES.filter(
+      (name) => Boolean(process.env[name]?.trim()) && Boolean(secrets[name]),
+    );
+    if (stillInEnv.length > 0) {
+      throw new Error(
+        `Claves clasificadas presentes en el entorno y también en el vault; eliminá del .env: ${stillInEnv.join(', ')}`,
       );
     }
   }

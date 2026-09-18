@@ -7,6 +7,8 @@ import {
 } from 'node:crypto';
 import type { ClassifiedSecrets } from '@/vault/classified-secrets';
 
+/** Envelope propio del vault (scrypt/AES-GCM); distinto de backup.crypto a propósito. */
+
 const SCRYPT_N = 16_384;
 const SCRYPT_R = 8;
 const SCRYPT_P = 1;

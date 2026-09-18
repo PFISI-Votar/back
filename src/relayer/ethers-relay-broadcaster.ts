@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import {
   Contract,
+  NonceManager,
   Wallet,
   type ContractTransactionResponse,
   type Provider,
@@ -14,6 +15,7 @@ import { RpcProviderFactory } from '@/blockchain/rpc/rpc-provider.factory';
 import { BALLOT_CAST_ABI } from '@/relayer/ballot-cast.abi';
 import {
   applyGasMargin,
+  isLikelySubmittedError,
   mapCastFailure,
   RelayCastFailedError,
 } from '@/relayer/relay-errors';
@@ -38,6 +40,8 @@ export type RelayBroadcastInput = {
 @Injectable()
 export class EthersRelayBroadcaster {
   private readonly logger = new Logger(EthersRelayBroadcaster.name);
+  /** Un solo NonceManager por proceso evita colisiones de nonce en casts concurrentes. */
+  private nonceManagedSigner: NonceManager | null = null;
 
   constructor(
     private readonly configService: ConfigService,
@@ -46,12 +50,11 @@ export class EthersRelayBroadcaster {
   ) {}
 
   async castSignedVote(input: RelayBroadcastInput): Promise<string> {
-    const provider = this.requireProvider();
-    const wallet = new Wallet(this.requireRelayerKey(), provider);
+    const signer = this.requireSigner();
     const contract = new Contract(
       input.contractAddress,
       BALLOT_CAST_ABI,
-      wallet,
+      signer,
     );
     const args = [
       {
@@ -92,8 +95,21 @@ export class EthersRelayBroadcaster {
       );
       return tx.hash;
     } catch (error) {
-      throw new RelayCastFailedError(mapCastFailure(error), true);
+      throw new RelayCastFailedError(
+        mapCastFailure(error),
+        isLikelySubmittedError(error),
+      );
     }
+  }
+
+  private requireSigner(): NonceManager {
+    if (this.nonceManagedSigner) {
+      return this.nonceManagedSigner;
+    }
+    const provider = this.requireProvider();
+    const wallet = new Wallet(this.requireRelayerKey(), provider);
+    this.nonceManagedSigner = new NonceManager(wallet);
+    return this.nonceManagedSigner;
   }
 
   private requireProvider(): Provider {

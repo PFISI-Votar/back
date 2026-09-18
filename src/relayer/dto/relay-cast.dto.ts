@@ -1,7 +1,8 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   IsArray,
+  IsOptional,
   IsString,
   Matches,
   MaxLength,
@@ -33,6 +34,7 @@ export class RelayCastDto {
   @ArrayMaxSize(32)
   @IsString({ each: true })
   @Matches(UINT, { each: true })
+  @MaxLength(20, { each: true })
   candidateIds: string[];
 
   @ApiProperty({
@@ -58,12 +60,14 @@ export class RelayCastDto {
   @Matches(BYTES)
   validatorSignature: string;
 
-  @ApiProperty({ type: [String] })
+  /** Vestigial: el servidor obtiene la prueba del padrón; se acepta por compat. */
+  @ApiPropertyOptional({ type: [String], required: false })
+  @IsOptional()
   @IsArray()
   @ArrayMaxSize(64)
   @IsString({ each: true })
   @Matches(BYTES32, { each: true })
-  merkleProof: string[];
+  merkleProof?: string[];
 
   @ApiProperty({
     description:

@@ -138,6 +138,8 @@ describe('VOTAR-379 desvinculación identidad↔voto (esquema)', () => {
       expect(columns).not.toContain(forbidden);
     }
     expect(columns).toContain('token_hash');
+    // clave_intento: solo cooldown off-chain (VOTAR-325/328); no es contenido del voto.
+    expect(columns).toContain('clave_intento');
   });
 
   it('UAT-02: no hay relación TypeORM desde entidades de voto hacia padrón/votante', () => {

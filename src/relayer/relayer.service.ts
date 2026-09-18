@@ -1,9 +1,14 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { HttpException, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import {
+  stripBytes32Prefix,
+  toBytes32Hex,
+} from '@/padron/utils/merkle.util';
 import { PadronService } from '@/padron/padron.service';
 import { RelayCastDto } from '@/relayer/dto/relay-cast.dto';
 import {
@@ -13,21 +18,17 @@ import {
 import { RelayerCapacidad } from '@/relayer/entities/relayer-capacidad.entity';
 import { EthersRelayBroadcaster } from '@/relayer/ethers-relay-broadcaster';
 import { RelayCastFailedError } from '@/relayer/relay-errors';
+import { RevotePolicyService } from '@/voto/services/revote-policy.service';
 
 const DEFAULT_TTL_MS = 120_000;
 
 const hashToken = (token: string): string =>
   createHash('sha256').update(token).digest('hex');
 
-/** Hoja almacenada en padrón: 64 hex sin 0x. Calldata: bytes32 con 0x. */
-const strip0x = (value: string): string =>
-  value.startsWith('0x') || value.startsWith('0X') ? value.slice(2) : value;
-
-const toBytes32 = (value: string): string =>
-  `0x${strip0x(value).toLowerCase()}`;
-
 @Injectable()
 export class RelayerService {
+  private readonly logger = new Logger(RelayerService.name);
+
   constructor(
     @InjectRepository(RelayerCapacidad)
     private readonly capacidadRepository: Repository<RelayerCapacidad>,
@@ -35,6 +36,8 @@ export class RelayerService {
     private readonly blockchainService: BlockchainService,
     private readonly broadcaster: EthersRelayBroadcaster,
     private readonly configService: ConfigService,
+    private readonly revotePolicyService: RevotePolicyService,
+    private readonly auditLogger: AuditLoggerService,
   ) {}
 
   /**
@@ -49,6 +52,33 @@ export class RelayerService {
       idEleccion,
       votanteHash,
     );
+    const estado = await this.revotePolicyService.obtenerEstado(
+      idEleccion,
+      votanteHash,
+    );
+    if (!estado.puedeVotar) {
+      if (
+        typeof estado.proximoReintentoEnSegundos === 'number' &&
+        estado.proximoReintentoEnSegundos > 0
+      ) {
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.TOO_MANY_REQUESTS,
+            message: 'Debe esperar antes de volver a sufragar.',
+            proximoReintentoEnSegundos: estado.proximoReintentoEnSegundos,
+          },
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
+      throw new HttpException(
+        {
+          statusCode: HttpStatus.FORBIDDEN,
+          message: 'No quedan intentos de sufragio disponibles para este comicio.',
+        },
+        HttpStatus.FORBIDDEN,
+      );
+    }
+
     const relayToken = randomBytes(32).toString('hex');
     const ttlMs = Number(
       this.configService.get<number>('RELAYER_CAPABILITY_TTL_MS') ??
@@ -59,10 +89,15 @@ export class RelayerService {
       this.capacidadRepository.create({
         tokenHash: hashToken(relayToken),
         idEleccion,
+        claveIntento: votanteHash,
         expiraEn,
         consumidaEn: null,
       }),
     );
+    await this.auditLogger.logRelayerCapacidadEmitida({
+      idEleccion,
+      actorId: votanteHash,
+    });
     return { relayToken, expiresAt: expiraEn.toISOString() };
   }
 
@@ -102,26 +137,51 @@ export class RelayerService {
       );
     }
 
+    const capacidad = await this.capacidadRepository.findOne({
+      where: { tokenHash, idEleccion },
+    });
+    const claveIntento = capacidad?.claveIntento;
+
     try {
       const proof = await this.padronService.obtenerProofVotante(
         idEleccion,
-        strip0x(dto.voterLeaf).toLowerCase(),
+        stripBytes32Prefix(dto.voterLeaf),
       );
       const { ballot } =
         await this.blockchainService.resolveElectionContracts(idEleccion);
       const txHash = await this.broadcaster.castSignedVote({
         contractAddress: ballot,
         electionId: idEleccion,
-        voterLeaf: toBytes32(dto.voterLeaf),
-        nullifier: toBytes32(dto.nullifier),
-        selectionHash: toBytes32(dto.selectionHash),
+        voterLeaf: toBytes32Hex(dto.voterLeaf),
+        nullifier: toBytes32Hex(dto.nullifier),
+        selectionHash: toBytes32Hex(dto.selectionHash),
         candidateIds: dto.candidateIds.map((id) => BigInt(id)),
         timestamp: BigInt(dto.timestamp),
         expectedSigner: dto.expectedSigner,
-        merkleProof: proof.merkleProof.map((sibling) => toBytes32(sibling)),
+        merkleProof: proof.merkleProof.map((sibling) => toBytes32Hex(sibling)),
         signature: dto.signature,
         validatorSignature: dto.validatorSignature,
       });
+
+      if (claveIntento) {
+        try {
+          await this.revotePolicyService.registrarConsumo(
+            idEleccion,
+            claveIntento,
+          );
+        } catch (consumoError) {
+          // El cast ya se envió: no fallar la respuesta por el contador off-chain.
+          this.logger.warn(
+            `registrarConsumo falló tras cast exitoso comicio=${idEleccion}: ${
+              consumoError instanceof Error
+                ? consumoError.message
+                : String(consumoError)
+            }`,
+          );
+        }
+      }
+
+      await this.auditLogger.logRelayerCastEnviado({ idEleccion });
       return { txHash };
     } catch (error) {
       if (!(error instanceof RelayCastFailedError) || !error.submitted) {

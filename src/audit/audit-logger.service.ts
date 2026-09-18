@@ -39,6 +39,20 @@ export interface LogCredencialValidacionEmitidaInput {
   timestamp?: Date;
 }
 
+export interface LogRelayerCapacidadEmitidaInput {
+  idEleccion: number;
+  /** Hash del votante (se ofusca al persistir; no se guarda en claro). */
+  actorId: string;
+  ipOrigen?: string | null;
+  timestamp?: Date;
+}
+
+export interface LogRelayerCastEnviadoInput {
+  idEleccion: number;
+  timestamp?: Date;
+  endpoint?: string;
+}
+
 export interface LogFirmaValidacionEmitidaInput {
   idEleccion: number;
   /** Address de la Entidad de Firmas Digitales (VALIDATOR_ROLE). */
@@ -292,6 +306,50 @@ export class AuditLoggerService {
         identificadorTerminal: terminal,
       },
       timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-497 — emisión autenticada de capacidad de gas. Actor ofuscado; nunca
+   * token, nullifier, selección ni txHash.
+   */
+  async logRelayerCapacidadEmitida(
+    input: LogRelayerCapacidadEmitidaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen ?? undefined);
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.RELAYER_CAPACIDAD_EMITIDA,
+      actorId: input.actorId,
+      descripcion: `Capacidad de relayer emitida para el comicio ${input.idEleccion} al votante con ID ofuscado ${actorOfuscado}`,
+      endpoint: '/relayer/:idEleccion/autorizacion',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-497 — broadcast anónimo vía relayer. Sin identidad ni campos de voto.
+   */
+  async logRelayerCastEnviado(
+    input: LogRelayerCastEnviadoInput,
+  ): Promise<AuditLog> {
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.RELAYER_CAST_ENVIADO,
+      actorId: 'ANONIMO',
+      descripcion: 'Cast transmitido por el relayer (registro anónimo off-chain)',
+      endpoint: input.endpoint ?? '/relayer/:idEleccion/transmitir',
+      ipOrigenRaw: null,
+      datosAdicionales: null,
+      timestamp: input.timestamp,
+      preservarActorLiteral: true,
+      omitirTerminal: true,
     });
   }
 

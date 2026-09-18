@@ -79,4 +79,29 @@ describe('VOTAR-497 vault de secretos', () => {
     expect(readFileSync(filePath, 'utf8')).not.toContain('11'.repeat(32));
     rmSync(dir, { recursive: true, force: true });
   });
+
+  it('en producción rechaza claves clasificadas que siguen en plaintext pese al vault', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'votar-vault-plain-'));
+    const filePath = join(dir, 'secrets.vault.json');
+    writeFileSync(
+      filePath,
+      JSON.stringify(
+        sealEncryptedFile(
+          { PRIVATE_KEY: '0x' + '22'.repeat(32) },
+          'master-key-de-prueba-32',
+        ),
+      ),
+    );
+    process.env.NODE_ENV = 'production';
+    process.env.DEVELOPMENT = 'false';
+    process.env.SECRETS_VAULT_PROVIDER = 'encrypted-file';
+    process.env.VAULT_FILE_PATH = filePath;
+    process.env.VAULT_MASTER_KEY = 'master-key-de-prueba-32';
+    process.env.PRIVATE_KEY = '0x' + '33'.repeat(32);
+
+    await expect(hydrateSecretsFromVault()).rejects.toThrow(
+      /eliminá del \.env: PRIVATE_KEY/,
+    );
+    rmSync(dir, { recursive: true, force: true });
+  });
 });

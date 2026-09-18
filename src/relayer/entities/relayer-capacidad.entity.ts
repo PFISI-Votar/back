@@ -8,9 +8,10 @@ import {
 
 /**
  * VOTAR-497 — capacidad de un solo uso para que el relayer pague el gas.
- * Guarda únicamente el hash del token y el comicio. No persiste votante_hash,
- * hoja del padrón, nullifier, selección ni txHash (invariante VOTAR-379):
- * la emisión autenticada y el broadcast anónimo no comparten fila.
+ * Guarda el hash del token, el comicio y `clave_intento` (votanteHash) solo
+ * para cooldown off-chain (VOTAR-325/328). No persiste nullifier, selección,
+ * txHash ni hoja del padrón (invariante VOTAR-379): la emisión autenticada y
+ * el broadcast anónimo no comparten contenido del sufragio.
  */
 @Entity('relayer_capacidad')
 export class RelayerCapacidad {
@@ -24,6 +25,13 @@ export class RelayerCapacidad {
   @Index()
   @Column({ name: 'id_eleccion', type: 'int' })
   idEleccion: number;
+
+  /**
+   * Ancla de cooldown off-chain (votanteHash). No es vínculo con contenido
+   * del voto; no confundir con votante_hash en el esquema de desvinculación.
+   */
+  @Column({ name: 'clave_intento', type: 'varchar', length: 64 })
+  claveIntento: string;
 
   @Column({ name: 'expira_en', type: 'timestamptz' })
   expiraEn: Date;

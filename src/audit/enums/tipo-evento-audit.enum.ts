@@ -18,4 +18,8 @@ export enum TipoEventoAudit {
   CREDENCIAL_VALIDACION_EMITIDA = 'CREDENCIAL_VALIDACION_EMITIDA',
   /** VOTAR-377: la Entidad de Firmas Digitales certificó un sufragio (FASE 2, actor = ANONIMO). */
   FIRMA_VALIDACION_EMITIDA = 'FIRMA_VALIDACION_EMITIDA',
+  /** VOTAR-497: emisión autenticada de capacidad de gas (actor = votante ofuscado). */
+  RELAYER_CAPACIDAD_EMITIDA = 'RELAYER_CAPACIDAD_EMITIDA',
+  /** VOTAR-497: broadcast anónimo del cast vía relayer (actor = ANONIMO; sin voto/nullifier/tx). */
+  RELAYER_CAST_ENVIADO = 'RELAYER_CAST_ENVIADO',
 }
