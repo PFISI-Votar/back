@@ -8,6 +8,7 @@ import { CredencialValidacion } from '@/entidad-firmas/entities/credencial-valid
 import { EmisionCredencial } from '@/entidad-firmas/entities/emision-credencial.entity';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
+import { RelayerCapacidad } from '@/relayer/entities/relayer-capacidad.entity';
 import { VotoController } from '@/voto/controllers/voto.controller';
 import { VotoService } from '@/voto/services/voto.service';
 
@@ -20,6 +21,7 @@ void [
   PadronVotante,
   CredencialValidacion,
   EmisionCredencial,
+  RelayerCapacidad,
 ];
 
 /**
@@ -113,6 +115,31 @@ describe('VOTAR-379 desvinculación identidad↔voto (esquema)', () => {
       );
     });
     expect(relations).toHaveLength(0);
+  });
+
+  it('VOTAR-497: relayer_capacidad no guarda identidad ni contenido del voto', () => {
+    const columns = getMetadataArgsStorage()
+      .columns.filter((column) => {
+        const target =
+          typeof column.target === 'function'
+            ? column.target.name
+            : String(column.target);
+        return target === 'RelayerCapacidad';
+      })
+      .map((column) => String(column.options?.name ?? column.propertyName));
+    for (const forbidden of [
+      'votante_hash',
+      'hash_hoja',
+      'nullifier',
+      'selection_hash',
+      'tx_hash',
+      'relay_token',
+    ]) {
+      expect(columns).not.toContain(forbidden);
+    }
+    expect(columns).toContain('token_hash');
+    // clave_intento: solo cooldown off-chain (VOTAR-325/328); no es contenido del voto.
+    expect(columns).toContain('clave_intento');
   });
 
   it('UAT-02: no hay relación TypeORM desde entidades de voto hacia padrón/votante', () => {

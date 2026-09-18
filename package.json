@@ -38,6 +38,7 @@
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs",
     "sync:election-factory": "ts-node -r tsconfig-paths/register scripts/sync-election-factory.ts",
     "validate:exported-abis": "ts-node -r tsconfig-paths/register scripts/validate-exported-abis.ts",
+    "vault:seal": "ts-node -r tsconfig-paths/register scripts/seal-vault.ts",
     "licenses:check": "node scripts/check-oss-licenses.mjs"
   },
   "dependencies": {

@@ -43,6 +43,10 @@ lerna-debug.log*
 .env.local
 .env.blockchain.local
 
+# VOTAR-497 — vault cifrado y clave KMS de software (no commitear)
+vault/*.vault.json
+vault/kms.key
+
 # temp directory
 .temp
 .tmp
