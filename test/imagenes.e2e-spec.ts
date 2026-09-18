@@ -28,6 +28,7 @@ import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/
 import {
   createAuthedRequest,
   type AuthedRequest,
+  issueTestSessionToken,
 } from './helpers/auth-test.helper';
 
 // Mismo grafo de entidades que crear-eleccion.e2e-spec.ts: AuditLog y
@@ -116,7 +117,7 @@ describe('Imágenes electorales (e2e) — VOTAR-466', () => {
     );
     await app.init();
 
-    adminToken = app.get(JwtService).sign({
+    adminToken = await issueTestSessionToken(dataSource, app.get(JwtService), {
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
     });

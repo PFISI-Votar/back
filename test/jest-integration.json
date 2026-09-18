@@ -4,6 +4,7 @@
   "testEnvironment": "node",
   "setupFiles": ["<rootDir>/test/setup-e2e-env.ts"],
   "testMatch": ["**/test/**/*.integration-spec.ts"],
+  "maxWorkers": 1,
   "transform": {
     "^.+\\.(t|j)s$": "ts-jest"
   },

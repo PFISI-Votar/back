@@ -37,8 +37,14 @@ jobs:
       DB_USERNAME: votar
       DB_PASSWORD: votar
       DB_NAME: votar_test
+      DB_APP_USERNAME: votar_app
+      DB_APP_PASSWORD: votar_app_ci
       JWT_SECRET: test-secret-for-ci-min-16-chars
       DEVELOPMENT: 'true'
+      # VOTAR-498: el servicio postgres:16 de CI no tiene certificados TLS
+      # configurados; DEVELOPMENT=true permite DB_SSL_MODE=disable.
+      DB_SSL_MODE: disable
+      DB_ENCRYPTION_KEY: test-field-encryption-key-for-ci-min-16-chars
 
     steps:
       - name: Checkout code
@@ -52,6 +58,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check open-source licenses
+        run: npm run licenses:check
 
       - name: Lint
         run: npm run lint:ci
