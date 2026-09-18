@@ -262,6 +262,8 @@ describe('AuthAdmin (e2e) — US-313', () => {
     expect(cookieHeader).toContain('votar_refresh_token=');
     expect(cookieHeader).toContain('votar_access_token=');
     expect(cookieHeader.toLowerCase()).toContain('httponly');
+    expect(cookieHeader).toMatch(/SameSite=Strict/i);
+    expect(cookieHeader).not.toMatch(/SameSite=Lax/i);
 
     const accessTokenMatch = cookieHeader.match(/votar_access_token=([^;]+)/);
     const accessToken = accessTokenMatch?.[1];
@@ -289,16 +291,25 @@ describe('AuthAdmin (e2e) — US-313', () => {
 
     expect(refreshBody.accessToken).toBeUndefined();
     expect(refreshBody.user.role).toBe(JwtRole.ELECTION_ADMIN);
-    expect(
-      (refreshResponse.headers['set-cookie'] as string[]).join(';'),
-    ).toContain('votar_access_token=');
+    const refreshCookies = (
+      refreshResponse.headers['set-cookie'] as string[]
+    ).join(';');
+    expect(refreshCookies).toContain('votar_access_token=');
+    expect(refreshCookies).toMatch(/SameSite=Strict/i);
   });
 
   it('POST /auth/logout revoca la sesión de refresh', async () => {
     const agent = request.agent(app.getHttpServer());
     await loginAdminCompleting2fa(agent);
 
-    await agent.post('/auth/logout').expect(204);
+    const logoutResponse = await agent.post('/auth/logout').expect(204);
+    const clearedCookies = (
+      logoutResponse.headers['set-cookie'] as string[]
+    ).join(';');
+    expect(clearedCookies).toContain('votar_access_token=');
+    expect(clearedCookies).toContain('votar_refresh_token=');
+    expect(clearedCookies).toMatch(/SameSite=Strict/i);
+    expect(clearedCookies).not.toMatch(/SameSite=Lax/i);
     await agent.post('/auth/refresh').expect(401);
   });
 
