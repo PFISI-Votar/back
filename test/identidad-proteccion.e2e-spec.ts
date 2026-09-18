@@ -20,6 +20,7 @@ import {
 } from '@/auth/constants/jwt-identity.constants';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { JwtKeysService } from '@/auth/services/jwt-keys.service';
@@ -32,7 +33,7 @@ import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
 import { ConfiguracionDatosCandidato } from '@/eleccion/candidato/entities/configuracion-datos-candidato.entity';
 import { CampoDatosCandidato } from '@/eleccion/candidato/entities/campo-datos-candidato.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
-import { withBearer } from './helpers/auth-test.helper';
+import { issueTestSessionToken, withBearer } from './helpers/auth-test.helper';
 
 const entities = [
   Eleccion,
@@ -45,6 +46,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
 ];
 
@@ -149,7 +151,7 @@ describe('Protección de identidad (e2e) — VOTAR-314', () => {
   });
 
   it('UAT-01: JWT firmado válido vía JWKS accede a endpoint protegido con 200', async () => {
-    const token = jwtService.sign({
+    const token = await issueTestSessionToken(dataSource, jwtService, {
       sub: '14988',
       role: JwtRole.ELECTION_ADMIN,
       email: 'admin@test.local',

@@ -28,6 +28,7 @@ describe('AuthService', () => {
 
   const issueSessionMock = jest.fn().mockResolvedValue({
     refreshToken: 'refresh-token',
+    idSession: 101,
   });
   const rotateSessionMock = jest.fn();
   const revokeSessionMock = jest.fn();
@@ -96,7 +97,10 @@ describe('AuthService', () => {
     autoridadRepository = module.get(getRepositoryToken(AutoridadElectoral));
     jest.clearAllMocks();
     signAsyncMock.mockResolvedValue('signed-jwt');
-    issueSessionMock.mockResolvedValue({ refreshToken: 'refresh-token' });
+    issueSessionMock.mockResolvedValue({
+      refreshToken: 'refresh-token',
+      idSession: 101,
+    });
     logLoginMock.mockResolvedValue(undefined);
     createSecretMock.mockReturnValue('BASE32SECRET');
     buildOtpauthUrlMock.mockReturnValue('otpauth://totp/VOTAR:admin@test');
@@ -185,10 +189,26 @@ describe('AuthService', () => {
       return;
     }
     expect(signAsyncMock).toHaveBeenCalledWith(
-      expect.objectContaining({ role: JwtRole.VOTER }),
+      expect.objectContaining({ role: JwtRole.VOTER, sid: 101 }),
       expect.any(Object),
     );
     expect(actualResult.session.response.user.role).toBe(JwtRole.VOTER);
+  });
+
+  it('embeds the refresh session id as the sid claim on refresh', async () => {
+    rotateSessionMock.mockResolvedValue({
+      refreshToken: 'next-refresh-token',
+      idSession: 202,
+      identity: { identificadorSso: '14988', sub: '14988' },
+    });
+    autoridadRepository.findOne.mockResolvedValue(baseAutoridad());
+
+    await service.refreshSession('refresh-token');
+
+    expect(signAsyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({ sid: 202 }),
+      expect.any(Object),
+    );
   });
 
   it('resolves ELECTION_ADMIN when authority is registered by legajo but login uses nick', async () => {
@@ -303,6 +323,7 @@ describe('AuthService', () => {
   it('revalidates authority role when refreshing session', async () => {
     rotateSessionMock.mockResolvedValue({
       refreshToken: 'next-refresh-token',
+      idSession: 202,
       identity: {
         identificadorSso: '14988',
         sub: '14988',
@@ -320,6 +341,52 @@ describe('AuthService', () => {
 
     expect(rotateSessionMock).toHaveBeenCalledWith('refresh-token');
     expect(actualResult.response.user.role).toBe(JwtRole.ELECTION_ADMIN);
+    expect(actualResult.response.user.esPauser).toBe(false);
     expect(actualResult.refreshToken).toBe('next-refresh-token');
+  });
+
+  it('carries esPauser=true through refresh when the account has rol PAUSER', async () => {
+    rotateSessionMock.mockResolvedValue({
+      refreshToken: 'next-refresh-token',
+      idSession: 202,
+      identity: { identificadorSso: '14988', sub: '14988' },
+    });
+    autoridadRepository.findOne.mockResolvedValue({
+      ...baseAutoridad(),
+      rol: RolAutoridad.PAUSER,
+    });
+
+    const actualResult = await service.refreshSession('refresh-token');
+
+    expect(actualResult.response.user.esPauser).toBe(true);
+  });
+
+  describe('esPauser', () => {
+    it('resolves true only for accounts with rol PAUSER', async () => {
+      autoridadRepository.findOne.mockResolvedValue({
+        ...baseAutoridad(),
+        rol: RolAutoridad.PAUSER,
+      });
+
+      await expect(
+        service.esPauser({ sub: '14988', role: JwtRole.ELECTION_ADMIN }),
+      ).resolves.toBe(true);
+    });
+
+    it('resolves false for a plain ELECTION_ADMIN', async () => {
+      autoridadRepository.findOne.mockResolvedValue(baseAutoridad());
+
+      await expect(
+        service.esPauser({ sub: '14988', role: JwtRole.ELECTION_ADMIN }),
+      ).resolves.toBe(false);
+    });
+
+    it('resolves false when there is no matching autoridad', async () => {
+      autoridadRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.esPauser({ sub: 'desconocido', role: JwtRole.VOTER }),
+      ).resolves.toBe(false);
+    });
   });
 });

@@ -14,6 +14,7 @@ import { AuthModule } from '@/auth/auth.module';
 import { VOTER_ACCESS_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
@@ -39,6 +40,7 @@ import { extractVoterAccessToken } from './helpers/voter-auth-test.helper';
 import {
   createAuthedRequest,
   type AuthedRequest,
+  issueTestSessionToken,
 } from './helpers/auth-test.helper';
 
 const VOTER_DNI = '30222333';
@@ -59,6 +61,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
   PadronElectoral,
   PadronVotante,
@@ -181,9 +184,11 @@ describe('EntidadFirmasDigitales (e2e) — VOTAR-377', () => {
     );
     await app.init();
 
-    const adminToken = app
-      .get(JwtService)
-      .sign({ sub: '14988', role: JwtRole.ELECTION_ADMIN });
+    const adminToken = await issueTestSessionToken(
+      dataSource,
+      app.get(JwtService),
+      { sub: '14988', role: JwtRole.ELECTION_ADMIN },
+    );
     adminReq = createAuthedRequest(app, adminToken);
 
     const createResponse = await adminReq

@@ -26,7 +26,9 @@ export type JwtRejectionReason =
   | 'invalid_audience'
   | 'token_expired'
   | 'token_missing'
-  | 'token_malformed';
+  | 'token_malformed'
+  | 'session_revoked'
+  | 'session_idle';
 
 @Injectable()
 export class JwksService implements OnModuleInit {
@@ -191,6 +193,12 @@ export const classifyJwtRejection = (
     .join(' ')
     .toLowerCase();
 
+  if (message.includes('session_idle')) {
+    return 'session_idle';
+  }
+  if (message.includes('session_revoked')) {
+    return 'session_revoked';
+  }
   if (!message || message.includes('no auth token')) {
     return 'token_missing';
   }
