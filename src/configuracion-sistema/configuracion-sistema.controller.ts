@@ -4,9 +4,12 @@ import {
   Delete,
   Get,
   Patch,
+  Put,
+  Req,
   UploadedFile,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBody,
@@ -16,7 +19,13 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { memoryStorage } from 'multer';
+import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
+import { PauserAuth } from '@/auth/decorators/pauser-auth.decorator';
+import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
+import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
+import { resolveClientIp } from '@/common/utils/resolve-client-ip.util';
+import { ActualizarAuthBloqueoDto } from '@/configuracion-sistema/dto/actualizar-auth-bloqueo.dto';
 import { ActualizarFormatoPersonalizadoActaAperturaDto } from '@/configuracion-sistema/dto/actualizar-formato-personalizado-acta-apertura.dto';
 import { ActualizarFormatoPersonalizadoActaCierreDto } from '@/configuracion-sistema/dto/actualizar-formato-personalizado-acta-cierre.dto';
 import { ActualizarPlantillaActaAperturaDto } from '@/configuracion-sistema/dto/actualizar-plantilla-acta-apertura.dto';
@@ -30,6 +39,7 @@ import { ConfiguracionSistemaService } from '@/configuracion-sistema/configuraci
 export class ConfiguracionSistemaController {
   constructor(
     private readonly configuracionSistemaService: ConfiguracionSistemaService,
+    private readonly auditLogger: AuditLoggerService,
   ) {}
 
   @Get()
@@ -167,5 +177,49 @@ export class ConfiguracionSistemaController {
     return this.configuracionSistemaService.actualizarFormatoPersonalizadoActaCierre(
       dto,
     );
+  }
+
+  @Put('auth-bloqueo')
+  @PauserAuth()
+  @ApiOperation({
+    summary:
+      'VOTAR-492 §12.2 — activar/desactivar el bloqueo de flujos de autenticación institucional',
+    description:
+      'Requiere rol PAUSER. `alcance` NINGUNO desactiva; ADMIN corta login/2FA/refresh de ' +
+      'autoridades; TODOS agrega el login de votantes. `logout` y el flujo anónimo de ' +
+      'VOTAR-377 nunca se bloquean.',
+  })
+  @ApiBody({ type: ActualizarAuthBloqueoDto })
+  @ApiResponse({
+    status: 200,
+    description: 'OK',
+    type: ConfiguracionSistemaResponseDto,
+  })
+  @ApiResponse({ status: 400, description: 'Motivo obligatorio para activar' })
+  @ApiResponse({
+    status: 403,
+    description: 'Forbidden — se requiere rol PAUSER',
+  })
+  async actualizarAuthBloqueo(
+    @Body() dto: ActualizarAuthBloqueoDto,
+    @Req() request: Request,
+  ): Promise<ConfiguracionSistemaResponseDto> {
+    const user = assertAuthenticatedUser(
+      (request as AuthenticatedRequest).user,
+    );
+    const actorOfuscado = this.auditLogger.ofuscarOperador(user.sub);
+    const resultado =
+      await this.configuracionSistemaService.actualizarAuthBloqueo(
+        dto,
+        actorOfuscado,
+      );
+    await this.auditLogger.logBloqueoAutenticacion({
+      actorId: user.sub,
+      alcance: dto.alcance,
+      motivo: dto.motivo?.trim() ?? '(desactivación)',
+      timestamp: new Date(),
+      ipOrigen: resolveClientIp(request),
+    });
+    return resultado;
   }
 }

@@ -10,6 +10,10 @@ import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { OfertaElectoralQueryService } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import {
+  EleccionGateway,
+  TransaccionEleccionTipo,
+} from '@/eleccion/gateways/eleccion.gateway';
 
 /**
  * Service responsible for managing election state transitions
@@ -23,10 +27,10 @@ import { BlockchainService } from '@/blockchain/blockchain.service';
 @Injectable()
 export class ElectionStateService {
   /**
-   * VOTAR-434: evita que dos transiciones concurrentes para el mismo comicio
-   * (ej. apertura automática del scheduler + apertura manual del admin)
-   * compitan por la misma wallet on-chain, causando colisión de nonce y
-   * reverts sin motivo legible.
+   * VOTAR-434 / VOTAR-481: evita que dos transiciones concurrentes para el
+   * mismo comicio (ej. apertura o cierre automático del scheduler + apertura
+   * o cierre manual del admin) compitan por la misma wallet on-chain,
+   * causando colisión de nonce y reverts sin motivo legible.
    */
   private readonly transicionesEnCurso = new Set<number>();
 
@@ -35,6 +39,7 @@ export class ElectionStateService {
     private readonly eleccionRepository: Repository<Eleccion>,
     private readonly blockchainService: BlockchainService,
     private readonly ofertaElectoralQueryService: OfertaElectoralQueryService,
+    private readonly eleccionGateway: EleccionGateway,
   ) {}
 
   /**
@@ -45,39 +50,58 @@ export class ElectionStateService {
    * the published boleta plus VOTO_BLANCO/VOTO_NULO.
    */
   async transitionToAbierta(idEleccion: number): Promise<Eleccion> {
-    return this.withTransitionLock(idEleccion, async () => {
-      const eleccion = await this.findEleccionOrFail(idEleccion);
-      if (eleccion.estado !== EleccionEstado.CONFIGURADA) {
-        throw new UnprocessableEntityException(
-          `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
+    return this.withTransitionLock(
+      idEleccion,
+      'APERTURA',
+      async (marcarEnProgreso) => {
+        const eleccion = await this.findEleccionOrFail(idEleccion);
+        if (eleccion.estado !== EleccionEstado.CONFIGURADA) {
+          throw new UnprocessableEntityException(
+            `La elección debe estar en estado CONFIGURADA para abrirse. Estado actual: ${eleccion.estado}`,
+          );
+        }
+        marcarEnProgreso();
+        const candidateIds = await this.resolveCandidateIds(idEleccion);
+        await this.blockchainService.registerCandidates(
+          idEleccion,
+          candidateIds,
         );
-      }
-      const candidateIds = await this.resolveCandidateIds(idEleccion);
-      await this.blockchainService.registerCandidates(idEleccion, candidateIds);
-      await this.blockchainService.syncElectionWindow(
-        eleccion.idEleccion,
-        eleccion.fechaInicio,
-        eleccion.fechaFin,
-      );
-      // VOTAR-327: seal RevoteConfig + voting window before the DB flips to
-      // ABIERTA, same hermetic-seal-before-persist principle as VOTAR-336.
-      await this.blockchainService.lockElectionWindow(idEleccion);
-      await this.blockchainService.lockRevoteConfig(idEleccion);
-      return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
-    });
+        await this.blockchainService.syncElectionWindow(
+          eleccion.idEleccion,
+          eleccion.fechaInicio,
+          eleccion.fechaFin,
+        );
+        // VOTAR-327: seal RevoteConfig + voting window before the DB flips to
+        // ABIERTA, same hermetic-seal-before-persist principle as VOTAR-336.
+        await this.blockchainService.lockElectionWindow(idEleccion);
+        await this.blockchainService.lockRevoteConfig(idEleccion);
+        return this.syncOnChainThenPersist(eleccion, EleccionEstado.ABIERTA);
+      },
+    );
   }
 
   /**
    * Transitions an election to the CERRADA (CLOSED) state and syncs with blockchain.
+   * @dev VOTAR-481: usa el mismo lock por-elección que `transitionToAbierta`
+   * (VOTAR-434) — el cierre manual y el cierre automático del scheduler
+   * compiten por la misma wallet on-chain igual que la apertura, y sin este
+   * lock esa carrera terminaba en colisión de nonce.
    */
   async transitionToCerrada(idEleccion: number): Promise<Eleccion> {
-    const eleccion = await this.findEleccionOrFail(idEleccion);
-    if (eleccion.estado !== EleccionEstado.ABIERTA) {
-      throw new UnprocessableEntityException(
-        `La elección debe estar en estado ABIERTA para cerrarse. Estado actual: ${eleccion.estado}`,
-      );
-    }
-    return this.syncOnChainThenPersist(eleccion, EleccionEstado.CERRADA);
+    return this.withTransitionLock(
+      idEleccion,
+      'CIERRE',
+      async (marcarEnProgreso) => {
+        const eleccion = await this.findEleccionOrFail(idEleccion);
+        if (eleccion.estado !== EleccionEstado.ABIERTA) {
+          throw new UnprocessableEntityException(
+            `La elección debe estar en estado ABIERTA para cerrarse. Estado actual: ${eleccion.estado}`,
+          );
+        }
+        marcarEnProgreso();
+        return this.syncOnChainThenPersist(eleccion, EleccionEstado.CERRADA);
+      },
+    );
   }
 
   /**
@@ -145,9 +169,24 @@ export class ElectionStateService {
     return this.eleccionRepository.save(eleccion);
   }
 
+  /**
+   * @dev VOTAR-481: el conflicto de lock (409) queda solo en la excepción
+   * que recibe el caller por HTTP — no se emite por WebSocket, porque un
+   * broadcast global le llegaría también a la transición que sí tiene el
+   * lock, pisando su feedback de "en progreso" con un "Reintentá" que no
+   * le corresponde.
+   *
+   * `fn` recibe `marcarEnProgreso` para emitir "en progreso" recién después
+   * de validar el estado de la elección (ver transitionToAbierta/Cerrada):
+   * si la precondición de estado falla, nunca se mostró un spinner y no
+   * corresponde emitir una falla que lo "limpie". Si `fn` falla después de
+   * haber llamado a `marcarEnProgreso`, se emite `transaccion-fallida` para
+   * que el cliente cierre ese spinner en vez de dejarlo colgado.
+   */
   private async withTransitionLock<T>(
     idEleccion: number,
-    fn: () => Promise<T>,
+    tipo: TransaccionEleccionTipo,
+    fn: (marcarEnProgreso: () => void) => Promise<T>,
   ): Promise<T> {
     if (this.transicionesEnCurso.has(idEleccion)) {
       throw new ConflictException(
@@ -155,8 +194,18 @@ export class ElectionStateService {
       );
     }
     this.transicionesEnCurso.add(idEleccion);
+    let progresoEmitido = false;
+    const marcarEnProgreso = () => {
+      progresoEmitido = true;
+      this.eleccionGateway.emitTransaccionEnProgreso(idEleccion, tipo);
+    };
     try {
-      return await fn();
+      return await fn(marcarEnProgreso);
+    } catch (error) {
+      if (progresoEmitido) {
+        this.eleccionGateway.emitTransaccionFallida(idEleccion, tipo);
+      }
+      throw error;
     } finally {
       this.transicionesEnCurso.delete(idEleccion);
     }

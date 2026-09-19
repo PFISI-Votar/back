@@ -38,6 +38,7 @@ import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
 import {
   createAuthedRequest,
+  issueTestSessionToken,
   type AuthedRequest,
 } from './helpers/auth-test.helper';
 
@@ -147,10 +148,17 @@ describe('Uploads security (e2e) — VOTAR-490', () => {
     );
     await app.init();
 
-    const adminToken = app.get(JwtService).sign({
-      sub: '14988',
-      role: JwtRole.ELECTION_ADMIN,
-    });
+    // VOTAR-492: JwtStrategy exige el claim `sid` verificado contra
+    // refresh_session para el panel admin — un JwtService.sign() manual sin
+    // sesión ya no alcanza.
+    const adminToken = await issueTestSessionToken(
+      dataSource,
+      app.get(JwtService),
+      {
+        sub: '14988',
+        role: JwtRole.ELECTION_ADMIN,
+      },
+    );
     req = createAuthedRequest(app, adminToken);
 
     const eleccion = await dataSource.getRepository(Eleccion).save(

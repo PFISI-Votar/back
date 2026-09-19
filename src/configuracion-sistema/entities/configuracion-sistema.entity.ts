@@ -37,6 +37,18 @@ export type ActaAperturaModo = 'SIMPLE' | 'PERSONALIZADO';
 export const ACTA_APERTURA_MODO_DEFAULT: ActaAperturaModo = 'SIMPLE';
 
 /**
+ * VOTAR-492 §12.2 — alcance del bloqueo de flujos de autenticación institucional
+ * durante una respuesta a incidentes:
+ * - `NINGUNO`: operación normal.
+ * - `ADMIN`: corta login / 2FA / refresh de autoridades electorales.
+ * - `TODOS`: agrega el login de votantes (también es un flujo SSO institucional).
+ * `logout` y el flujo anónimo de VOTAR-377 FASE 2 nunca se bloquean.
+ */
+export type AuthBloqueoAlcance = 'NINGUNO' | 'ADMIN' | 'TODOS';
+
+export const AUTH_BLOQUEO_ALCANCE_DEFAULT: AuthBloqueoAlcance = 'NINGUNO';
+
+/**
  * Toggles de contenido del Acta de Cierre (escrutinio final). Mismo rol
  * que `ActaAperturaPlantilla`: gobiernan qué secciones arma el frontend en
  * modo SIMPLE.
@@ -106,6 +118,51 @@ export class ConfiguracionSistema {
     nullable: true,
   })
   actaCierrePlantillaTexto!: string | null;
+
+  @ApiProperty({
+    enum: ['NINGUNO', 'ADMIN', 'TODOS'],
+    example: 'NINGUNO',
+    description:
+      'VOTAR-492 §12.2: alcance del bloqueo de flujos de autenticación institucional.',
+  })
+  @Column({
+    name: 'auth_bloqueo_alcance',
+    type: 'varchar',
+    length: 16,
+    default: AUTH_BLOQUEO_ALCANCE_DEFAULT,
+  })
+  authBloqueoAlcance!: AuthBloqueoAlcance;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'Justificación del bloqueo, registrada en la bitácora.',
+  })
+  @Column({
+    name: 'auth_bloqueo_motivo',
+    type: 'varchar',
+    length: 280,
+    nullable: true,
+  })
+  authBloqueoMotivo!: string | null;
+
+  @ApiProperty({
+    nullable: true,
+    description:
+      'Momento de activación del bloqueo (null si alcance = NINGUNO).',
+  })
+  @Column({
+    name: 'auth_bloqueo_desde',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  authBloqueoDesde!: Date | null;
+
+  @ApiProperty({
+    nullable: true,
+    description: 'ID ofuscado del operador que activó el bloqueo.',
+  })
+  @Column({ name: 'auth_bloqueo_por', type: 'varchar', nullable: true })
+  authBloqueoPor!: string | null;
 
   @ApiProperty()
   @UpdateDateColumn({ name: 'fecha_actualizacion', type: 'timestamptz' })

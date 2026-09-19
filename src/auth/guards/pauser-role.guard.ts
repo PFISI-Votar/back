@@ -39,7 +39,9 @@ export class PauserRoleGuard implements CanActivate {
     if (!autoridad || autoridad.rol !== RolAutoridad.PAUSER) {
       await this.logAccesoDenegado(request, user.sub);
       throw new ForbiddenException(
-        'Esta cuenta no tiene el rol PAUSER requerido para pausar/reanudar comicios.',
+        'Esta cuenta no tiene el rol PAUSER requerido para acciones de ' +
+          'contención de incidentes (pausa de comicio, revocación masiva de ' +
+          'sesiones, bloqueo de autenticación).',
       );
     }
 

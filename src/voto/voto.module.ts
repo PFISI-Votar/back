@@ -40,5 +40,6 @@ import { VotoService } from '@/voto/services/voto.service';
   ],
   controllers: [BudPublicController, VotoController, ReciboPublicController],
   providers: [VotoService, ReciboService, RevotePolicyService],
+  exports: [RevotePolicyService],
 })
 export class VotoModule {}

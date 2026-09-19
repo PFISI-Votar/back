@@ -16,6 +16,7 @@ import { AuthUserDto } from '@/auth/dto/auth-response.dto';
 import { TwoFactorChallengeDto } from '@/auth/dto/two-factor.dto';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
+import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 import { JwtPayload } from '@/auth/interfaces/jwt-payload.interface';
 import {
   TwoFactorChallengeMode,
@@ -76,6 +77,7 @@ export class AuthService {
     const name = [persona.nombre, persona.apellido].filter(Boolean).join(' ');
     const autoridad = await this.findAutoridad(nick, sub);
     const role = this.resolveJwtRole(autoridad);
+    const esPauser = this.resolveEsPauser(autoridad);
     const identity: RefreshSessionIdentity = {
       identificadorSso: nick,
       sub,
@@ -123,7 +125,12 @@ export class AuthService {
 
     return {
       kind: 'session',
-      session: await this.completeSession(identity, role, auditContext),
+      session: await this.completeSession(
+        identity,
+        role,
+        esPauser,
+        auditContext,
+      ),
     };
   }
 
@@ -161,7 +168,23 @@ export class AuthService {
       email: challenge.email,
       name: challenge.name,
     };
-    return this.completeSession(identity, JwtRole.ELECTION_ADMIN, auditContext);
+    return this.completeSession(
+      identity,
+      JwtRole.ELECTION_ADMIN,
+      this.resolveEsPauser(autoridad),
+      auditContext,
+    );
+  }
+
+  /**
+   * VOTAR-492 §12.2 — expone si la cuenta autenticada tiene rol PAUSER, para
+   * que el panel (`GET /auth/me`) pueda mostrar/ocultar contención de
+   * incidentes (revocación masiva, bloqueo de autenticación) sin depender de
+   * un 403 del backend.
+   */
+  async esPauser(user: JwtPayload): Promise<boolean> {
+    const autoridad = await this.findAutoridadForAuthenticatedUser(user);
+    return this.resolveEsPauser(autoridad);
   }
 
   async resetTwoFactor(user: JwtPayload, password: string): Promise<void> {
@@ -183,14 +206,22 @@ export class AuthService {
   }
 
   async refreshSession(refreshToken: string): Promise<AuthSessionResult> {
-    const { refreshToken: nextRefreshToken, identity } =
-      await this.refreshTokenService.rotateSession(refreshToken);
+    const {
+      refreshToken: nextRefreshToken,
+      identity,
+      idSession,
+    } = await this.refreshTokenService.rotateSession(refreshToken);
     const autoridad = await this.findAutoridad(
       identity.identificadorSso,
       identity.sub,
     );
     const role = this.resolveJwtRole(autoridad);
-    const response = await this.buildAuthResponse(identity, role);
+    const response = await this.buildAuthResponse(
+      identity,
+      role,
+      idSession,
+      this.resolveEsPauser(autoridad),
+    );
     return { response, refreshToken: nextRefreshToken };
   }
 
@@ -204,11 +235,17 @@ export class AuthService {
   private async completeSession(
     identity: RefreshSessionIdentity,
     role: JwtRole,
+    esPauser: boolean,
     auditContext?: LoginAuditContext,
   ): Promise<AuthSessionResult> {
-    const response = await this.buildAuthResponse(identity, role);
-    const { refreshToken } =
+    const { refreshToken, idSession } =
       await this.refreshTokenService.issueSession(identity);
+    const response = await this.buildAuthResponse(
+      identity,
+      role,
+      idSession,
+      esPauser,
+    );
 
     await this.auditLoggerService.logLogin({
       actorId: identity.sub,
@@ -271,6 +308,8 @@ export class AuthService {
   private async buildAuthResponse(
     identity: RefreshSessionIdentity,
     role: JwtRole,
+    idSession: number,
+    esPauser: boolean,
   ): Promise<AuthTokensResponse> {
     this.jwksService.assertCanIssueLocalAccessTokens();
     const payload: JwtPayload = {
@@ -278,6 +317,7 @@ export class AuthService {
       role,
       email: identity.email,
       name: identity.name,
+      sid: idSession,
     };
     const accessToken = await this.jwtService.signAsync(payload, {
       audience: DEFAULT_JWT_AUDIENCE,
@@ -290,6 +330,7 @@ export class AuthService {
         role: payload.role,
         email: payload.email,
         name: payload.name,
+        esPauser,
       },
     };
   }
@@ -335,5 +376,9 @@ export class AuthService {
       return JwtRole.ELECTION_ADMIN;
     }
     return JwtRole.VOTER;
+  }
+
+  private resolveEsPauser(autoridad: AutoridadElectoral | null): boolean {
+    return autoridad?.rol === RolAutoridad.PAUSER;
   }
 }

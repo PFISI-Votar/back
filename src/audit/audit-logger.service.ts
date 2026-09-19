@@ -39,6 +39,20 @@ export interface LogCredencialValidacionEmitidaInput {
   timestamp?: Date;
 }
 
+export interface LogRelayerCapacidadEmitidaInput {
+  idEleccion: number;
+  /** Hash del votante (se ofusca al persistir; no se guarda en claro). */
+  actorId: string;
+  ipOrigen?: string | null;
+  timestamp?: Date;
+}
+
+export interface LogRelayerCastEnviadoInput {
+  idEleccion: number;
+  timestamp?: Date;
+  endpoint?: string;
+}
+
 export interface LogFirmaValidacionEmitidaInput {
   idEleccion: number;
   /** Address de la Entidad de Firmas Digitales (VALIDATOR_ROLE). */
@@ -90,6 +104,29 @@ export interface LogComicioReanudadoInput {
 export interface LogComicioArchivadoInput {
   idEleccion: number;
   actorId: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export type AlcanceRevocacionSesiones = 'PROPIA' | 'USUARIO' | 'GLOBAL';
+
+export interface LogSesionRevocadaInput {
+  actorId: string;
+  alcance: AlcanceRevocacionSesiones;
+  /** identificadorSso del usuario objetivo; se ofusca antes de persistir. */
+  objetivo?: string | null;
+  sesionesRevocadas: number;
+  motivo: string;
+  endpoint: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogBloqueoAutenticacionInput {
+  actorId: string;
+  /** NINGUNO = desactivación. */
+  alcance: 'NINGUNO' | 'ADMIN' | 'TODOS';
+  motivo: string;
   timestamp: Date;
   ipOrigen?: string;
 }
@@ -296,6 +333,51 @@ export class AuditLoggerService {
   }
 
   /**
+   * VOTAR-497 — emisión autenticada de capacidad de gas. Actor ofuscado; nunca
+   * token, nullifier, selección ni txHash.
+   */
+  async logRelayerCapacidadEmitida(
+    input: LogRelayerCapacidadEmitidaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen ?? undefined);
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.RELAYER_CAPACIDAD_EMITIDA,
+      actorId: input.actorId,
+      descripcion: `Capacidad de relayer emitida para el comicio ${input.idEleccion} al votante con ID ofuscado ${actorOfuscado}`,
+      endpoint: '/relayer/:idEleccion/autorizacion',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-497 — broadcast anónimo vía relayer. Sin identidad ni campos de voto.
+   */
+  async logRelayerCastEnviado(
+    input: LogRelayerCastEnviadoInput,
+  ): Promise<AuditLog> {
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.RELAYER_CAST_ENVIADO,
+      actorId: 'ANONIMO',
+      descripcion:
+        'Cast transmitido por el relayer (registro anónimo off-chain)',
+      endpoint: input.endpoint ?? '/relayer/:idEleccion/transmitir',
+      ipOrigenRaw: null,
+      datosAdicionales: null,
+      timestamp: input.timestamp,
+      preservarActorLiteral: true,
+      omitirTerminal: true,
+    });
+  }
+
+  /**
    * VOTAR-377 FASE 2 — la Entidad de Firmas Digitales certificó un sufragio. Es
    * un evento anónimo: `actor = ANONIMO`, sin IP/terminal, y `datosAdicionales`
    * NUNCA lleva nullifier, selectionHash ni commit (respeta FORBIDDEN_VOTO_JOIN_KEYS).
@@ -465,6 +547,88 @@ export class AuditLoggerService {
       endpoint: '/elecciones/:id/archivar',
       ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
       datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-492 §12.2 (Contención) — revocación de sesiones de refresh
+   * comprometidas: individual del propio operador, por usuario objetivo o
+   * global. El usuario objetivo se persiste SOLO ofuscado (la bitácora es
+   * consultable desde el panel; invariante §7.1).
+   */
+  async logSesionRevocada(input: LogSesionRevocadaInput): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const objetivoTexto =
+      input.alcance === 'GLOBAL'
+        ? 'todas las sesiones activas'
+        : input.alcance === 'USUARIO'
+          ? `las sesiones del usuario objetivo (ID Ofuscado ${this.ofuscarOperador(
+              input.objetivo ?? '',
+            )})`
+          : 'sus otras sesiones activas';
+    const descripcion =
+      `Usuario Administrador con ID Ofuscado ${actorOfuscado} revocó ${input.sesionesRevocadas} sesión/es ` +
+      `(${objetivoTexto}) por incidente ("${input.motivo}") desde el identificador de terminal criptográfico ` +
+      `${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: null,
+      tipoEvento: TipoEventoAudit.SESION_REVOCADA,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: input.endpoint,
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        alcance: input.alcance,
+        sesionesRevocadas: input.sesionesRevocadas,
+        motivo: input.motivo,
+        idObjetivoOfuscado: input.objetivo
+          ? this.ofuscarOperador(input.objetivo)
+          : null,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-492 §12.2 (Contención) — activación/desactivación del bloqueo de
+   * flujos de autenticación institucional (login/2FA/refresh de autoridades y,
+   * en alcance TODOS, también el login de votantes).
+   */
+  async logBloqueoAutenticacion(
+    input: LogBloqueoAutenticacionInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const accion =
+      input.alcance === 'NINGUNO'
+        ? 'desactivó el bloqueo de flujos de autenticación institucional'
+        : `activó el bloqueo de flujos de autenticación institucional (alcance ${input.alcance})`;
+    const descripcion =
+      `Usuario Administrador con ID Ofuscado ${actorOfuscado} ${accion} por incidente ("${input.motivo}") ` +
+      `desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: null,
+      tipoEvento: TipoEventoAudit.BLOQUEO_AUTENTICACION,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: 'PUT /configuracion-sistema/auth-bloqueo',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        alcance: input.alcance,
+        motivo: input.motivo,
         idOperadorOfuscado: actorOfuscado,
         identificadorTerminal: terminal,
         horaUtc: utc,

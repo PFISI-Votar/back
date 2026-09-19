@@ -30,6 +30,10 @@ describe('ConfiguracionSistemaService', () => {
     actaCierrePlantilla: ACTA_CIERRE_PLANTILLA_DEFAULT,
     actaCierreModo: ACTA_APERTURA_MODO_DEFAULT,
     actaCierrePlantillaTexto: null,
+    authBloqueoAlcance: 'NINGUNO',
+    authBloqueoMotivo: null,
+    authBloqueoDesde: null,
+    authBloqueoPor: null,
     fechaActualizacion: new Date('2026-08-12T12:00:00Z'),
     ...overrides,
   });
@@ -85,6 +89,10 @@ describe('ConfiguracionSistemaService', () => {
         actaCierreModo: ACTA_APERTURA_MODO_DEFAULT,
         actaCierrePlantillaTexto: null,
         fechaActualizacion: '2026-08-12T12:00:00.000Z',
+        authBloqueoAlcance: 'NINGUNO',
+        authBloqueoMotivo: null,
+        authBloqueoDesde: null,
+        authBloqueoPor: null,
       });
     });
 
@@ -249,6 +257,64 @@ describe('ConfiguracionSistemaService', () => {
         incluirResultadosPorLista: false,
         incluirLogo: false,
       });
+    });
+  });
+
+  describe('actualizarAuthBloqueo', () => {
+    it('activa el bloqueo con motivo, sella desde y por', async () => {
+      repository.findOne.mockResolvedValue(mockConfiguracion());
+      repository.save.mockImplementation((entity) =>
+        Promise.resolve(mockConfiguracion(entity)),
+      );
+
+      const result = await service.actualizarAuthBloqueo(
+        { alcance: 'ADMIN', motivo: 'incidente de credenciales' },
+        'operador-ofuscado',
+      );
+
+      expect(repository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authBloqueoAlcance: 'ADMIN',
+          authBloqueoMotivo: 'incidente de credenciales',
+          authBloqueoPor: 'operador-ofuscado',
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          authBloqueoDesde: expect.any(Date),
+        }),
+      );
+      expect(result.authBloqueoAlcance).toBe('ADMIN');
+    });
+
+    it('desactiva el bloqueo limpiando desde/motivo/por', async () => {
+      repository.findOne.mockResolvedValue(
+        mockConfiguracion({
+          authBloqueoAlcance: 'TODOS',
+          authBloqueoMotivo: 'previo',
+          authBloqueoDesde: new Date(),
+          authBloqueoPor: 'x',
+        }),
+      );
+      repository.save.mockImplementation((entity) =>
+        Promise.resolve(mockConfiguracion(entity)),
+      );
+
+      const result = await service.actualizarAuthBloqueo(
+        { alcance: 'NINGUNO' },
+        'operador-ofuscado',
+      );
+
+      expect(result.authBloqueoAlcance).toBe('NINGUNO');
+      expect(result.authBloqueoDesde).toBeNull();
+      expect(result.authBloqueoMotivo).toBeNull();
+      expect(result.authBloqueoPor).toBeNull();
+    });
+
+    it('rechaza activar sin motivo (mínimo 10 caracteres)', async () => {
+      await expect(
+        service.actualizarAuthBloqueo(
+          { alcance: 'ADMIN', motivo: 'corto' },
+          'operador-ofuscado',
+        ),
+      ).rejects.toThrow('motivo');
     });
   });
 
