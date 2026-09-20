@@ -234,6 +234,8 @@ describe('VotanteAuth (e2e)', () => {
       ),
     ).toBe(true);
     expect(cookieHeader.some((value) => value.includes('HttpOnly'))).toBe(true);
+    expect(cookieHeader.join(';')).toMatch(/SameSite=Strict/i);
+    expect(cookieHeader.join(';')).not.toMatch(/SameSite=Lax/i);
   });
 
   it('UAT-02: credenciales inválidas responden 401 genérico sin PII', async () => {
@@ -278,6 +280,18 @@ describe('VotanteAuth (e2e)', () => {
       role: JwtRole.VOTER,
       idEleccion: TEST_ID_ELECCION,
     });
+  });
+
+  it('POST /auth/votante/logout limpia la cookie con SameSite=Strict', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/votante/logout')
+      .expect(204);
+
+    const cleared = (response.headers['set-cookie'] as string[]).join(';');
+    expect(cleared).toContain(`${VOTER_ACCESS_COOKIE_NAME}=`);
+    expect(cleared).toMatch(/HttpOnly/i);
+    expect(cleared).toMatch(/SameSite=Strict/i);
+    expect(cleared).not.toMatch(/SameSite=Lax/i);
   });
 
   it('UAT-04: no existe endpoint de refresh para votante', async () => {
