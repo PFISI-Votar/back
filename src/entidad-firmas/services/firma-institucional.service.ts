@@ -55,18 +55,30 @@ export class FirmaInstitucionalService {
   }
 
   private getSigningWallet(): Wallet {
-    const privateKey = this.configService.get<string>('VALIDATOR_PRIVATE_KEY');
-    if (!privateKey) {
-      throw new ServiceUnavailableException(
-        'La Entidad de Firmas Digitales no está configurada (VALIDATOR_PRIVATE_KEY).',
-      );
+    const dedicated = this.configService.get<string>('VALIDATOR_PRIVATE_KEY');
+    if (dedicated) {
+      try {
+        return new Wallet(dedicated);
+      } catch {
+        throw new ServiceUnavailableException(
+          'VALIDATOR_PRIVATE_KEY no es una clave privada válida.',
+        );
+      }
     }
-    try {
-      return new Wallet(privateKey);
-    } catch {
-      throw new ServiceUnavailableException(
-        'VALIDATOR_PRIVATE_KEY no es una clave privada válida.',
-      );
+    const development =
+      this.configService.get<boolean>('DEVELOPMENT') ?? true;
+    const operational = this.configService.get<string>('PRIVATE_KEY');
+    if (development && operational) {
+      try {
+        return new Wallet(operational);
+      } catch {
+        throw new ServiceUnavailableException(
+          'PRIVATE_KEY no es una clave privada válida.',
+        );
+      }
     }
+    throw new ServiceUnavailableException(
+      'La Entidad de Firmas Digitales no está configurada (VALIDATOR_PRIVATE_KEY).',
+    );
   }
 }

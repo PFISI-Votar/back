@@ -195,16 +195,16 @@ export function extraerFilasIdentidad(
 
   if (filas.length === 0 || filas[0] === null) {
     throw new BadRequestException(
-      'El archivo no tiene las columnas requeridas: dni, email.',
+      'El archivo no tiene la columna requerida: dni.',
     );
   }
 
   const cabecera = filas[0].map((c) => c.trim().toLowerCase());
   const indiceDni = cabecera.indexOf('dni');
   const indiceEmail = cabecera.indexOf('email');
-  if (indiceDni === -1 || indiceEmail === -1) {
+  if (indiceDni === -1) {
     throw new BadRequestException(
-      'El archivo no tiene las columnas requeridas: dni, email.',
+      'El archivo no tiene la columna requerida: dni.',
     );
   }
 

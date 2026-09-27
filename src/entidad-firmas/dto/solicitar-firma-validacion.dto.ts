@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsInt, IsString, Matches, Min } from 'class-validator';
+import { IsArray, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
 
 const BYTES32_REGEX = /^0x[0-9a-fA-F]{64}$/;
 const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/;
@@ -46,14 +46,23 @@ export class SolicitarFirmaValidacionDto {
 
   @ApiProperty({
     description:
-      'Id de candidato de auditoría (o id reservado blanco/nulo). String para soportar uint256 completo.',
+      'Ids de candidato de auditoría (o ids reservados blanco/nulo).',
+    example: ['101'],
+    required: false,
+  })
+  @IsArray()
+  @IsOptional()
+  candidateIds?: string[];
+
+  @ApiProperty({
+    description:
+      'Id de candidato de auditoría legacy (compatibilidad).',
     example: '101',
+    required: false,
   })
   @IsString()
-  @Matches(UINT_STRING_REGEX, {
-    message: 'candidateId debe ser un entero uint256 en base 10',
-  })
-  candidateId: string;
+  @IsOptional()
+  candidateId?: string;
 
   @ApiProperty({
     description: 'Unix timestamp (segundos) capturado al firmar en el cliente.',

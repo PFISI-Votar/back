@@ -108,9 +108,9 @@ function buildCsvUat01(): Express.Multer.File {
     const dni = (30000000 + i).toString();
     filas.push(`${dni},votante${i}@frvm.utn.edu.ar`);
   }
-  // 3 filas con campos obligatorios nulos
+  // 3 filas con campos obligatorios nulos o inválidos
   filas.push(',sin-dni@frvm.utn.edu.ar');
-  filas.push('30000200,');
+  filas.push('ABC,');
   filas.push(',');
   // 2 duplicados de identidades ya cargadas
   filas.push('30000000,votante0@frvm.utn.edu.ar');
@@ -464,14 +464,14 @@ describe('PadronService', () => {
   });
 
   it('UAT-02: el reporte de novedades lista número de línea exacto, motivo por tipo y ordenado', async () => {
-    // Línea 2 válida; 3 DNI ausente; 4 email ausente; 5 DNI inválido;
+    // Línea 2 válida; 3 DNI ausente; 4 DNI ausente; 5 DNI inválido;
     // 6 email inválido; 7 duplicado de la línea 2.
     const inputArchivo = buildCsvFile(
       [
         'dni,email',
         '30111222,ana@frvm.utn.edu.ar',
         ',elena@frvm.utn.edu.ar',
-        '30666777,',
+        ',dora@frvm.utn.edu.ar',
         'ABC,franco@frvm.utn.edu.ar',
         '30888999,no-es-email',
         '30111222,ana@frvm.utn.edu.ar',
@@ -489,8 +489,8 @@ describe('PadronService', () => {
       },
       {
         linea: 4,
-        tipo: TipoNovedad.EMAIL_AUSENTE,
-        motivo: 'Línea 4: Campo email ausente',
+        tipo: TipoNovedad.DNI_AUSENTE,
+        motivo: 'Línea 4: Campo DNI ausente',
       },
       {
         linea: 5,

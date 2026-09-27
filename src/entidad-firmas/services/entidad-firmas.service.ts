@@ -32,12 +32,18 @@ export class EntidadFirmasService {
 
     try {
       // 2. Firma institucional sobre la totalidad del payload (AC-5).
+      const candidateIds = dto.candidateIds
+        ? dto.candidateIds.map((id) => BigInt(id))
+        : dto.candidateId
+          ? [BigInt(dto.candidateId)]
+          : [];
+
       const { firmaValidacion, direccionValidador } =
         await this.firmaService.firmarValidacion(idEleccion, {
           electionId: BigInt(idEleccion),
           nullifier: dto.nullifier,
           selectionHash: dto.selectionHash,
-          candidateId: BigInt(dto.candidateId),
+          candidateIds,
           timestamp: BigInt(dto.timestamp),
           expectedSigner: dto.expectedSigner,
         });

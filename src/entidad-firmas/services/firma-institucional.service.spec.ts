@@ -40,7 +40,7 @@ describe('FirmaInstitucionalService (VOTAR-377)', () => {
     electionId: 377n,
     nullifier: keccak256(Buffer.from('nullifier')),
     selectionHash: keccak256(Buffer.from('selection')),
-    candidateId: 101n,
+    candidateIds: [101n],
     timestamp: 1_700_000_000n,
     expectedSigner: '0x1234abcd1234abcd1234abcd1234abcd1234abcd',
   };
@@ -80,7 +80,7 @@ describe('FirmaInstitucionalService (VOTAR-377)', () => {
     const expectedDigest = TypedDataEncoder.hash(
       {
         name: 'VOTAR',
-        version: '1',
+        version: '2',
         chainId: CHAIN_ID,
         verifyingContract: ballotAddress,
       },

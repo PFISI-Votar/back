@@ -102,6 +102,17 @@ export const mapCastFailure = (error: unknown): RelayErrorBody => {
       canResign: false,
     });
   }
+  if (/missing revert data/i.test(message)) {
+    return body({
+      code: 'unknown',
+      message:
+        'El contrato de la elección no responde o no está desplegado en la red RPC. Verificá la configuración del comicio y los contratos en la blockchain.',
+      severity: 'error',
+      isTransient: false,
+      canRetrySend: true,
+      canResign: true,
+    });
+  }
   if (isTransientNetworkMessage(message)) {
     return body({
       statusCode: 503,
