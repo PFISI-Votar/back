@@ -34,7 +34,7 @@ export class RelayCastDto {
   @ArrayMaxSize(32)
   @IsString({ each: true })
   @Matches(UINT, { each: true })
-  @MaxLength(20, { each: true })
+  @MaxLength(78, { each: true })
   candidateIds: string[];
 
   @ApiProperty({
