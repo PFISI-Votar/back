@@ -65,8 +65,7 @@ export class FirmaInstitucionalService {
         );
       }
     }
-    const development =
-      this.configService.get<boolean>('DEVELOPMENT') ?? true;
+    const development = this.configService.get<boolean>('DEVELOPMENT') ?? true;
     const operational = this.configService.get<string>('PRIVATE_KEY');
     if (development && operational) {
       try {

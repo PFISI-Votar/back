@@ -200,14 +200,10 @@ export class ConfiguracionComicioController {
     @Req() req: AuthenticatedRequest,
   ): Promise<MensajeBudResponseDto> {
     const user = assertAuthenticatedUser(req.user);
-    return this.configuracionComicioService.guardarMensajeBud(
-      idEleccion,
-      dto,
-      {
-        actorId: user.sub,
-        ipOrigen: this.resolveClientIp(req),
-      },
-    );
+    return this.configuracionComicioService.guardarMensajeBud(idEleccion, dto, {
+      actorId: user.sub,
+      ipOrigen: this.resolveClientIp(req),
+    });
   }
 
   private resolveClientIp(request: AuthenticatedRequest): string {
