@@ -74,6 +74,10 @@ export class EthersRelayBroadcaster {
     try {
       await contract.castSignedVote.staticCall(...args);
     } catch (error) {
+      this.logger.error(
+        `castSignedVote staticCall falló para comicio ${input.electionId}:`,
+        error,
+      );
       throw new RelayCastFailedError(mapCastFailure(error), false);
     }
 
@@ -83,6 +87,10 @@ export class EthersRelayBroadcaster {
         await contract.castSignedVote.estimateGas(...args),
       );
     } catch (error) {
+      this.logger.error(
+        `castSignedVote estimateGas falló para comicio ${input.electionId}:`,
+        error,
+      );
       throw new RelayCastFailedError(mapCastFailure(error), false);
     }
 
@@ -95,6 +103,10 @@ export class EthersRelayBroadcaster {
       );
       return tx.hash;
     } catch (error) {
+      this.logger.error(
+        `castSignedVote envío de transacción falló para comicio ${input.electionId}:`,
+        error,
+      );
       throw new RelayCastFailedError(
         mapCastFailure(error),
         isLikelySubmittedError(error),

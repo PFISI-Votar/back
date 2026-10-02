@@ -260,7 +260,7 @@ describe('EntidadFirmasDigitales (e2e) — VOTAR-377', () => {
     const digest = TypedDataEncoder.hash(
       {
         name: 'VOTAR',
-        version: '1',
+        version: '2',
         chainId: CHAIN_ID,
         verifyingContract: BALLOT_ADDRESS,
       },
@@ -269,7 +269,7 @@ describe('EntidadFirmasDigitales (e2e) — VOTAR-377', () => {
           { name: 'electionId', type: 'uint256' },
           { name: 'nullifier', type: 'bytes32' },
           { name: 'selectionHash', type: 'bytes32' },
-          { name: 'candidateId', type: 'uint256' },
+          { name: 'candidateIds', type: 'uint256[]' },
           { name: 'timestamp', type: 'uint256' },
           { name: 'expectedSigner', type: 'address' },
         ],
@@ -278,7 +278,7 @@ describe('EntidadFirmasDigitales (e2e) — VOTAR-377', () => {
         electionId: BigInt(idEleccion),
         nullifier: validPayload.nullifier,
         selectionHash: validPayload.selectionHash,
-        candidateId: BigInt(validPayload.candidateId),
+        candidateIds: [BigInt(validPayload.candidateId)],
         timestamp: BigInt(validPayload.timestamp),
         expectedSigner: validPayload.expectedSigner,
       },

@@ -6,6 +6,8 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { PadronService } from '@/padron/padron.service';
+import { plainToInstance } from 'class-transformer';
+import { validate } from 'class-validator';
 import { RelayCastDto } from '@/relayer/dto/relay-cast.dto';
 import { RelayerCapacidad } from '@/relayer/entities/relayer-capacidad.entity';
 import { EthersRelayBroadcaster } from '@/relayer/ethers-relay-broadcaster';
@@ -252,5 +254,16 @@ describe('RelayerService — VOTAR-497', () => {
     );
     expect(broadcaster.castSignedVote).not.toHaveBeenCalled();
     expect(tokenHash).toHaveLength(64);
+  });
+
+  it('acepta candidateIds con centinelas de VOTO_BLANCO y VOTO_NULO (78 dígitos)', async () => {
+    const blankDto = plainToInstance(RelayCastDto, {
+      ...dto,
+      candidateIds: [
+        '115792089237316195423570985008687907853269984665640564039457584007913129639934',
+      ],
+    });
+    const errors = await validate(blankDto);
+    expect(errors).toHaveLength(0);
   });
 });

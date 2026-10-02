@@ -193,9 +193,9 @@ export class CredencialValidacionService {
       where: { idEleccion },
     });
     const maxVotos = config?.maxVotosPorVotante ?? 1;
-    // Tope generoso: tolera reintentos / F5. NO es el anti-doble-voto (ese es el
-    // nullifier on-chain). El objetivo es sólo frenar un abuso masivo de la fase 1.
-    const tope = Math.max(3, maxVotos * 3);
+    const isDev = this.configService.get<boolean>('DEVELOPMENT') === true;
+    // Tope generoso en dev: tolera reintentos / F5 / pruebas repetidas.
+    const tope = isDev ? 100 : Math.max(3, maxVotos * 3);
 
     const emision = await this.emisionRepository.findOne({
       where: { idEleccion, hashHoja: votanteHash },

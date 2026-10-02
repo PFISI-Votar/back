@@ -578,19 +578,13 @@ export class PadronService implements IPadronService {
         novedades.push(this.crearNovedad(numeroLinea, TipoNovedad.DNI_AUSENTE));
         continue;
       }
-      if (email === '') {
-        novedades.push(
-          this.crearNovedad(numeroLinea, TipoNovedad.EMAIL_AUSENTE),
-        );
-        continue;
-      }
       if (!REGEX_DNI.test(dni.replace(/\D/g, ''))) {
         novedades.push(
           this.crearNovedad(numeroLinea, TipoNovedad.DNI_INVALIDO),
         );
         continue;
       }
-      if (!REGEX_EMAIL.test(email)) {
+      if (email !== '' && !REGEX_EMAIL.test(email)) {
         novedades.push(
           this.crearNovedad(numeroLinea, TipoNovedad.EMAIL_INVALIDO),
         );

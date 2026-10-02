@@ -14,7 +14,7 @@ export const VALIDATION_EIP712_TYPES: Record<string, TypedDataField[]> = {
     { name: 'electionId', type: 'uint256' },
     { name: 'nullifier', type: 'bytes32' },
     { name: 'selectionHash', type: 'bytes32' },
-    { name: 'candidateId', type: 'uint256' },
+    { name: 'candidateIds', type: 'uint256[]' },
     { name: 'timestamp', type: 'uint256' },
     { name: 'expectedSigner', type: 'address' },
   ],
@@ -24,7 +24,7 @@ export interface ValidationMessage {
   electionId: bigint;
   nullifier: string;
   selectionHash: string;
-  candidateId: bigint;
+  candidateIds: bigint[];
   timestamp: bigint;
   expectedSigner: string;
 }
@@ -35,7 +35,7 @@ export function buildValidationDomain(
 ): TypedDataDomain {
   return {
     name: 'VOTAR',
-    version: '1',
+    version: '2',
     chainId,
     verifyingContract: ballotContractAddress,
   };

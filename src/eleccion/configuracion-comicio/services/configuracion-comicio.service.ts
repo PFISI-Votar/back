@@ -1,4 +1,5 @@
 import {
+  ConflictException,
   Injectable,
   NotFoundException,
   UnprocessableEntityException,
@@ -6,11 +7,16 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
+import { parseObservacionLogin } from '@/eleccion/constants/observacion-login.constant';
 import {
   MAX_INTERVALO_SEGUNDOS,
   MAX_SUFRAGIOS_POR_VOTANTE,
   MIN_SUFRAGIOS_CON_REVOTO,
 } from '@/eleccion/configuracion-comicio/constants/revoto.constants';
+import {
+  GuardarMensajeBudDto,
+  MensajeBudResponseDto,
+} from '@/eleccion/configuracion-comicio/dto/configuracion-mensaje-bud.dto';
 import {
   ConfiguracionRevotoResponseDto,
   GuardarConfiguracionRevotoDto,
@@ -207,6 +213,48 @@ export class ConfiguracionComicioService {
       });
     }
     return this.toVisibilidadDashboardResponse(guardada, eleccion.estado);
+  }
+
+  async obtenerMensajeBud(idEleccion: number): Promise<MensajeBudResponseDto> {
+    const eleccion = await this.assertEleccionExists(idEleccion);
+    return {
+      idEleccion: eleccion.idEleccion,
+      observacionLogin: eleccion.observacionLogin ?? null,
+      editable: eleccion.estado !== EleccionEstado.ARCHIVADA,
+    };
+  }
+
+  async guardarMensajeBud(
+    idEleccion: number,
+    dto: GuardarMensajeBudDto,
+    auditContext: ConfiguracionRevotoAuditContext,
+  ): Promise<MensajeBudResponseDto> {
+    const eleccion = await this.assertEleccionExists(idEleccion);
+    if (eleccion.estado === EleccionEstado.ARCHIVADA) {
+      throw new ConflictException(
+        'El comicio está archivado y no admite modificaciones',
+      );
+    }
+    const antes = { observacionLogin: eleccion.observacionLogin };
+    eleccion.observacionLogin =
+      dto.observacionLogin !== undefined && dto.observacionLogin !== null
+        ? parseObservacionLogin(dto.observacionLogin)
+        : null;
+    const guardada = await this.eleccionRepository.save(eleccion);
+    const despues = { observacionLogin: guardada.observacionLogin };
+    if (antes.observacionLogin !== despues.observacionLogin) {
+      await this.auditLoggerService.logConfigModificada({
+        idEleccion,
+        actorId: auditContext.actorId,
+        ipOrigen: auditContext.ipOrigen,
+        cambios: { observacionLogin: { antes, despues } },
+      });
+    }
+    return {
+      idEleccion: guardada.idEleccion,
+      observacionLogin: guardada.observacionLogin ?? null,
+      editable: guardada.estado !== EleccionEstado.ARCHIVADA,
+    };
   }
 
   private toVisibilidadDashboardResponse(
