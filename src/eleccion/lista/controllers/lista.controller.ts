@@ -26,6 +26,8 @@ import {
   ListaMapeoItemDto,
   ListaResponseDto,
   OficializarResponseDto,
+  DespliegueOnChainResponseDto,
+  StackOnChainStatusDto,
 } from '@/eleccion/lista/dto/lista-response.dto';
 import { ListaService } from '@/eleccion/lista/services/lista.service';
 import { OficializacionService } from '@/eleccion/lista/services/oficializacion.service';
@@ -150,6 +152,52 @@ export class ListaController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
   ): Promise<OficializarResponseDto> {
     return this.oficializacionService.oficializar(idEleccion);
+  }
+
+  @Get('elecciones/:idEleccion/stack-on-chain')
+  @ApiOperation({
+    summary:
+      'VOTAR-473: consultar si el stack electoral del comicio está desplegado on-chain',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, description: 'OK', type: StackOnChainStatusDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({
+    status: 503,
+    description: 'Service Unavailable — RPC o ElectionFactory no disponibles',
+  })
+  async obtenerEstadoStackOnChain(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<StackOnChainStatusDto> {
+    return this.oficializacionService.obtenerEstadoStackOnChain(idEleccion);
+  }
+
+  @Post('elecciones/:idEleccion/reintentar-despliegue-on-chain')
+  @ApiOperation({
+    summary:
+      'VOTAR-473: reintentar despliegue on-chain de un comicio ya oficializado (CONFIGURADA)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({
+    status: 201,
+    description: 'Created',
+    type: DespliegueOnChainResponseDto,
+  })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({
+    status: 422,
+    description:
+      'Unprocessable Entity — comicio no CONFIGURADA o sin configuración',
+  })
+  @ApiResponse({
+    status: 503,
+    description:
+      'Service Unavailable — fallo de wallet/RPC/gas al desplegar (reintentable)',
+  })
+  async reintentarDespliegueOnChain(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<DespliegueOnChainResponseDto> {
+    return this.oficializacionService.reintentarDespliegueOnChain(idEleccion);
   }
 
   @Get('elecciones/:idEleccion/listas/mapeo')

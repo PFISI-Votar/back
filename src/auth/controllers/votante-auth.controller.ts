@@ -17,6 +17,8 @@ import {
   VotanteAuthUserDto,
 } from '@/auth/dto/votante-auth-response.dto';
 import { VotanteLoginDto } from '@/auth/dto/votante-login.dto';
+import { AuthLockdownScope } from '@/auth/decorators/auth-lockdown-scope.decorator';
+import { AuthLockdownGuard } from '@/auth/guards/auth-lockdown.guard';
 import { VoterJwtAuthGuard } from '@/auth/guards/voter-jwt-auth.guard';
 import type { VoterAuthenticatedRequest } from '@/auth/interfaces/voter-authenticated-request.interface';
 import { VotanteAuthService } from '@/auth/services/votante-auth.service';
@@ -39,7 +41,8 @@ export class VotanteAuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(IpRateLimitGuard)
+  @UseGuards(IpRateLimitGuard, AuthLockdownGuard)
+  @AuthLockdownScope('TODOS')
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-votante-login' })
   @ApiOperation({
     summary: 'Iniciar sesión de votante con credenciales institucionales',
@@ -48,7 +51,7 @@ export class VotanteAuthController {
   @ApiResponse({
     status: 200,
     description:
-      'Autenticación exitosa. JWT de votante en cookie HttpOnly (30 min, sin refresh).',
+      'Autenticación exitosa. JWT de votante en cookie HttpOnly, Secure y SameSite=Strict (30 min, sin refresh).',
     type: VotanteAuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })

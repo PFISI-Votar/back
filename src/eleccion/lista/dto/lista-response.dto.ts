@@ -66,4 +66,41 @@ export class OficializarResponseDto {
 
   @ApiProperty({ type: [ListaMapeoItemDto] })
   mapeo: ListaMapeoItemDto[];
+
+  @ApiProperty({
+    description:
+      'VOTAR-473: false si el stack on-chain no se desplegó (p. ej. wallet sin fondos). Permite reintentar el despliegue sin re-oficializar.',
+  })
+  onChainDesplegado: boolean;
+}
+
+export class StackOnChainStatusDto {
+  @ApiProperty()
+  idEleccion: number;
+
+  @ApiProperty({
+    description:
+      'True si ElectionFactory tiene ballot + voteRegistry + auditView para el comicio.',
+  })
+  desplegado: boolean;
+}
+
+export class DespliegueOnChainResponseDto {
+  @ApiProperty()
+  idEleccion: number;
+
+  @ApiProperty()
+  alreadyDeployed: boolean;
+
+  @ApiProperty()
+  txHash: string;
+
+  @ApiProperty()
+  ballot: string;
+
+  @ApiProperty()
+  voteRegistry: string;
+
+  @ApiProperty()
+  auditView: string;
 }

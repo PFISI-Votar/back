@@ -10,6 +10,7 @@ import { AuditLog } from '@/audit/entities/audit-log.entity';
 import { AuthModule } from '@/auth/auth.module';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { EleccionesModule } from '@/eleccion/eleccion.module';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -26,6 +27,7 @@ import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import {
   createAuthedRequest,
+  issueTestSessionToken,
   type AuthedRequest,
 } from './helpers/auth-test.helper';
 
@@ -40,6 +42,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
 ];
 
@@ -101,7 +104,7 @@ describe('ConfiguracionRevoto (e2e) — VOTAR-323', () => {
     await app.init();
 
     const jwtService = moduleFixture.get(JwtService);
-    adminToken = jwtService.sign({
+    adminToken = await issueTestSessionToken(dataSource, jwtService, {
       sub: 'admin-revoto-e2e',
       role: JwtRole.ELECTION_ADMIN,
     });

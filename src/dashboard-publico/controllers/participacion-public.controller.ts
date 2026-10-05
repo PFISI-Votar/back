@@ -1,4 +1,11 @@
-import { Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  ParseIntPipe,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiOperation,
   ApiParam,
@@ -6,8 +13,11 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
+import { SeccionDashboardTag } from '@/dashboard-publico/decorators/seccion-dashboard.decorator';
 import { ParticipacionPublicaResponseDto } from '@/dashboard-publico/dto/participacion-publica-response.dto';
+import { SeccionDashboardVisibleGuard } from '@/dashboard-publico/guards/seccion-dashboard-visible.guard';
 import { ParticipacionPublicService } from '@/dashboard-publico/services/participacion-public.service';
+import { SeccionDashboard } from '@/eleccion/configuracion-comicio/constants/visibilidad-dashboard.constants';
 
 @ApiTags('dashboard-publico')
 @Controller('elecciones/:idEleccion')
@@ -17,6 +27,8 @@ export class ParticipacionPublicController {
   ) {}
 
   @Get('participacion-publica')
+  @UseGuards(SeccionDashboardVisibleGuard)
+  @SeccionDashboardTag(SeccionDashboard.PARTICIPACION)
   @ApiOperation({
     summary: 'Métricas públicas de participación electoral (VOTAR-365)',
     description:
@@ -35,6 +47,10 @@ export class ParticipacionPublicController {
     type: ParticipacionPublicaResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Comicio o padrón no encontrado' })
+  @ApiResponse({
+    status: 403,
+    description: 'Sección oculta por configuración del comicio (VOTAR-459)',
+  })
   @ApiResponse({
     status: 422,
     description: 'Comicio sin contratos desplegados on-chain',

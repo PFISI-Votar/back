@@ -13,8 +13,10 @@ import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/
 import { mapConfiguracionToRevoteConfig } from '@/eleccion/configuracion-comicio/mappers/revote-config.mapper';
 import { BoletaService } from '@/eleccion/lista/services/boleta.service';
 import {
+  DespliegueOnChainResponseDto,
   ListaMapeoItemDto,
   OficializarResponseDto,
+  StackOnChainStatusDto,
 } from '@/eleccion/lista/dto/lista-response.dto';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -58,6 +60,7 @@ export class OficializacionService {
     assertEleccionEditable(eleccion);
     await this.padronService.validarPadronParaOficializar(idEleccion);
     await this.categoriasService.validarCategoriasParaOficializar(idEleccion);
+
     const boleta = await this.boletaService.findBoletaByEleccion(idEleccion);
     if (!boleta) {
       throw new UnprocessableEntityException(
@@ -99,6 +102,20 @@ export class OficializacionService {
     if (!minimoValidation.valid) {
       throw new MinimoCandidatosViolationException(minimoValidation.violations);
     }
+
+    // VOTAR-482: after local 422s (boleta / mínimo de candidatos), check that
+    // the wallet can pay createElection BEFORE opening the DB transaction.
+    // desplegarStackOnChainBestEffort swallows the 503 after commit.
+    const config = await this.configuracionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (config) {
+      await this.blockchainService.assertWalletCanPayCreateElection(
+        idEleccion,
+        mapConfiguracionToRevoteConfig(config),
+      );
+    }
+
     const now = new Date();
     const mapeo: ListaMapeoItemDto[] = [];
     return this.dataSource
@@ -129,45 +146,112 @@ export class OficializacionService {
         };
       })
       .then(async (result) => {
-        await this.desplegarStackOnChain(idEleccion);
-        return result;
+        const onChainDesplegado =
+          await this.desplegarStackOnChainBestEffort(idEleccion);
+        return { ...result, onChainDesplegado };
       });
   }
 
-  private async desplegarStackOnChain(idEleccion: number): Promise<void> {
-    const config = await this.configuracionRepository.findOne({
+  /**
+   * VOTAR-473: permite reintentar solo el despliegue on-chain cuando el comicio
+   * ya quedó CONFIGURADA pero la wallet/RPC falló en el primer intento.
+   * A diferencia de oficializar, propaga el error (no lo swallow) para que la UI reintente.
+   */
+  async reintentarDespliegueOnChain(
+    idEleccion: number,
+  ): Promise<DespliegueOnChainResponseDto> {
+    const eleccion = await this.eleccionRepository.findOne({
       where: { idEleccion },
     });
-    if (!config) {
-      this.logger.warn(
-        `Comicio ${idEleccion}: despliegue on-chain omitido — configuración del comicio no encontrada.`,
-      );
-      return;
+    if (!eleccion) {
+      throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
     }
-    const revoteConfig = mapConfiguracionToRevoteConfig(config);
+    if (eleccion.estado !== EleccionEstado.CONFIGURADA) {
+      throw new UnprocessableEntityException(
+        `Solo se puede reintentar el despliegue on-chain en comicios CONFIGURADA. Estado actual: ${eleccion.estado}`,
+      );
+    }
+
+    const deployment = await this.desplegarStackOnChainOrFail(idEleccion);
+    return {
+      idEleccion,
+      alreadyDeployed: deployment.alreadyDeployed,
+      txHash: deployment.txHash,
+      ballot: deployment.ballot,
+      voteRegistry: deployment.voteRegistry,
+      auditView: deployment.auditView,
+    };
+  }
+
+  async obtenerEstadoStackOnChain(
+    idEleccion: number,
+  ): Promise<StackOnChainStatusDto> {
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      throw new NotFoundException(`Elección ${idEleccion} no encontrada`);
+    }
+
+    const desplegado =
+      await this.blockchainService.hasElectionStackDeployed(idEleccion);
+    return { idEleccion, desplegado };
+  }
+
+  /** Best-effort used by oficializar: swallows ServiceUnavailable so DB commit sticks. */
+  private async desplegarStackOnChainBestEffort(
+    idEleccion: number,
+  ): Promise<boolean> {
     try {
-      const deployment = await this.blockchainService.deployElectionStack(
-        idEleccion,
-        revoteConfig,
-      );
-      if (deployment.alreadyDeployed) {
-        this.logger.log(
-          `Comicio ${idEleccion}: stack on-chain ya existía (revoteEnabled=${revoteConfig.enabled}).`,
-        );
-        return;
-      }
-      this.logger.log(
-        `Comicio ${idEleccion}: stack desplegado on-chain tx=${deployment.txHash} revoteEnabled=${revoteConfig.enabled}.`,
-      );
+      await this.desplegarStackOnChainOrFail(idEleccion);
+      return true;
     } catch (error) {
       if (error instanceof ServiceUnavailableException) {
         this.logger.warn(
           `Comicio ${idEleccion}: despliegue on-chain omitido — ${error.message}`,
         );
-        return;
+        return false;
+      }
+      if (error instanceof UnprocessableEntityException) {
+        this.logger.warn(
+          `Comicio ${idEleccion}: despliegue on-chain omitido — ${error.message}`,
+        );
+        return false;
       }
       throw error;
     }
+  }
+
+  private async desplegarStackOnChainOrFail(idEleccion: number): Promise<{
+    ballot: string;
+    voteRegistry: string;
+    auditView: string;
+    txHash: string;
+    alreadyDeployed: boolean;
+  }> {
+    const config = await this.configuracionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!config) {
+      throw new UnprocessableEntityException(
+        `Comicio ${idEleccion}: no se encontró la configuración del comicio para desplegar on-chain.`,
+      );
+    }
+    const revoteConfig = mapConfiguracionToRevoteConfig(config);
+    const deployment = await this.blockchainService.deployElectionStack(
+      idEleccion,
+      revoteConfig,
+    );
+    if (deployment.alreadyDeployed) {
+      this.logger.log(
+        `Comicio ${idEleccion}: stack on-chain ya existía (revoteEnabled=${revoteConfig.enabled}).`,
+      );
+    } else {
+      this.logger.log(
+        `Comicio ${idEleccion}: stack desplegado on-chain tx=${deployment.txHash} revoteEnabled=${revoteConfig.enabled}.`,
+      );
+    }
+    return deployment;
   }
 
   async obtenerMapeo(idEleccion: number): Promise<ListaMapeoItemDto[]> {

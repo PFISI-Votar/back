@@ -8,9 +8,11 @@ import { ContratoBlockchainService } from './services/contrato-blockchain.servic
 import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
 import { PadronElectoral } from '@/padron/entities/padron-electoral.entity';
 import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
+import { RpcModule } from './rpc/rpc.module';
 
 @Module({
   imports: [
+    RpcModule,
     TypeOrmModule.forFeature([
       ContratoBlockchain,
       TransaccionBlockchain,
@@ -28,6 +30,7 @@ import { MerkleTree } from '@/padron/entities/merkle-tree.entity';
     BlockchainService,
     ContratoBlockchainService,
     TransaccionBlockchainService,
+    RpcModule,
   ],
 })
 export class BlockchainModule {}

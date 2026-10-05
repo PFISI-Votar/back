@@ -1,6 +1,7 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { Not } from 'typeorm';
 import { EleccionesService } from '@/eleccion/services/eleccion.service';
 import { ELECCION_REPOSITORY } from '@/eleccion/interfaces/eleccion.repository.interface';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
@@ -27,10 +28,21 @@ const mockEleccionRepository = {
   actualizarCompleta: jest.fn(),
 };
 
+const mockEntityManager = {
+  query: jest.fn().mockResolvedValue([]),
+  remove: jest.fn(),
+};
+
 const mockEleccionOrmRepository = {
   findOne: jest.fn(),
   find: jest.fn(),
   remove: jest.fn(),
+  softRemove: jest.fn(),
+  manager: {
+    transaction: jest.fn((cb: (m: typeof mockEntityManager) => unknown) =>
+      cb(mockEntityManager),
+    ),
+  },
 };
 
 const mockConfigComicioOrmRepository = {
@@ -204,6 +216,18 @@ describe('EleccionesService', () => {
 
     expect(result).toHaveLength(1);
     expect(mockEleccionOrmRepository.find).toHaveBeenCalledWith({
+      where: { estado: Not(EleccionEstado.ARCHIVADA) },
+      order: { idEleccion: 'DESC' },
+    });
+  });
+
+  it('debe filtrar por estado cuando se pasa un estado explícito (VOTAR-322)', async () => {
+    mockEleccionOrmRepository.find.mockResolvedValue([]);
+
+    await service.listarElecciones(EleccionEstado.ARCHIVADA);
+
+    expect(mockEleccionOrmRepository.find).toHaveBeenCalledWith({
+      where: { estado: EleccionEstado.ARCHIVADA },
       order: { idEleccion: 'DESC' },
     });
   });
@@ -241,7 +265,7 @@ describe('EleccionesService', () => {
     );
   });
 
-  it('debe eliminar un comicio en BORRADOR', async () => {
+  it('debe eliminar un comicio en BORRADOR con borrado lógico (VOTAR-486)', async () => {
     const eleccion = {
       idEleccion: 1,
       estado: EleccionEstado.BORRADOR,
@@ -250,7 +274,10 @@ describe('EleccionesService', () => {
 
     await service.eliminarEleccion(1);
 
-    expect(mockEleccionOrmRepository.remove).toHaveBeenCalledWith(eleccion);
+    // Soft delete: nunca DELETE físico, para no disparar el ON DELETE SET NULL
+    // de audit_log→eleccion (bloqueado por el trigger de inmutabilidad).
+    expect(mockEleccionOrmRepository.softRemove).toHaveBeenCalledWith(eleccion);
+    expect(mockEntityManager.remove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 409 al eliminar comicio no editable', async () => {
@@ -262,7 +289,7 @@ describe('EleccionesService', () => {
     await expect(service.eliminarEleccion(1)).rejects.toThrow(
       ConflictException,
     );
-    expect(mockEleccionOrmRepository.remove).not.toHaveBeenCalled();
+    expect(mockEleccionOrmRepository.softRemove).not.toHaveBeenCalled();
   });
 
   it('debe lanzar 404 al eliminar comicio inexistente', async () => {
@@ -276,8 +303,7 @@ describe('EleccionesService', () => {
   it('no debe inyectar dependencias blockchain en el servicio de creación', () => {
     const constructorParamTypes =
       (Reflect.getMetadata('design:paramtypes', EleccionesService) as
-        | unknown[]
-        | undefined) ?? [];
+        unknown[] | undefined) ?? [];
     const hasBlockchainProvider = constructorParamTypes.some((type) => {
       const name =
         typeof type === 'function'

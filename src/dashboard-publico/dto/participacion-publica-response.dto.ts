@@ -37,4 +37,11 @@ export class ParticipacionPublicaResponseDto {
     example: 'AuditViewContract.getParticipationStats + VoteRegistry.VoteCast',
   })
   fuenteDatos!: string;
+
+  @ApiProperty({
+    example: true,
+    description:
+      'VOTAR-447: si el comicio habilita voto nulo (y su recuento en el dashboard público)',
+  })
+  permitirVotoNulo!: boolean;
 }

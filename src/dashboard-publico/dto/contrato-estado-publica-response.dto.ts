@@ -37,6 +37,13 @@ export class MerkleRootPublicoDto {
     nullable: true,
   })
   publicadoEn: string | null;
+
+  @ApiProperty({
+    example: false,
+    description:
+      'false cuando el estado on-chain es inconsistente (publicado=true con raíz cero)',
+  })
+  consistente: boolean;
 }
 
 export class LimitesRevotoPublicoDto {
