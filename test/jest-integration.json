@@ -6,8 +6,15 @@
   "testMatch": ["**/test/**/*.integration-spec.ts"],
   "maxWorkers": 1,
   "transform": {
-    "^.+\\.(t|j)s$": "ts-jest"
+    "^.+\\.ts$": "ts-jest",
+    "^.+\\.js$": [
+      "ts-jest",
+      { "tsconfig": { "allowJs": true, "module": "commonjs" }, "diagnostics": false }
+    ]
   },
+  "transformIgnorePatterns": [
+    "/node_modules/(?!(?:.*/node_modules/)?(?:htmlparser2|domhandler|domutils|dom-serializer|domelementtype|entities)/)"
+  ],
   "moduleNameMapper": {
     "^@/(.*)$": "<rootDir>/src/$1"
   },

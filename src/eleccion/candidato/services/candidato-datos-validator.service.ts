@@ -6,7 +6,21 @@ import {
   CampoCandidatoError,
 } from '@/eleccion/candidato/interfaces/campo-candidato-definicion.interface';
 
-const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_MAX_LENGTH = 254;
+
+/** Validación lineal (sin regex) para evitar ReDoS sobre datos del usuario. */
+function esEmailValido(email: string): boolean {
+  if (email.length > EMAIL_MAX_LENGTH || /\s/.test(email)) {
+    return false;
+  }
+  const arroba = email.indexOf('@');
+  if (arroba < 1 || arroba !== email.lastIndexOf('@')) {
+    return false;
+  }
+  const dominio = email.slice(arroba + 1);
+  const punto = dominio.lastIndexOf('.');
+  return punto > 0 && punto < dominio.length - 1;
+}
 
 @Injectable()
 export class CandidatoDatosValidatorService {
@@ -99,7 +113,7 @@ export class CandidatoDatosValidatorService {
       ];
     }
     const email = valor.trim();
-    if (!EMAIL_REGEX.test(email)) {
+    if (!esEmailValido(email)) {
       return [
         {
           clave: campo.clave,

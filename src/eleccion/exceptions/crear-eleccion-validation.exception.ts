@@ -1,7 +1,9 @@
 import { UnprocessableEntityException } from '@nestjs/common';
 
 export type CrearEleccionValidationField =
-  'metodosAutenticacion' | 'fechaInicio' | 'fechaFin';
+  | 'metodosAutenticacion'
+  | 'fechaInicio'
+  | 'fechaFin';
 
 export type CrearEleccionValidationError = {
   field: CrearEleccionValidationField;

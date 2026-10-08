@@ -18,8 +18,8 @@ export function sanitizarNombreArchivo(
   originalname: string | null | undefined,
 ): string {
   const sinNulo = String(originalname ?? '').split('\0')[0] ?? '';
-  const basename = sinControles(sinNulo)
-    .replace(/.*[/\\]/, '')
-    .trim();
+  const limpio = sinControles(sinNulo);
+  const separador = Math.max(limpio.lastIndexOf('/'), limpio.lastIndexOf('\\'));
+  const basename = limpio.slice(separador + 1).trim();
   return basename.length > 0 ? basename : 'desconocido';
 }
