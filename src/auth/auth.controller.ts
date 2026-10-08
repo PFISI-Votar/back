@@ -212,8 +212,7 @@ export class AuthController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     // VOTAR-492: revocar en DB primero, limpiar cookies SIEMPRE. `logout` ya no
     // lanza si la sesión no está activa (revocación idempotente); el try/finally
     // cubre un fallo real de DB — las cookies se limpian igual y el error se
@@ -227,8 +226,7 @@ export class AuthController {
 
   private extractRefreshToken(request: Request): string {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     if (!refreshToken) {
       throw new UnauthorizedException('Sesión de refresco inválida');
     }

@@ -1,9 +1,5 @@
 export type RpcFailoverReason =
-  | 'timeout'
-  | 'rate_limit'
-  | 'auth'
-  | 'unavailable'
-  | 'network';
+  'timeout' | 'rate_limit' | 'auth' | 'unavailable' | 'network';
 
 export type RpcFailoverEvent = {
   at: string;
