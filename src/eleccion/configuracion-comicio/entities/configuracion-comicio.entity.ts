@@ -61,4 +61,32 @@ export class ConfiguracionComicio {
     default: PoliticaRevoto.DISABLED,
   })
   politicaRevoto: PoliticaRevoto;
+
+  @Column({
+    name: 'mostrar_dashboard_resultados',
+    type: 'boolean',
+    default: true,
+  })
+  mostrarDashboardResultados: boolean;
+
+  @Column({
+    name: 'mostrar_dashboard_participacion',
+    type: 'boolean',
+    default: true,
+  })
+  mostrarDashboardParticipacion: boolean;
+
+  @Column({
+    name: 'mostrar_dashboard_revoto',
+    type: 'boolean',
+    default: true,
+  })
+  mostrarDashboardRevoto: boolean;
+
+  @Column({
+    name: 'mostrar_dashboard_transacciones',
+    type: 'boolean',
+    default: true,
+  })
+  mostrarDashboardTransacciones: boolean;
 }

@@ -1,0 +1,39 @@
+# VOTAR-498 — plantilla de override para habilitar TLS + pg_hba restrictivo
+# en el servicio `db` del stack de desarrollo (../../docker-compose.yml en
+# la raíz del monorepo, NO versionado en ningún repo del equipo).
+#
+# Esta plantilla no se aplica sola. Copiarla a la raíz como
+# `docker-compose.override.yml` (ya ignorado por el .gitignore de la raíz,
+# `docker compose` lo mezcla automáticamente con docker-compose.yml):
+#
+#   npm run db:certs   (desde back/, genera los certificados una vez)
+#   cp back/deploy/postgres/docker-compose.db-tls.yml docker-compose.override.yml
+#   docker compose up -d db
+#
+# El puerto de la DB se mantiene publicado (docker-compose.yml de la raíz no
+# se toca, ver README.md) para que pgAdmin/DBeaver del equipo sigan
+# funcionando — ahora sobre TLS en vez de texto plano.
+services:
+  db:
+    volumes:
+      - ./back/deploy/postgres/certs:/etc/postgresql/certs:ro
+      - ./back/deploy/postgres/pg_hba.dev.conf:/etc/postgresql/pg_hba.conf:ro
+    # PostgreSQL exige que ssl_key_file sea 0600 y propiedad del usuario que
+    # corre el proceso (postgres, uid 70 en postgres:16-alpine). Un bind
+    # mount conserva el owner/modo del host, así que no alcanza con el
+    # chmod 600 que ya hace generate-dev-certs.sh en el host: hay que copiar
+    # la key a un path interno del contenedor con el owner correcto antes de
+    # arrancar postgres.
+    command: >
+      sh -c "
+        cp /etc/postgresql/certs/server.key /var/lib/postgresql/server.key &&
+        chmod 600 /var/lib/postgresql/server.key &&
+        chown postgres:postgres /var/lib/postgresql/server.key &&
+        exec docker-entrypoint.sh postgres
+          -c ssl=on
+          -c ssl_cert_file=/etc/postgresql/certs/server.crt
+          -c ssl_key_file=/var/lib/postgresql/server.key
+          -c ssl_ca_file=/etc/postgresql/certs/ca.crt
+          -c ssl_min_protocol_version=TLSv1.2
+          -c hba_file=/etc/postgresql/pg_hba.conf
+      "

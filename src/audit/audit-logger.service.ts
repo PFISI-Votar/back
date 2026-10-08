@@ -31,6 +31,36 @@ export interface LogVotoEmitidoInput {
   endpoint?: string;
 }
 
+export interface LogCredencialValidacionEmitidaInput {
+  idEleccion: number;
+  /** Identificador ofuscado del votante (hash de hoja del padrón). */
+  actorId: string;
+  ipOrigen?: string | null;
+  timestamp?: Date;
+}
+
+export interface LogRelayerCapacidadEmitidaInput {
+  idEleccion: number;
+  /** Hash del votante (se ofusca al persistir; no se guarda en claro). */
+  actorId: string;
+  ipOrigen?: string | null;
+  timestamp?: Date;
+}
+
+export interface LogRelayerCastEnviadoInput {
+  idEleccion: number;
+  timestamp?: Date;
+  endpoint?: string;
+}
+
+export interface LogFirmaValidacionEmitidaInput {
+  idEleccion: number;
+  /** Address de la Entidad de Firmas Digitales (VALIDATOR_ROLE). */
+  direccionValidador: string;
+  algoritmo: string;
+  timestamp?: Date;
+}
+
 export interface LogComicioAbiertoInput {
   idEleccion: number;
   actorId: string;
@@ -43,6 +73,68 @@ export interface LogComicioCerradoInput {
   idEleccion: number;
   actorId: string;
   modo: 'MANUAL' | 'AUTOMATICO';
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogComicioPausadoInput {
+  idEleccion: number;
+  actorId: string;
+  razon: string;
+  confirmaciones: number;
+  /** VOTAR-347 (follow-up) — vincula la decisión humana con la tx on-chain. */
+  txHashBallot?: string | null;
+  txHashVoteRegistry?: string | null;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogComicioReanudadoInput {
+  idEleccion: number;
+  actorId: string;
+  /** VOTAR-347 (follow-up) — justificación obligatoria de la reanudación. */
+  razon: string;
+  confirmaciones: number;
+  txHashBallot?: string | null;
+  txHashVoteRegistry?: string | null;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogComicioArchivadoInput {
+  idEleccion: number;
+  actorId: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export type AlcanceRevocacionSesiones = 'PROPIA' | 'USUARIO' | 'GLOBAL';
+
+export interface LogSesionRevocadaInput {
+  actorId: string;
+  alcance: AlcanceRevocacionSesiones;
+  /** identificadorSso del usuario objetivo; se ofusca antes de persistir. */
+  objetivo?: string | null;
+  sesionesRevocadas: number;
+  motivo: string;
+  endpoint: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogBloqueoAutenticacionInput {
+  actorId: string;
+  /** NINGUNO = desactivación. */
+  alcance: 'NINGUNO' | 'ADMIN' | 'TODOS';
+  motivo: string;
+  timestamp: Date;
+  ipOrigen?: string;
+}
+
+export interface LogActaCierreGeneradaInput {
+  idEleccion: number;
+  actorId: string;
+  hashPdf: string;
   timestamp: Date;
   ipOrigen?: string;
 }
@@ -215,6 +307,102 @@ export class AuditLoggerService {
     }
   }
 
+  /**
+   * VOTAR-377 FASE 1 — emisión de una credencial de validación. Registra el
+   * votante (ofuscado) y la elección, NUNCA el commit de la credencial: el rastro
+   * de identidad y el rastro de la firma anónima quedan deliberadamente separados.
+   */
+  async logCredencialValidacionEmitida(
+    input: LogCredencialValidacionEmitidaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen ?? undefined);
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.CREDENCIAL_VALIDACION_EMITIDA,
+      actorId: input.actorId,
+      descripcion: `Credencial de validación emitida para el comicio ${input.idEleccion} al votante con ID ofuscado ${actorOfuscado}`,
+      endpoint: '/elecciones/:id/validacion/credencial',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-497 — emisión autenticada de capacidad de gas. Actor ofuscado; nunca
+   * token, nullifier, selección ni txHash.
+   */
+  async logRelayerCapacidadEmitida(
+    input: LogRelayerCapacidadEmitidaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen ?? undefined);
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.RELAYER_CAPACIDAD_EMITIDA,
+      actorId: input.actorId,
+      descripcion: `Capacidad de relayer emitida para el comicio ${input.idEleccion} al votante con ID ofuscado ${actorOfuscado}`,
+      endpoint: '/relayer/:idEleccion/autorizacion',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-497 — broadcast anónimo vía relayer. Sin identidad ni campos de voto.
+   */
+  async logRelayerCastEnviado(
+    input: LogRelayerCastEnviadoInput,
+  ): Promise<AuditLog> {
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.RELAYER_CAST_ENVIADO,
+      actorId: 'ANONIMO',
+      descripcion:
+        'Cast transmitido por el relayer (registro anónimo off-chain)',
+      endpoint: input.endpoint ?? '/relayer/:idEleccion/transmitir',
+      ipOrigenRaw: null,
+      datosAdicionales: null,
+      timestamp: input.timestamp,
+      preservarActorLiteral: true,
+      omitirTerminal: true,
+    });
+  }
+
+  /**
+   * VOTAR-377 FASE 2 — la Entidad de Firmas Digitales certificó un sufragio. Es
+   * un evento anónimo: `actor = ANONIMO`, sin IP/terminal, y `datosAdicionales`
+   * NUNCA lleva nullifier, selectionHash ni commit (respeta FORBIDDEN_VOTO_JOIN_KEYS).
+   */
+  async logFirmaValidacionEmitida(
+    input: LogFirmaValidacionEmitidaInput,
+  ): Promise<AuditLog> {
+    const entry = await this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.FIRMA_VALIDACION_EMITIDA,
+      actorId: 'ANONIMO',
+      descripcion: `Firma institucional de legitimidad emitida para un sufragio del comicio ${input.idEleccion} (Ley 25.506)`,
+      endpoint: '/elecciones/:id/validacion/firma',
+      ipOrigenRaw: null,
+      datosAdicionales: {
+        direccionValidador: input.direccionValidador,
+        algoritmo: input.algoritmo,
+      },
+      timestamp: input.timestamp,
+      preservarActorLiteral: true,
+      omitirTerminal: true,
+    });
+    return entry;
+  }
+
   async logComicioAbierto(input: LogComicioAbiertoInput): Promise<AuditLog> {
     const actorOfuscado = this.ofuscarOperador(input.actorId);
     const terminal = this.identificadorTerminal(input.ipOrigen);
@@ -261,6 +449,218 @@ export class AuditLoggerService {
       datosAdicionales: {
         modo: input.modo,
         snapshotCongelado: true,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-347 — pausa de emergencia ejecutada tras alcanzar el umbral de
+   * confirmaciones de autoridades PAUSER distintas. `actorId` es quien aportó
+   * la confirmación que cruzó el umbral; `confirmaciones` deja explícito en
+   * el log que no fue una decisión unilateral.
+   */
+  async logComicioPausado(input: LogComicioPausadoInput): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const txHash = input.txHashBallot || input.txHashVoteRegistry || null;
+    const descripcion =
+      `Comicio ${input.idEleccion} pausado por incidente ("${input.razon}") tras ${input.confirmaciones} ` +
+      `confirmaciones de autoridades PAUSER distintas. Última confirmación por ID Ofuscado ${actorOfuscado} ` +
+      `desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}` +
+      (txHash ? `. Hash de transacción on-chain: ${txHash}` : '');
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_PAUSADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/pausar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        razon: input.razon,
+        confirmaciones: input.confirmaciones,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+        hashTransaccion: txHash,
+        txHashBallot: input.txHashBallot ?? null,
+        txHashVoteRegistry: input.txHashVoteRegistry ?? null,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /** VOTAR-347 — reanudación de emergencia, mismo umbral de confirmaciones que la pausa. */
+  async logComicioReanudado(
+    input: LogComicioReanudadoInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const txHash = input.txHashBallot || input.txHashVoteRegistry || null;
+    const descripcion =
+      `Comicio ${input.idEleccion} reanudado ("${input.razon}") tras ${input.confirmaciones} confirmaciones de ` +
+      `autoridades PAUSER distintas. Última confirmación por ID Ofuscado ${actorOfuscado} desde el identificador ` +
+      `de terminal criptográfico ${terminal} a la hora UTC ${utc}` +
+      (txHash ? `. Hash de transacción on-chain: ${txHash}` : '');
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_REANUDADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/reanudar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        razon: input.razon,
+        confirmaciones: input.confirmaciones,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+        hashTransaccion: txHash,
+        txHashBallot: input.txHashBallot ?? null,
+        txHashVoteRegistry: input.txHashVoteRegistry ?? null,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /** VOTAR-322: archivado off-chain de un comicio CERRADA. */
+  async logComicioArchivado(
+    input: LogComicioArchivadoInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const descripcion = `Usuario Administrador con ID Ofuscado ${actorOfuscado} archivó el comicio ${input.idEleccion} desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.COMICIO_ARCHIVADO,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/archivar',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-492 §12.2 (Contención) — revocación de sesiones de refresh
+   * comprometidas: individual del propio operador, por usuario objetivo o
+   * global. El usuario objetivo se persiste SOLO ofuscado (la bitácora es
+   * consultable desde el panel; invariante §7.1).
+   */
+  async logSesionRevocada(input: LogSesionRevocadaInput): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const objetivoTexto =
+      input.alcance === 'GLOBAL'
+        ? 'todas las sesiones activas'
+        : input.alcance === 'USUARIO'
+          ? `las sesiones del usuario objetivo (ID Ofuscado ${this.ofuscarOperador(
+              input.objetivo ?? '',
+            )})`
+          : 'sus otras sesiones activas';
+    const descripcion =
+      `Usuario Administrador con ID Ofuscado ${actorOfuscado} revocó ${input.sesionesRevocadas} sesión/es ` +
+      `(${objetivoTexto}) por incidente ("${input.motivo}") desde el identificador de terminal criptográfico ` +
+      `${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: null,
+      tipoEvento: TipoEventoAudit.SESION_REVOCADA,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: input.endpoint,
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        alcance: input.alcance,
+        sesionesRevocadas: input.sesionesRevocadas,
+        motivo: input.motivo,
+        idObjetivoOfuscado: input.objetivo
+          ? this.ofuscarOperador(input.objetivo)
+          : null,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * VOTAR-492 §12.2 (Contención) — activación/desactivación del bloqueo de
+   * flujos de autenticación institucional (login/2FA/refresh de autoridades y,
+   * en alcance TODOS, también el login de votantes).
+   */
+  async logBloqueoAutenticacion(
+    input: LogBloqueoAutenticacionInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const accion =
+      input.alcance === 'NINGUNO'
+        ? 'desactivó el bloqueo de flujos de autenticación institucional'
+        : `activó el bloqueo de flujos de autenticación institucional (alcance ${input.alcance})`;
+    const descripcion =
+      `Usuario Administrador con ID Ofuscado ${actorOfuscado} ${accion} por incidente ("${input.motivo}") ` +
+      `desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: null,
+      tipoEvento: TipoEventoAudit.BLOQUEO_AUTENTICACION,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: 'PUT /configuracion-sistema/auth-bloqueo',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        alcance: input.alcance,
+        motivo: input.motivo,
+        idOperadorOfuscado: actorOfuscado,
+        identificadorTerminal: terminal,
+        horaUtc: utc,
+      },
+      timestamp: input.timestamp,
+    });
+  }
+
+  /**
+   * Registra de forma permanente el hash SHA-256 del PDF del Acta de
+   * Cierre emitido (verificación de integridad del documento). El hash va
+   * en `datosAdicionales` — `hashRegistro`/`hashAnterior` son el
+   * encadenamiento interno de la bitácora, no deben confundirse con este.
+   */
+  async logActaCierreGenerada(
+    input: LogActaCierreGeneradaInput,
+  ): Promise<AuditLog> {
+    const actorOfuscado = this.ofuscarOperador(input.actorId);
+    const terminal = this.identificadorTerminal(input.ipOrigen);
+    const utc = input.timestamp.toISOString();
+    const descripcion = `Usuario Administrador con ID Ofuscado ${actorOfuscado} generó el Acta de Cierre del comicio ${input.idEleccion} (hash SHA-256 ${input.hashPdf}) desde el identificador de terminal criptográfico ${terminal} a la hora UTC ${utc}`;
+
+    return this.appendEntry({
+      idEleccion: input.idEleccion,
+      tipoEvento: TipoEventoAudit.ACTA_CIERRE_GENERADA,
+      actorId: input.actorId,
+      descripcion,
+      endpoint: '/elecciones/:id/acta-cierre/hash',
+      ipOrigenRaw: input.ipOrigen ?? 'SYSTEM',
+      datosAdicionales: {
+        hashPdfSha256: input.hashPdf,
+        algoritmo: 'SHA-256',
         idOperadorOfuscado: actorOfuscado,
         identificadorTerminal: terminal,
         horaUtc: utc,

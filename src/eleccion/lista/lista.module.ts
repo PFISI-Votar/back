@@ -14,7 +14,7 @@ import { BoletaService } from '@/eleccion/lista/services/boleta.service';
 import { ListaService } from '@/eleccion/lista/services/lista.service';
 import { OfertaElectoralQueryService } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { OficializacionService } from '@/eleccion/lista/services/oficializacion.service';
-import { ElectoralImageService } from '@/common/images/electoral-image.service';
+import { ElectoralImageModule } from '@/common/images/electoral-image.module';
 
 @Module({
   imports: [
@@ -29,13 +29,13 @@ import { ElectoralImageService } from '@/common/images/electoral-image.service';
     CategoriasModule,
     BlockchainModule,
     forwardRef(() => PadronModule),
+    ElectoralImageModule,
   ],
   controllers: [ListaController],
   providers: [
     ListaService,
     BoletaService,
     OficializacionService,
-    ElectoralImageService,
     OfertaElectoralQueryService,
   ],
   exports: [ListaService, BoletaService, OfertaElectoralQueryService],

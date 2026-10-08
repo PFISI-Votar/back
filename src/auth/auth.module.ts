@@ -7,6 +7,7 @@ import { AuditModule } from '@/audit/audit.module';
 import { CommonRateLimitModule } from '@/common/rate-limit/common-rate-limit.module';
 import { AuthController } from '@/auth/auth.controller';
 import { JwksController } from '@/auth/controllers/jwks.controller';
+import { SessionAdminController } from '@/auth/controllers/session-admin.controller';
 import { VotanteAuthController } from '@/auth/controllers/votante-auth.controller';
 import {
   DEFAULT_JWT_AUDIENCE,
@@ -14,19 +15,23 @@ import {
 } from '@/auth/constants/jwt-identity.constants';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { AuthLockdownGuard } from '@/auth/guards/auth-lockdown.guard';
 import { VoterElectionGuard } from '@/auth/guards/voter-election.guard';
 import { VoterJwtAuthGuard } from '@/auth/guards/voter-jwt-auth.guard';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import { RolesGuard } from '@/auth/guards/roles.guard';
+import { PauserRoleGuard } from '@/auth/guards/pauser-role.guard';
 import { AuthService } from '@/auth/services/auth.service';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { JwtKeysService } from '@/auth/services/jwt-keys.service';
 import { JwksService } from '@/auth/services/jwks.service';
 import { RefreshTokenService } from '@/auth/services/refresh-token.service';
+import { TotpService } from '@/auth/services/totp.service';
 import { VotanteAuthService } from '@/auth/services/votante-auth.service';
 import { JwtStrategy } from '@/auth/strategies/jwt.strategy';
 import { VoterJwtStrategy } from '@/auth/strategies/voter-jwt.strategy';
 import { resolveJwtKeyMaterial } from '@/auth/utils/jwt-key-material.util';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { PadronModule } from '@/padron/padron.module';
@@ -39,6 +44,7 @@ import { PadronModule } from '@/padron/padron.module';
       RefreshSession,
       Eleccion,
       ConfiguracionComicio,
+      ConfiguracionSistema,
     ]),
     PadronModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
@@ -78,12 +84,18 @@ import { PadronModule } from '@/padron/padron.module';
     AuditModule,
     CommonRateLimitModule,
   ],
-  controllers: [AuthController, VotanteAuthController, JwksController],
+  controllers: [
+    AuthController,
+    VotanteAuthController,
+    JwksController,
+    SessionAdminController,
+  ],
   providers: [
     AuthService,
     VotanteAuthService,
     AutogestionService,
     RefreshTokenService,
+    TotpService,
     JwtKeysService,
     JwksService,
     JwtStrategy,
@@ -92,6 +104,8 @@ import { PadronModule } from '@/padron/padron.module';
     VoterJwtAuthGuard,
     VoterElectionGuard,
     RolesGuard,
+    PauserRoleGuard,
+    AuthLockdownGuard,
   ],
   exports: [
     AuthService,
@@ -100,6 +114,7 @@ import { PadronModule } from '@/padron/padron.module';
     VoterJwtAuthGuard,
     VoterElectionGuard,
     RolesGuard,
+    PauserRoleGuard,
     JwtModule,
     AuditModule,
     JwtKeysService,
