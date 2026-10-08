@@ -105,7 +105,7 @@ function leerFilasCsv(buffer: Buffer): Array<string[] | null> {
       relax_column_count: true,
       relax_quotes: true,
       skip_empty_lines: false,
-    }) as string[][];
+    });
     return (celdas ?? []).map((celda) => String(celda ?? ''));
   });
 }
