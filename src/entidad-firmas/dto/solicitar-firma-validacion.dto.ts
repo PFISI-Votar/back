@@ -1,9 +1,15 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsArray, IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import {
+  IsArray,
+  IsInt,
+  IsOptional,
+  IsString,
+  Matches,
+  Min,
+} from 'class-validator';
 
 const BYTES32_REGEX = /^0x[0-9a-fA-F]{64}$/;
 const ADDRESS_REGEX = /^0x[0-9a-fA-F]{40}$/;
-const UINT_STRING_REGEX = /^[0-9]{1,78}$/;
 
 /**
  * VOTAR-377 FASE 2 (anónima) — el cliente revela el secreto de la credencial junto
@@ -55,8 +61,7 @@ export class SolicitarFirmaValidacionDto {
   candidateIds?: string[];
 
   @ApiProperty({
-    description:
-      'Id de candidato de auditoría legacy (compatibilidad).',
+    description: 'Id de candidato de auditoría legacy (compatibilidad).',
     example: '101',
     required: false,
   })

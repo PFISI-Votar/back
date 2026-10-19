@@ -6,6 +6,7 @@ import { Eleccion } from '../eleccion/entities/eleccion.entity';
 import { MerkleTree } from './entities/merkle-tree.entity';
 import { PadronElectoral } from './entities/padron-electoral.entity';
 import { PadronVotante } from './entities/padron-votante.entity';
+import { CriterioHashPadron } from './enums/criterio-hash-padron.enum';
 import { MerkleTreeEstado } from './enums/merkle-tree-estado.enum';
 import { PadronEstado } from './enums/padron-estado.enum';
 import {
@@ -100,6 +101,7 @@ export class PadronRepository implements IPadronRepository {
         totalVotantesHabilitados: input.sortedLeaves.length,
         hashPadron: input.hashPadron,
         estado: PadronEstado.BORRADOR,
+        criterioHash: input.criterioHash ?? CriterioHashPadron.DNI,
         totalProcesados: input.totalProcesados,
         totalOmitidos: input.totalOmitidos,
         novedades: input.novedades,

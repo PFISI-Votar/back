@@ -7,10 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
-import {
-  OBSERVACION_LOGIN_DEFAULT,
-  parseObservacionLogin,
-} from '@/eleccion/constants/observacion-login.constant';
+import { parseObservacionLogin } from '@/eleccion/constants/observacion-login.constant';
 import {
   MAX_INTERVALO_SEGUNDOS,
   MAX_SUFRAGIOS_POR_VOTANTE,
@@ -218,9 +215,7 @@ export class ConfiguracionComicioService {
     return this.toVisibilidadDashboardResponse(guardada, eleccion.estado);
   }
 
-  async obtenerMensajeBud(
-    idEleccion: number,
-  ): Promise<MensajeBudResponseDto> {
+  async obtenerMensajeBud(idEleccion: number): Promise<MensajeBudResponseDto> {
     const eleccion = await this.assertEleccionExists(idEleccion);
     return {
       idEleccion: eleccion.idEleccion,
