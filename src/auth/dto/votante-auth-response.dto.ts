@@ -22,7 +22,7 @@ export class VotanteAuthResponseDto {
   @ApiProperty({
     type: VotanteAuthUserDto,
     description:
-      'Perfil del votante autenticado. El JWT se entrega solo en cookie HttpOnly.',
+      'Perfil del votante autenticado. El JWT se entrega solo en cookie HttpOnly, Secure y SameSite=Strict.',
   })
   user: VotanteAuthUserDto;
 }

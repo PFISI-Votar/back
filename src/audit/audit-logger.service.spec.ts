@@ -227,6 +227,39 @@ describe('AuditLoggerService', () => {
     expect(entry.ipOrigen).toBe(terminal);
   });
 
+  it('registra el hash SHA-256 del Acta de Cierre en datosAdicionales, sin tocar hashRegistro', async () => {
+    const hashPdf = 'a'.repeat(64);
+    const entry = await service.logActaCierreGenerada({
+      idEleccion: 7,
+      actorId: '14988',
+      hashPdf,
+      timestamp: new Date('2026-09-01T18:05:00.000Z'),
+      ipOrigen: '203.0.113.50',
+    });
+
+    const actorOfuscado = service.ofuscarOperador('14988');
+    const terminal = service.identificadorTerminal('203.0.113.50');
+    expect(entry.tipoEvento).toBe(TipoEventoAudit.ACTA_CIERRE_GENERADA);
+    expect(entry.descripcion).toContain(
+      `Usuario Administrador con ID Ofuscado ${actorOfuscado}`,
+    );
+    expect(entry.descripcion).toContain('Acta de Cierre del comicio 7');
+    expect(entry.descripcion).toContain(hashPdf);
+    expect(entry.descripcion).toContain(
+      `identificador de terminal criptográfico ${terminal}`,
+    );
+    expect(entry.descripcion).not.toContain('203.0.113.50');
+    expect(entry.datosAdicionales).toEqual(
+      expect.objectContaining({
+        hashPdfSha256: hashPdf,
+        algoritmo: 'SHA-256',
+      }),
+    );
+    // hashRegistro es el encadenamiento interno de la bitácora — no debe
+    // pisarse con el hash del PDF.
+    expect(entry.hashRegistro).not.toBe(hashPdf);
+  });
+
   it('VOTAR-370 UAT-02: PADRON_CARGADO enriquecido con archivo, filas, duplicados y Merkle', async () => {
     const entry = await service.logPadronCargado({
       idEleccion: 7,

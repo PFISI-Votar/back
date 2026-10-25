@@ -1,6 +1,6 @@
 {
   "contractName": "VoteRegistry",
-  "abiHash": "0x796e59e2ce2209e2fa5c4b55748cbaf22a7403bab23d1c6940e20122edbbaa4b",
+  "abiHash": "0xe2893c8f50c03e811757c70b77f2661cdf68addeaf04191f5706eb1d82b042a2",
   "abi": [
     {
       "inputs": [
@@ -67,6 +67,22 @@
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "candidateId",
+          "type": "uint256"
+        }
+      ],
+      "name": "DuplicateCandidateId",
+      "type": "error"
+    },
+    {
+      "inputs": [],
+      "name": "EmptyBallotSelection",
+      "type": "error"
+    },
+    {
       "inputs": [],
       "name": "EmptyCandidateSet",
       "type": "error"
@@ -130,6 +146,17 @@
       "type": "error"
     },
     {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "count",
+          "type": "uint256"
+        }
+      ],
+      "name": "TooManyCandidates",
+      "type": "error"
+    },
+    {
       "anonymous": false,
       "inputs": [
         {
@@ -156,6 +183,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -352,6 +398,19 @@
     },
     {
       "inputs": [],
+      "name": "MAX_CANDIDATES_PER_BALLOT",
+      "outputs": [
+        {
+          "internalType": "uint256",
+          "name": "",
+          "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
       "name": "MERKLE_UPDATER_ROLE",
       "outputs": [
         {
@@ -384,6 +443,19 @@
           "internalType": "uint256",
           "name": "",
           "type": "uint256"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "VALIDATOR_ROLE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
         }
       ],
       "stateMutability": "view",
@@ -532,9 +604,9 @@
       "name": "getVoterState",
       "outputs": [
         {
-          "internalType": "uint256",
-          "name": "candidateId",
-          "type": "uint256"
+          "internalType": "uint256[]",
+          "name": "candidateIds",
+          "type": "uint256[]"
         },
         {
           "internalType": "bool",
@@ -655,6 +727,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -687,9 +772,9 @@
           "type": "bytes32"
         },
         {
-          "internalType": "uint256",
-          "name": "candidateId",
-          "type": "uint256"
+          "internalType": "uint256[]",
+          "name": "candidateIds",
+          "type": "uint256[]"
         }
       ],
       "name": "recordVote",
@@ -810,6 +895,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-08T17:44:12.963Z",
+  "exportedAt": "2026-09-27T02:46:26.370Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

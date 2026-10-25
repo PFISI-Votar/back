@@ -14,6 +14,7 @@ import { VOTER_ACCESS_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants
 import { VOTANTE_CREDENCIALES_INVALIDAS } from '@/auth/constants/votante-auth.constants';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
@@ -50,6 +51,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
 ];
 
@@ -232,6 +234,8 @@ describe('VotanteAuth (e2e)', () => {
       ),
     ).toBe(true);
     expect(cookieHeader.some((value) => value.includes('HttpOnly'))).toBe(true);
+    expect(cookieHeader.join(';')).toMatch(/SameSite=Strict/i);
+    expect(cookieHeader.join(';')).not.toMatch(/SameSite=Lax/i);
   });
 
   it('UAT-02: credenciales inválidas responden 401 genérico sin PII', async () => {
@@ -276,6 +280,18 @@ describe('VotanteAuth (e2e)', () => {
       role: JwtRole.VOTER,
       idEleccion: TEST_ID_ELECCION,
     });
+  });
+
+  it('POST /auth/votante/logout limpia la cookie con SameSite=Strict', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/votante/logout')
+      .expect(204);
+
+    const cleared = (response.headers['set-cookie'] as string[]).join(';');
+    expect(cleared).toContain(`${VOTER_ACCESS_COOKIE_NAME}=`);
+    expect(cleared).toMatch(/HttpOnly/i);
+    expect(cleared).toMatch(/SameSite=Strict/i);
+    expect(cleared).not.toMatch(/SameSite=Lax/i);
   });
 
   it('UAT-04: no existe endpoint de refresh para votante', async () => {

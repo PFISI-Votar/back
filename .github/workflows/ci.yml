@@ -12,8 +12,25 @@ on:
       - master
 
 jobs:
-  ci:
+  # VOTAR-488: el ruleset exige el check `ci`. El job homónimo más abajo
+  # solo pasa si calidad, CodeQL y secret scanning pasan, así que un
+  # hallazgo crítico o un secreto bloquean el merge sin cambiar el ruleset.
+  codeql:
+    uses: ./.github/workflows/codeql.yml
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+  secret-scanning:
+    uses: ./.github/workflows/secret-scanning.yml
+    permissions:
+      contents: read
+
+  quality:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     timeout-minutes: 20
 
     services:
@@ -37,8 +54,14 @@ jobs:
       DB_USERNAME: votar
       DB_PASSWORD: votar
       DB_NAME: votar_test
+      DB_APP_USERNAME: votar_app
+      DB_APP_PASSWORD: votar_app_ci
       JWT_SECRET: test-secret-for-ci-min-16-chars
       DEVELOPMENT: 'true'
+      # VOTAR-498: el servicio postgres:16 de CI no tiene certificados TLS
+      # configurados; DEVELOPMENT=true permite DB_SSL_MODE=disable.
+      DB_SSL_MODE: disable
+      DB_ENCRYPTION_KEY: test-field-encryption-key-for-ci-min-16-chars
 
     steps:
       - name: Checkout code
@@ -52,6 +75,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Check open-source licenses
+        run: npm run licenses:check
 
       - name: Lint
         run: npm run lint:ci
@@ -70,3 +96,26 @@ jobs:
 
       - name: Enforce coverage on validation and crypto modules
         run: npm run test:cov:critical
+
+  ci:
+    needs: [quality, codeql, secret-scanning]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Require quality, CodeQL and secret scanning
+        env:
+          QUALITY: ${{ needs.quality.result }}
+          CODEQL: ${{ needs.codeql.result }}
+          SECRETS: ${{ needs.secret-scanning.result }}
+        run: |
+          set -eu
+          failed=0
+          for name in QUALITY CODEQL SECRETS; do
+            result="${!name}"
+            echo "$name=$result"
+            if [ "$result" != "success" ]; then
+              failed=1
+            fi
+          done
+          exit "$failed"

@@ -14,6 +14,13 @@ export class EleccionResponseDto {
   @ApiPropertyOptional()
   descripcion?: string | null;
 
+  @ApiPropertyOptional({
+    description:
+      'VOTAR-454: observación mostrada en el login de la BUD. Null oculta el recuadro.',
+    nullable: true,
+  })
+  observacionLogin?: string | null;
+
   @ApiProperty()
   fechaInicio: Date;
 
@@ -22,6 +29,15 @@ export class EleccionResponseDto {
 
   @ApiProperty({ enum: EleccionEstado })
   estado: EleccionEstado;
+
+  @ApiProperty({
+    description:
+      'VOTAR-347: eje ortogonal a `estado` — puede estar ABIERTA y pausada a la vez.',
+  })
+  pausada: boolean;
+
+  @ApiPropertyOptional()
+  pausadaEn?: Date | null;
 
   @ApiProperty({ enum: TipoVotacion })
   tipoVotacion: TipoVotacion;

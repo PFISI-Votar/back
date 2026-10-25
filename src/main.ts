@@ -5,8 +5,10 @@ import { NestFactory } from '@nestjs/core';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from '@/app.module';
 import { configureApp } from '@/common/bootstrap/configure-app';
+import { hydrateSecretsFromVault } from '@/vault/hydrate-secrets';
 
 async function bootstrap() {
+  await hydrateSecretsFromVault();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   configureApp(app);
   const configService = app.get(ConfigService);

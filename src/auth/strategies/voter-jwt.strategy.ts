@@ -14,8 +14,7 @@ import { JwksService } from '@/auth/services/jwks.service';
 
 const extractVoterAccessTokenFromCookie = (request: Request): string | null => {
   const token = request.cookies?.[VOTER_ACCESS_COOKIE_NAME] as
-    | string
-    | undefined;
+    string | undefined;
   if (typeof token === 'string' && token.length > 0) {
     return token;
   }

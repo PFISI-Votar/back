@@ -21,7 +21,41 @@ export const envValidationSchema = Joi.object({
   DB_USERNAME: Joi.string().required(),
   DB_PASSWORD: Joi.string().required(),
   DB_NAME: Joi.string().required(),
-  UPLOADS_DIR: Joi.string().default('uploads'),
+
+  /**
+   * VOTAR-498 — TLS estricto hacia PostgreSQL. En producción
+   * (DEVELOPMENT=false) se exige "verify-ca" o "verify-full"; "disable" solo
+   * se permite en desarrollo. Ver `resolveDatabaseSsl` en
+   * `src/config/database-ssl.config.ts`.
+   */
+  DB_SSL_MODE: Joi.when('DEVELOPMENT', {
+    is: false,
+    then: Joi.string().valid('verify-ca', 'verify-full').required(),
+    otherwise: Joi.string()
+      .valid('disable', 'require', 'verify-ca', 'verify-full')
+      .default('disable'),
+  }),
+  /** Ruta de archivo o PEM inline de la CA que firmó el certificado del servidor. */
+  DB_SSL_CA: Joi.string().allow('').optional(),
+  /** Certificado de cliente (mTLS opcional). */
+  DB_SSL_CERT: Joi.string().allow('').optional(),
+  /** Clave privada del certificado de cliente (mTLS opcional). */
+  DB_SSL_KEY: Joi.string().allow('').optional(),
+  /** Hostname esperado en el certificado del servidor (solo verify-full). */
+  DB_SSL_SERVERNAME: Joi.string().allow('').optional(),
+
+  /**
+   * VOTAR-498 — clave de cifrado a nivel de columna (AES-256-GCM) para
+   * secretos/PII que no se usan como criterio de búsqueda (totp_secret,
+   * autoridad_electoral.nombre, refresh_session.email/nombre). Distinta de
+   * BACKUP_ENCRYPTION_KEY (separación de funciones). Requerida en
+   * producción; opcional en desarrollo (passthrough en claro con warning).
+   */
+  DB_ENCRYPTION_KEY: Joi.when('DEVELOPMENT', {
+    is: false,
+    then: Joi.string().min(16).required(),
+    otherwise: Joi.string().min(16).optional(),
+  }),
 
   LOAD_BLOCKCHAIN_LOCAL: Joi.boolean()
     .truthy('true')
@@ -42,6 +76,25 @@ export const envValidationSchema = Joi.object({
   JWT_VOTER_ACCESS_EXPIRES_IN: Joi.string().default('30m'),
   JWT_REFRESH_EXPIRES_IN: Joi.string().default('8h'),
   JWT_EXPIRES_IN: Joi.string().optional(),
+  /**
+   * VOTAR-492 §12.2 — timeout por inactividad de la sesión admin. El patrón
+   * matchea exactamente lo que soporta `parseDurationToSeconds` (evita el
+   * fallback silencioso a 3600 s). Tope absoluto: JWT_REFRESH_EXPIRES_IN.
+   */
+  SESSION_IDLE_TIMEOUT: Joi.string()
+    .pattern(/^\d+[smhd]$/)
+    .default('30m'),
+  /** Throttle de escritura de `refresh_session.last_activity_at`. */
+  SESSION_ACTIVITY_WRITE_INTERVAL: Joi.string()
+    .pattern(/^\d+[smhd]$/)
+    .default('60s'),
+  /**
+   * VOTAR-492 §12.2 — break-glass: identificadorSso separados por coma que
+   * pueden autenticarse con el bloqueo SSO activo.
+   */
+  AUTH_LOCKDOWN_ALLOWLIST: Joi.string().allow('').default(''),
+  /** TTL de la caché en proceso del estado de bloqueo (ms). Solo para tests. */
+  AUTH_LOCKDOWN_CACHE_TTL_MS: Joi.number().optional(),
   /** Emisor (iss) esperado en tokens de sesión / OIDC (VOTAR-314). */
   JWT_ISSUER: Joi.string().default('https://votar.local/idp'),
   /** Audiencia (aud) esperada en tokens de sesión / OIDC (VOTAR-314). */
@@ -61,10 +114,59 @@ export const envValidationSchema = Joi.object({
     .uri()
     .default('https://webservice.frvm.utn.edu.ar/autogestion'),
   SEPOLIA_RPC_URL: Joi.string().uri().optional(),
+  /** VOTAR-386 — extra Infura/Alchemy/QuickNode URLs, comma-separated. */
+  SEPOLIA_RPC_FALLBACK_URLS: Joi.string().allow('').optional(),
+  RPC_FAILOVER_TIMEOUT_MS: Joi.number()
+    .integer()
+    .min(100)
+    .max(15_000)
+    .default(800),
+  RPC_MAX_BLOCK_SKEW: Joi.number().integer().min(0).max(64).default(5),
   MERKLE_ROOT_STORE_ADDRESS: Joi.string().optional(),
 
   PRIVATE_KEY: Joi.string().optional(),
+  /**
+   * VOTAR-497 — clave dedicada del relayer que paga el gas de castSignedVote.
+   * No va al frontend. En producción vive en el vault, no en .env en claro.
+   */
+  RELAYER_PRIVATE_KEY: Joi.string().optional(),
+  /** TTL de la capacidad anónima de un solo uso del relayer. */
+  RELAYER_CAPABILITY_TTL_MS: Joi.number()
+    .integer()
+    .min(15_000)
+    .max(600_000)
+    .default(120_000),
+  /**
+   * VOTAR-497 — de dónde salen las claves operativas y de validación.
+   * `env` sólo en desarrollo. Producción: `encrypted-file` o `kms`.
+   */
+  SECRETS_VAULT_PROVIDER: Joi.string()
+    .valid('env', 'encrypted-file', 'kms')
+    .default('env'),
+  VAULT_FILE_PATH: Joi.string().allow('').optional(),
+  VAULT_MASTER_KEY: Joi.string().allow('').optional(),
+  VAULT_KMS_MODE: Joi.string().valid('software', 'http').optional(),
+  VAULT_KMS_KEY: Joi.string().allow('').optional(),
+  VAULT_KMS_KEY_FILE: Joi.string().allow('').optional(),
+  VAULT_KMS_ENDPOINT: Joi.string().uri().allow('').optional(),
+  VAULT_KMS_TOKEN: Joi.string().allow('').optional(),
   ADMIN_MULTISIG_ADDRESS: Joi.string().optional(),
+  PAUSER_OPERATOR_ADDRESS: Joi.string().optional(),
+  /**
+   * VOTAR-377 — clave privada de la "Entidad de Firmas Digitales" (Tercero de
+   * Confianza). Firma EIP-712 `Validation` sobre el payload del voto una vez
+   * verificada la pertenencia al padrón. Su address debe tener VALIDATOR_ROLE en
+   * el BallotContract. Dedicada (no reusar PRIVATE_KEY): separación de funciones.
+   */
+  VALIDATOR_PRIVATE_KEY: Joi.string().optional(),
+  /** VOTAR-377 — TTL de una credencial de validación anónima (fase 1 → fase 2). */
+  CREDENCIAL_VALIDACION_TTL_MS: Joi.number()
+    .integer()
+    .min(60_000)
+    .max(3_600_000)
+    .default(900_000),
+  /** VOTAR-347 — confirmaciones de autoridades PAUSER distintas requeridas antes de emitir la tx. */
+  PAUSE_CONFIRMATIONS_REQUIRED: Joi.number().integer().min(1).default(2),
   BALLOT_CONTRACT_ADDRESS: Joi.string().optional(),
   /** Env-first AuditView/VoteRegistry override read by resolveContractsFromEnv (VOTAR-365). */
   AUDIT_VIEW_CONTRACT_ADDRESS: Joi.string().optional(),
@@ -88,4 +190,25 @@ export const envValidationSchema = Joi.object({
     then: Joi.string().min(16).required(),
     otherwise: Joi.string().min(8).optional(),
   }),
+  /** VOTAR-387 — habilita el scheduler de aprovisionamiento de gas. Default false para evitar que cada instancia local dispare contra el Faucet Maestro compartido. */
+  FAUCET_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  /** VOTAR-387 — private key del Faucet Maestro (aprovisionamiento de gas de test). */
+  FAUCET_MASTER_PRIVATE_KEY: Joi.string().optional(),
+
+  /**
+   * VOTAR-388 — respaldos diarios cifrados de PostgreSQL.
+   * Default false: evita que cada instancia local genere dumps automáticamente.
+   */
+  BACKUP_ENABLED: Joi.boolean().truthy('true').falsy('false').default(false),
+  /** Secreto AES-256 (passphrase o 64 hex). Requerido cuando se ejecuta db:backup / scheduler. */
+  BACKUP_ENCRYPTION_KEY: Joi.string().min(16).optional(),
+  /** Directorio local de artefactos cifrados. Vacío = src/backups. */
+  BACKUP_DIR: Joi.string().allow('').optional(),
+  /** Ubicación remota / offsite (otro volumen o mount). Vacío = solo local. */
+  BACKUP_REMOTE_DIR: Joi.string().allow('').optional(),
+  BACKUP_RETENTION_DAYS: Joi.number().integer().min(1).default(30),
+  /** Hora local (0-23) de baja carga para el scheduler diario. */
+  BACKUP_HOUR: Joi.number().integer().min(0).max(23).default(3),
+  /** BD destino por defecto para npm run db:restore. */
+  BACKUP_RESTORE_DB: Joi.string().allow('').optional(),
 });

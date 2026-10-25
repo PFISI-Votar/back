@@ -14,11 +14,14 @@ import {
   ContractTransactionResponse,
   Interface,
   type InterfaceAbi,
-  JsonRpcProvider,
+  formatEther,
   Log,
+  type Provider,
+  type TransactionReceipt,
   Wallet,
   ZeroAddress,
 } from 'ethers';
+import { RpcProviderFactory } from './rpc/rpc-provider.factory';
 import {
   AUDIT_VIEW_CONTRACT_ABI,
   ELECTION_FACTORY_GET_ELECTION_ABI,
@@ -96,6 +99,7 @@ export type ContratoEstadoOnChain = {
     hash: string;
     publicado: boolean;
     publicadoEn: string | null;
+    consistente: boolean;
   };
   revoto: {
     habilitado: boolean;
@@ -119,6 +123,11 @@ const ZERO_ADDRESS = '0x0000000000000000000000000000000000000000';
 
 const ZERO_MERKLE_ROOT =
   '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+// VOTAR-482: 20% headroom on the createElection gas estimate. The factory
+// deploys Ballot + VoteRegistry + AuditView; EIP-1559 fees can move between
+// estimate and send, and a too-low threshold is what lets oficializar commit.
+const CREATE_ELECTION_GAS_BUFFER_BPS = 120n;
 
 /**
  * True when an eth_call failed because the selector is absent on the deployed
@@ -185,6 +194,9 @@ const ESTADO_TO_BLOCKCHAIN_STATE: Record<EleccionEstado, number> = {
   [EleccionEstado.ABIERTA]: 2, // OPEN
   [EleccionEstado.CERRADA]: 3, // CLOSED
   [EleccionEstado.ESCRUTADA]: 4, // TALLIED
+  // VOTAR-322: archivado es puramente off-chain; este valor nunca se envía
+  // a syncElectionState (el contrato queda inmutable en CLOSED).
+  [EleccionEstado.ARCHIVADA]: 3, // CLOSED
 };
 
 interface MerkleRootStoreContract {
@@ -207,7 +219,124 @@ export class BlockchainService {
     private readonly contratoBlockchainService: ContratoBlockchainService,
     @Inject(forwardRef(() => TransaccionBlockchainService))
     private readonly transaccionBlockchainService: TransaccionBlockchainService,
+    private readonly rpcProviderFactory: RpcProviderFactory,
   ) {}
+
+  /**
+   * VOTAR-482: fail-closed check that the operational wallet can pay `requiredWei`.
+   * Missing key/RPC or a balance RPC error throws 503 — never lets oficializar
+   * commit BORRADOR→CONFIGURADA without affirming there are funds.
+   */
+  async assertWalletHasFunds(requiredWei: bigint): Promise<void> {
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
+    if (!privateKey || !rpcUrl) {
+      throw new ServiceUnavailableException(
+        'No se puede verificar el saldo de la wallet operativa (PRIVATE_KEY / SEPOLIA_RPC_URL). ' +
+          'Sin esa verificación no se oficializa el comicio.',
+      );
+    }
+
+    let balance: bigint;
+    let address: string;
+    try {
+      const provider = this.createProvider();
+      const wallet = new Wallet(privateKey, provider);
+      address = wallet.address;
+      balance = await provider.getBalance(address);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudo verificar el balance de la wallet operativa: ${message}`,
+      );
+      throw new ServiceUnavailableException(
+        `No se pudo verificar el balance de la wallet operativa: ${message}. ` +
+          'Sin esa verificación no se oficializa el comicio.',
+      );
+    }
+
+    if (balance < requiredWei) {
+      throw new ServiceUnavailableException(
+        `La wallet operativa (${address}) no tiene fondos suficientes para ejecutar createElection on-chain. ` +
+          `Balance actual: ${formatEther(balance)} ETH — ` +
+          `mínimo estimado: ${formatEther(requiredWei)} ETH. ` +
+          `Cargá fondos en la wallet antes de continuar.`,
+      );
+    }
+  }
+
+  /**
+   * VOTAR-482: estimates gas of ElectionFactory.createElection (plus buffer)
+   * and asserts the operational wallet can pay it. If the stack is already
+   * deployed, returns without requiring funds. If on-chain is not configured
+   * (no PRIVATE_KEY/RPC or no ElectionFactory), returns so oficializar can
+   * still commit and best-effort skip the deploy. Fail-closed once the chain
+   * is configured: a balance/estimate RPC error or a low balance throws 503.
+   */
+  async assertWalletCanPayCreateElection(
+    idEleccion: number,
+    revoteConfig: RevoteConfigOnChain,
+  ): Promise<void> {
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
+    if (!privateKey || !rpcUrl) {
+      // On-chain is disabled (e2e / local without RPC). Best-effort deploy
+      // already skips; the ticket bug is an empty wallet with chain configured.
+      return;
+    }
+
+    let factoryAddress: string;
+    try {
+      const factoryPayload =
+        await this.contratoBlockchainService.getElectionFactory();
+      factoryAddress = factoryPayload.direccionContrato;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        return;
+      }
+      throw error;
+    }
+
+    const provider = this.createProvider();
+    const readFactory = new Contract(
+      factoryAddress,
+      ELECTION_FACTORY_CONTRACT_ABI,
+      provider,
+    ) as unknown as ElectionFactoryContract;
+
+    let existing: Awaited<ReturnType<ElectionFactoryContract['getElection']>>;
+    try {
+      existing = await readFactory.getElection(idEleccion);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudo consultar el deployment del comicio on-chain: ${message}`,
+      );
+    }
+
+    if (
+      existing.exists &&
+      existing.ballot &&
+      existing.ballot !== ZeroAddress &&
+      existing.voteRegistry &&
+      existing.voteRegistry !== ZeroAddress
+    ) {
+      return;
+    }
+
+    const wallet = new Wallet(privateKey, provider);
+    const requiredWei = await this.estimateCreateElectionCost(
+      factoryAddress,
+      wallet,
+      provider,
+      idEleccion,
+      revoteConfig,
+    );
+    await this.assertWalletHasFunds(requiredWei);
+  }
 
   /**
    * Publishes the Merkle root for an election on Sepolia via MerkleRootStore.
@@ -216,7 +345,7 @@ export class BlockchainService {
     electionId: number,
     merkleRoot: string,
   ): Promise<PublishMerkleRootResult> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -228,7 +357,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -249,6 +378,14 @@ export class BlockchainService {
         error,
         MERKLE_ROOT_STORE_ABI,
       );
+
+      // VOTAR-482: catch mid-operation insufficient funds (race condition)
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para publicar la raíz Merkle on-chain. Cargá fondos y reintentá.',
+        );
+      }
+
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -348,7 +485,7 @@ export class BlockchainService {
     electionId: number,
     expectedRoot: string,
   ): Promise<boolean> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -359,7 +496,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       contractAddress,
       MERKLE_ROOT_STORE_ABI,
@@ -386,17 +523,11 @@ export class BlockchainService {
   }
 
   buildExplorerUrl(txHash: string): string {
-    const base =
-      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
-      'https://sepolia.etherscan.io';
-    return `${base}/tx/${txHash}`;
+    return `${this.explorerBaseUrl()}/tx/${txHash}`;
   }
 
   buildExplorerAddressUrl(contractAddress: string): string {
-    const base =
-      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
-      'https://sepolia.etherscan.io';
-    return `${base}/address/${contractAddress}`;
+    return `${this.explorerBaseUrl()}/address/${contractAddress}`;
   }
 
   getChainId(): number {
@@ -439,10 +570,8 @@ export class BlockchainService {
   async getVoteParticipationByTxHash(
     txHash: string,
   ): Promise<VoteParticipationOnChain> {
-    const rpcUrl = this.requireRpcUrl();
-
-    const provider = new JsonRpcProvider(rpcUrl);
-    let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
+    const provider = this.createProvider();
+    let receipt: TransactionReceipt | null;
     try {
       receipt = await provider.getTransactionReceipt(txHash);
     } catch (error) {
@@ -535,7 +664,7 @@ export class BlockchainService {
     electionId: number,
     estado: EleccionEstado,
   ): Promise<{ txHash: string; blockNumber: number }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -554,7 +683,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -580,6 +709,13 @@ export class BlockchainService {
         error,
         MERKLE_ROOT_STORE_ABI,
       );
+
+      // VOTAR-482
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para sincronizar el estado on-chain. Cargá fondos y reintentá.',
+        );
+      }
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -623,7 +759,7 @@ export class BlockchainService {
     idEleccion: number,
     revoteConfig: RevoteConfigOnChain,
   ): Promise<DeployElectionStackResult> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
 
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
@@ -646,7 +782,7 @@ export class BlockchainService {
       throw error;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const readFactory = new Contract(
       factoryAddress,
       ELECTION_FACTORY_CONTRACT_ABI,
@@ -684,6 +820,15 @@ export class BlockchainService {
     }
 
     const wallet = new Wallet(privateKey, provider);
+    const requiredWei = await this.estimateCreateElectionCost(
+      factoryAddress,
+      wallet,
+      provider,
+      idEleccion,
+      revoteConfig,
+    );
+    await this.assertWalletHasFunds(requiredWei);
+
     const writeFactory = new Contract(
       factoryAddress,
       ELECTION_FACTORY_CONTRACT_ABI,
@@ -708,6 +853,13 @@ export class BlockchainService {
         error,
         ELECTION_FACTORY_CONTRACT_ABI,
       );
+
+      // VOTAR-482
+      if (this.isInsufficientFundsError(error)) {
+        throw new ServiceUnavailableException(
+          'La wallet operativa no tiene ETH suficiente para desplegar el stack electoral on-chain. Cargá fondos y reintentá.',
+        );
+      }
       if (
         decodedName === 'AccessControlUnauthorizedAccount' ||
         message.includes('AccessControlUnauthorizedAccount') ||
@@ -771,7 +923,7 @@ export class BlockchainService {
   async lockRevoteConfig(
     idEleccion: number,
   ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
 
     if (!rpcUrl || !privateKey) {
@@ -794,7 +946,7 @@ export class BlockchainService {
       throw error;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       factoryAddress,
@@ -864,7 +1016,7 @@ export class BlockchainService {
    * Prefer ElectionFactory.getElection(...).auditView; fallback ADMIN_MULTISIG_ADDRESS.
    */
   async resolveAuditViewAddress(electionId: number): Promise<string> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
@@ -875,7 +1027,7 @@ export class BlockchainService {
     );
     if (factoryAddress) {
       try {
-        const provider = new JsonRpcProvider(rpcUrl);
+        const provider = this.createProvider();
         const factory = new Contract(
           factoryAddress,
           ELECTION_FACTORY_GET_ELECTION_ABI,
@@ -909,13 +1061,13 @@ export class BlockchainService {
     auditViewAddress: string,
     electionId: number,
   ): Promise<ParticipationStatsOnChain> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
       );
     }
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       auditViewAddress,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -948,13 +1100,13 @@ export class BlockchainService {
     electionId: number,
     candidateId: number | bigint,
   ): Promise<number> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
       );
     }
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       auditViewAddress,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1014,7 +1166,7 @@ export class BlockchainService {
     startTime: Date,
     endTime: Date,
   ): Promise<{ txHash: string; blockNumber: number }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -1038,7 +1190,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -1125,7 +1277,7 @@ export class BlockchainService {
   async lockElectionWindow(
     electionId: number,
   ): Promise<{ txHash: string; blockNumber: number; alreadyLocked: boolean }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     const contractAddress = this.configService.get<string>(
       'MERKLE_ROOT_STORE_ADDRESS',
     );
@@ -1137,7 +1289,7 @@ export class BlockchainService {
       );
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       contractAddress,
@@ -1195,6 +1347,239 @@ export class BlockchainService {
   }
 
   /**
+   * VOTAR-347 — pauses BallotContract + VoteRegistry for a comicio (emergency
+   * stop). Deliberately does NOT touch MerkleRootStore/ElectionFactory (shared
+   * singletons across every election) — pausing those would freeze the whole
+   * platform, out of scope for a per-comicio pause. Idempotent: if a contract
+   * is already paused, that leg is reported via `alreadyPaused` rather than
+   * failing the whole operation (the caller — PausaComicioService — may retry
+   * after a partial failure on a prior confirmation).
+   */
+  async pauseElection(
+    idEleccion: number,
+    reason: string,
+  ): Promise<{
+    ballotTxHash: string;
+    voteRegistryTxHash: string;
+    ballotAlreadyPaused: boolean;
+    voteRegistryAlreadyPaused: boolean;
+  }> {
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'La pausa on-chain no está configurada (SEPOLIA_RPC_URL, PRIVATE_KEY).',
+      );
+    }
+
+    const { ballot: ballotAddress, voteRegistry: voteRegistryAddress } =
+      await this.resolveElectionContracts(idEleccion);
+
+    const provider = this.createProvider();
+    const wallet = new Wallet(privateKey, provider);
+
+    // Secuencial, no Promise.all: un mismo Wallet enviando dos txs en paralelo
+    // puede pedirle el nonce al provider dos veces antes de que la primera tx
+    // quede "pending" en el nodo, y la segunda llega con el mismo nonce →
+    // "replacement transaction underpriced". Esperar la confirmación de la
+    // primera antes de mandar la segunda evita la colisión.
+    const ballotResult = await this.pauseContract(
+      ballotAddress,
+      BALLOT_CONTRACT_ABI,
+      wallet,
+      reason,
+      'BallotContract',
+      idEleccion,
+    );
+    const voteRegistryResult = await this.pauseContract(
+      voteRegistryAddress,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      wallet,
+      reason,
+      'VoteRegistry',
+      idEleccion,
+    );
+
+    return {
+      ballotTxHash: ballotResult.txHash,
+      voteRegistryTxHash: voteRegistryResult.txHash,
+      ballotAlreadyPaused: ballotResult.alreadyPaused,
+      voteRegistryAlreadyPaused: voteRegistryResult.alreadyPaused,
+    };
+  }
+
+  /**
+   * VOTAR-347 — resumes BallotContract + VoteRegistry for a comicio. See
+   * {@link pauseElection} for the singleton-exclusion and idempotency notes.
+   */
+  async unpauseElection(idEleccion: number): Promise<{
+    ballotTxHash: string;
+    voteRegistryTxHash: string;
+    ballotAlreadyUnpaused: boolean;
+    voteRegistryAlreadyUnpaused: boolean;
+  }> {
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
+    const privateKey = this.configService.get<string>('PRIVATE_KEY');
+    if (!rpcUrl || !privateKey) {
+      throw new ServiceUnavailableException(
+        'La reanudación on-chain no está configurada (SEPOLIA_RPC_URL, PRIVATE_KEY).',
+      );
+    }
+
+    const { ballot: ballotAddress, voteRegistry: voteRegistryAddress } =
+      await this.resolveElectionContracts(idEleccion);
+
+    const provider = this.createProvider();
+    const wallet = new Wallet(privateKey, provider);
+
+    // Secuencial — ver comentario equivalente en pauseElection.
+    const ballotResult = await this.unpauseContract(
+      ballotAddress,
+      BALLOT_CONTRACT_ABI,
+      wallet,
+      'BallotContract',
+      idEleccion,
+    );
+    const voteRegistryResult = await this.unpauseContract(
+      voteRegistryAddress,
+      VOTE_REGISTRY_CONTRACT_ABI,
+      wallet,
+      'VoteRegistry',
+      idEleccion,
+    );
+
+    return {
+      ballotTxHash: ballotResult.txHash,
+      voteRegistryTxHash: voteRegistryResult.txHash,
+      ballotAlreadyUnpaused: ballotResult.alreadyUnpaused,
+      voteRegistryAlreadyUnpaused: voteRegistryResult.alreadyUnpaused,
+    };
+  }
+
+  private async pauseContract(
+    address: string,
+    abi: InterfaceAbi,
+    wallet: Wallet,
+    reason: string,
+    label: string,
+    idEleccion: number,
+  ): Promise<{ txHash: string; alreadyPaused: boolean }> {
+    const contract = new Contract(address, abi, wallet) as unknown as {
+      'pause(string)': (reason: string) => Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract['pause(string)'](reason);
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = await this.decodeMinedRevertErrorName(error, abi);
+
+      if (
+        decodedName === 'EnforcedPause' ||
+        message.includes('EnforcedPause')
+      ) {
+        this.logger.warn(
+          `${label} del comicio ${idEleccion} ya estaba pausado on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', alreadyPaused: true };
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          `La cuenta configurada no posee PAUSER_ROLE en ${label}.`,
+        );
+      }
+      if (this.isReplacementUnderpricedError(error)) {
+        throw new ServiceUnavailableException(
+          `Ya hay otra transacción de la misma cuenta operativa en curso para ${label}. ` +
+            'Esperá un momento a que confirme en Sepolia y volvé a intentar la pausa.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo pausar ${label} on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        `La pausa de ${label} no devolvió recibo de confirmación.`,
+      );
+    }
+
+    this.indexTxSilently(idEleccion, receipt.hash);
+    return { txHash: receipt.hash, alreadyPaused: false };
+  }
+
+  private async unpauseContract(
+    address: string,
+    abi: InterfaceAbi,
+    wallet: Wallet,
+    label: string,
+    idEleccion: number,
+  ): Promise<{ txHash: string; alreadyUnpaused: boolean }> {
+    const contract = new Contract(address, abi, wallet) as unknown as {
+      unpause: () => Promise<ContractTransactionResponse>;
+    };
+
+    let receipt: ContractTransactionReceipt | null;
+    try {
+      const tx = await contract.unpause();
+      receipt = await tx.wait(1);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      const decodedName = await this.decodeMinedRevertErrorName(error, abi);
+
+      if (
+        decodedName === 'ExpectedPause' ||
+        message.includes('ExpectedPause')
+      ) {
+        this.logger.warn(
+          `${label} del comicio ${idEleccion} ya estaba activo on-chain; se omite el reintento.`,
+        );
+        return { txHash: '', alreadyUnpaused: true };
+      }
+      if (
+        decodedName === 'AccessControlUnauthorizedAccount' ||
+        message.includes('AccessControlUnauthorizedAccount') ||
+        message.includes('missing role')
+      ) {
+        throw new ServiceUnavailableException(
+          `La cuenta configurada no posee PAUSER_ROLE en ${label}.`,
+        );
+      }
+      if (this.isReplacementUnderpricedError(error)) {
+        throw new ServiceUnavailableException(
+          `Ya hay otra transacción de la misma cuenta operativa en curso para ${label}. ` +
+            'Esperá un momento a que confirme en Sepolia y volvé a intentar la reanudación.',
+        );
+      }
+      throw new ServiceUnavailableException(
+        `No se pudo reanudar ${label} on-chain: ${message}`,
+      );
+    }
+
+    if (!receipt) {
+      throw new ServiceUnavailableException(
+        `La reanudación de ${label} no devolvió recibo de confirmación.`,
+      );
+    }
+
+    this.indexTxSilently(idEleccion, receipt.hash);
+    return { txHash: receipt.hash, alreadyUnpaused: false };
+  }
+
+  /**
    * VOTAR-345: seals the votable candidate set on VoteRegistry before an
    * election opens. One-shot on-chain — a second call for the same election
    * is treated as idempotent (the set is already sealed, not an error) so
@@ -1204,7 +1589,7 @@ export class BlockchainService {
     idEleccion: number,
     candidateIds: number[],
   ): Promise<{ txHash: string; blockNumber: number; alreadySealed: boolean }> {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
 
     const privateKey = this.configService.get<string>('PRIVATE_KEY');
     if (!rpcUrl || !privateKey) {
@@ -1216,7 +1601,7 @@ export class BlockchainService {
     const { voteRegistry: voteRegistryAddress } =
       await this.resolveElectionContracts(idEleccion);
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const wallet = new Wallet(privateKey, provider);
     const contract = new Contract(
       voteRegistryAddress,
@@ -1306,7 +1691,7 @@ export class BlockchainService {
       return fromEnv;
     }
 
-    const rpcUrl = this.requireRpcUrl();
+    this.requireRpcUrl();
     let factory: { direccionContrato: string };
     try {
       factory = await this.contratoBlockchainService.getElectionFactory();
@@ -1319,7 +1704,7 @@ export class BlockchainService {
       throw error;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       factory.direccionContrato,
       ELECTION_FACTORY_CONTRACT_ABI,
@@ -1351,13 +1736,7 @@ export class BlockchainService {
       );
     }
 
-    if (
-      !deployment.exists ||
-      !deployment.auditView ||
-      deployment.auditView === ZeroAddress ||
-      !deployment.voteRegistry ||
-      deployment.voteRegistry === ZeroAddress
-    ) {
+    if (!this.isValidElectionDeployment(deployment)) {
       throw new UnprocessableEntityException(
         `El comicio ${idEleccion} no tiene contratos electorales desplegados on-chain.`,
       );
@@ -1371,13 +1750,44 @@ export class BlockchainService {
   }
 
   /**
+   * VOTAR-473: read-only probe for UI retry of on-chain oficialización.
+   * Returns false when factory has no deployment; rethrows RPC/config failures.
+   */
+  async hasElectionStackDeployed(idEleccion: number): Promise<boolean> {
+    try {
+      await this.resolveElectionContracts(idEleccion);
+      return true;
+    } catch (error) {
+      if (error instanceof UnprocessableEntityException) {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private isValidElectionDeployment(deployment: {
+    ballot: string;
+    voteRegistry: string;
+    auditView: string;
+    exists: boolean;
+  }): boolean {
+    return (
+      deployment.exists &&
+      !!deployment.auditView &&
+      deployment.auditView !== ZeroAddress &&
+      !!deployment.voteRegistry &&
+      deployment.voteRegistry !== ZeroAddress
+    );
+  }
+
+  /**
    * VOTAR-367 — public contract audit metadata for dashboard auditors.
    */
   async getContratoEstadoOnChain(
     idEleccion: number,
   ): Promise<ContratoEstadoOnChain> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1452,6 +1862,7 @@ export class BlockchainService {
         hash: root === ZERO_MERKLE_ROOT ? ZERO_MERKLE_ROOT : root,
         publicado,
         publicadoEn,
+        consistente: !(publicado && root === ZERO_MERKLE_ROOT),
       },
       revoto: revote,
       contratos: {
@@ -1472,7 +1883,7 @@ export class BlockchainService {
     idEleccion: number,
   ): Promise<ParticipationStatsOnChain> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1510,7 +1921,7 @@ export class BlockchainService {
     candidateId: number,
   ): Promise<number> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1549,7 +1960,7 @@ export class BlockchainService {
   ): Promise<VoteCastTimelinePoint[]> {
     const hours = Math.max(1, Math.min(72, Math.floor(horasVentana)));
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const registry = new Contract(
       addresses.voteRegistry,
       VOTE_REGISTRY_CONTRACT_ABI,
@@ -1664,7 +2075,7 @@ export class BlockchainService {
    */
   async getRevoteStats(idEleccion: number): Promise<RevoteStatsOnChain> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const auditView = new Contract(
       addresses.auditView,
       AUDIT_VIEW_CONTRACT_ABI,
@@ -1718,8 +2129,8 @@ export class BlockchainService {
     txHash: string,
     idEleccion: number,
   ): Promise<(BlockchainTransactionAuditEntry & { logIndex: number }) | null> {
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
-    let receipt: Awaited<ReturnType<JsonRpcProvider['getTransactionReceipt']>>;
+    const provider = this.createProvider();
+    let receipt: TransactionReceipt | null;
     try {
       receipt = await provider.getTransactionReceipt(txHash);
     } catch (error) {
@@ -1891,7 +2302,7 @@ export class BlockchainService {
   }
 
   private async resolveBlockTimestampIso(
-    provider: JsonRpcProvider,
+    provider: Provider,
     blockNumber: number,
   ): Promise<string> {
     const block = await provider.getBlock(blockNumber);
@@ -1909,7 +2320,7 @@ export class BlockchainService {
     idEleccion: number,
   ): Promise<BlockchainTransactionAuditEntry[]> {
     const addresses = await this.resolveElectionContracts(idEleccion);
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const merkleRootStoreAddress =
       this.configService.get<string>('MERKLE_ROOT_STORE_ADDRESS') ??
       ZERO_ADDRESS;
@@ -2133,17 +2544,15 @@ export class BlockchainService {
           ? b.sortBlock - a.sortBlock
           : b.sortLogIndex - a.sortLogIndex,
       )
-      .map(
-        (entry): BlockchainTransactionAuditEntry => ({
-          hashTransaccion: entry.hashTransaccion,
-          numeroBloque: entry.numeroBloque,
-          marcaTiempo: entry.marcaTiempo,
-          contratoEtiqueta: entry.contratoEtiqueta,
-          nombreEvento: entry.nombreEvento,
-          descripcionLegible: entry.descripcionLegible,
-          explorerUrl: entry.explorerUrl,
-        }),
-      );
+      .map((entry): BlockchainTransactionAuditEntry => ({
+        hashTransaccion: entry.hashTransaccion,
+        numeroBloque: entry.numeroBloque,
+        marcaTiempo: entry.marcaTiempo,
+        contratoEtiqueta: entry.contratoEtiqueta,
+        nombreEvento: entry.nombreEvento,
+        descripcionLegible: entry.descripcionLegible,
+        explorerUrl: entry.explorerUrl,
+      }));
   }
 
   private describeSignedVoteCast(
@@ -2206,12 +2615,8 @@ export class BlockchainService {
     error: unknown,
     abi: InterfaceAbi,
   ): string | undefined {
-    const err = error as {
-      data?: unknown;
-      info?: { error?: { data?: unknown } };
-    };
-    const data = err?.data ?? err?.info?.error?.data;
-    if (typeof data !== 'string' || !data.startsWith('0x')) {
+    const data = this.extractRevertData(error);
+    if (!data) {
       return undefined;
     }
     try {
@@ -2221,14 +2626,94 @@ export class BlockchainService {
     }
   }
 
+  private extractRevertData(error: unknown): string | undefined {
+    const err = error as {
+      data?: unknown;
+      info?: { error?: { data?: unknown } };
+    };
+    const data = err?.data ?? err?.info?.error?.data;
+    return typeof data === 'string' && data.startsWith('0x') ? data : undefined;
+  }
+
+  /**
+   * VOTAR-347 — {@link decodeContractErrorName} only works when ethers already
+   * attached the raw revert data to the error (true for pre-flight failures
+   * like a failed estimateGas). A transaction that was actually broadcast and
+   * MINED with `status: 0` does NOT carry revert data on its receipt — ethers
+   * surfaces it as a bare CALL_EXCEPTION with `reason`/`data` both null. To
+   * recover the reason (e.g. tell "already paused" apart from a real failure)
+   * we replay the exact call at the block it reverted in.
+   */
+  private async decodeMinedRevertErrorName(
+    error: unknown,
+    abi: InterfaceAbi,
+  ): Promise<string | undefined> {
+    const direct = this.decodeContractErrorName(error, abi);
+    if (direct) {
+      return direct;
+    }
+
+    const err = error as {
+      transaction?: { to?: string; from?: string; data?: string };
+      receipt?: { blockNumber?: number };
+    };
+    if (!err?.transaction?.to || !err?.transaction?.data) {
+      return undefined;
+    }
+
+    try {
+      const provider = this.createProvider();
+      await provider.call({
+        to: err.transaction.to,
+        from: err.transaction.from,
+        data: err.transaction.data,
+        blockTag: err.receipt?.blockNumber,
+      });
+      return undefined;
+    } catch (replayError) {
+      const data = this.extractRevertData(replayError);
+      if (!data) {
+        return undefined;
+      }
+      try {
+        return new Interface(abi).parseError(data)?.name;
+      } catch {
+        return undefined;
+      }
+    }
+  }
+
+  /**
+   * VOTAR-347 — ethers surfaces a stuck/colliding nonce (two txs from the same
+   * wallet racing for the same nonce, or a prior tx still pending with a gas
+   * price the new one doesn't beat) as ethers error code REPLACEMENT_UNDERPRICED
+   * or NONCE_EXPIRED. Both mean "wait for the network, then retry" — not a
+   * contract-level failure — so they get a distinct, human-readable message.
+   */
+  private isReplacementUnderpricedError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code;
+    return code === 'REPLACEMENT_UNDERPRICED' || code === 'NONCE_EXPIRED';
+  }
+
   private requireRpcUrl(): string {
-    const rpcUrl = this.configService.get<string>('SEPOLIA_RPC_URL');
+    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
     if (!rpcUrl) {
       throw new ServiceUnavailableException(
         'La consulta on-chain no está configurada (SEPOLIA_RPC_URL).',
       );
     }
     return rpcUrl;
+  }
+
+  private createProvider(): Provider {
+    return this.rpcProviderFactory.create();
+  }
+
+  private explorerBaseUrl(): string {
+    return (
+      this.configService.get<string>('ETHERSCAN_BASE_URL') ??
+      'https://sepolia.etherscan.io'
+    );
   }
 
   private async resolveRevoteLimitsOnChain(
@@ -2245,7 +2730,7 @@ export class BlockchainService {
       };
     }
 
-    const provider = new JsonRpcProvider(this.requireRpcUrl());
+    const provider = this.createProvider();
     const ballot = new Contract(
       addresses.ballot,
       BALLOT_REVOTE_READ_ABI,
@@ -2294,7 +2779,7 @@ export class BlockchainService {
       return null;
     }
 
-    const rpcUrl = this.requireRpcUrl();
+    this.requireRpcUrl();
     let factory: { direccionContrato: string };
     try {
       factory = await this.contratoBlockchainService.getElectionFactory();
@@ -2302,7 +2787,7 @@ export class BlockchainService {
       return null;
     }
 
-    const provider = new JsonRpcProvider(rpcUrl);
+    const provider = this.createProvider();
     const contract = new Contract(
       factory.direccionContrato,
       ELECTION_FACTORY_GET_ELECTION_ABI,
@@ -2352,5 +2837,59 @@ export class BlockchainService {
       };
     }
     return null;
+  }
+
+  /**
+   * VOTAR-482: gasLimit × maxFeePerGas of createElection, plus buffer.
+   * Fail-closed: any estimate/fee RPC error becomes 503.
+   */
+  private async estimateCreateElectionCost(
+    factoryAddress: string,
+    wallet: Wallet,
+    provider: Provider,
+    idEleccion: number,
+    revoteConfig: RevoteConfigOnChain,
+  ): Promise<bigint> {
+    try {
+      const iface = new Interface(ELECTION_FACTORY_CONTRACT_ABI);
+      const data = iface.encodeFunctionData('createElection', [
+        idEleccion,
+        revoteConfig,
+      ]);
+      const gasLimit = await provider.estimateGas({
+        from: wallet.address,
+        to: factoryAddress,
+        data,
+      });
+      const feeData = await provider.getFeeData();
+      const feePerGas = feeData.maxFeePerGas ?? feeData.gasPrice;
+      if (feePerGas == null || feePerGas === 0n) {
+        throw new Error('el RPC no devolvió maxFeePerGas ni gasPrice');
+      }
+      return (gasLimit * feePerGas * CREATE_ELECTION_GAS_BUFFER_BPS) / 100n;
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        throw error;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ServiceUnavailableException(
+        `No se pudo estimar el gas de createElection: ${message}. ` +
+          'Sin esa estimación no se oficializa el comicio.',
+      );
+    }
+  }
+
+  /**
+   * VOTAR-482: detects ethers INSUFFICIENT_FUNDS errors that slip through the
+   * pre-check (race condition, wallet drained mid-operation, etc.).
+   */
+  private isInsufficientFundsError(error: unknown): boolean {
+    const code = (error as { code?: string })?.code;
+    const message = error instanceof Error ? error.message : String(error);
+    return (
+      code === 'INSUFFICIENT_FUNDS' ||
+      message.toLowerCase().includes('insufficient funds') ||
+      message.toLowerCase().includes("sender doesn't have enough funds")
+    );
   }
 }

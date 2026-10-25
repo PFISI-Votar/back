@@ -14,8 +14,16 @@ import { ConfigService } from '@nestjs/config';
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
 import { REFRESH_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
+import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
+import { AuthLockdownScope } from '@/auth/decorators/auth-lockdown-scope.decorator';
 import { LoginDto } from '@/auth/dto/login.dto';
 import { AuthResponseDto, AuthUserDto } from '@/auth/dto/auth-response.dto';
+import {
+  ResetTwoFactorDto,
+  TwoFactorStatusDto,
+  VerifyTwoFactorDto,
+} from '@/auth/dto/two-factor.dto';
+import { AuthLockdownGuard } from '@/auth/guards/auth-lockdown.guard';
 import { JwtAuthGuard } from '@/auth/guards/jwt-auth.guard';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { AuthService } from '@/auth/services/auth.service';
@@ -43,16 +51,19 @@ export class AuthController {
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @UseGuards(IpRateLimitGuard)
+  @UseGuards(IpRateLimitGuard, AuthLockdownGuard)
+  @AuthLockdownScope('ADMIN')
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-login' })
   @ApiOperation({
     summary: 'Iniciar sesión con credenciales de Autogestión UTN',
+    description:
+      'Si la cuenta es autoridad electoral, puede devolver un desafío 2FA (setup o verificación) en lugar de cookies de sesión.',
   })
   @ApiBody({ type: LoginDto })
   @ApiResponse({
     status: 200,
     description:
-      'Autenticación exitosa. Access y refresh token en cookies HttpOnly.',
+      'Autenticación exitosa o desafío 2FA pendiente. Access y refresh token en cookies HttpOnly, Secure y SameSite=Strict solo si la sesión quedó completa.',
     type: AuthResponseDto,
   })
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
@@ -62,12 +73,76 @@ export class AuthController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<AuthResponseDto> {
+    const result = await this.authService.login(dto, {
+      ipOrigen: this.resolveClientIp(request),
+    });
+    if (result.kind === 'two_factor') {
+      return { twoFactor: result.twoFactor };
+    }
+    this.attachSessionCookies(
+      response,
+      result.session.response.accessToken,
+      result.session.refreshToken,
+    );
+    return { user: result.session.response.user };
+  }
+
+  @Post('2fa/verify')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(IpRateLimitGuard, AuthLockdownGuard)
+  @AuthLockdownScope('ADMIN')
+  @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-2fa-verify' })
+  @ApiOperation({
+    summary: 'Completar login admin verificando el código TOTP',
+  })
+  @ApiBody({ type: VerifyTwoFactorDto })
+  @ApiResponse({
+    status: 200,
+    description: '2FA válido; cookies de sesión emitidas',
+    type: AuthResponseDto,
+  })
+  @ApiResponse({ status: 401, description: 'Código o desafío inválido' })
+  @ApiResponse({ status: 429, description: 'Rate limit excedido' })
+  async verifyTwoFactor(
+    @Body() dto: VerifyTwoFactorDto,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AuthResponseDto> {
     const { response: authResponse, refreshToken } =
-      await this.authService.login(dto, {
+      await this.authService.verifyTwoFactor(dto.challengeToken, dto.code, {
         ipOrigen: this.resolveClientIp(request),
       });
     this.attachSessionCookies(response, authResponse.accessToken, refreshToken);
     return { user: authResponse.user };
+  }
+
+  @Get('2fa/status')
+  @AdminAuth()
+  @ApiOperation({ summary: 'Estado del setup 2FA de la autoridad autenticada' })
+  @ApiResponse({ status: 200, type: TwoFactorStatusDto })
+  async getTwoFactorStatus(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<TwoFactorStatusDto> {
+    const user = assertAuthenticatedUser(request.user);
+    return this.authService.getTwoFactorStatus(user);
+  }
+
+  @Post('2fa/reset')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @AdminAuth()
+  @ApiOperation({
+    summary:
+      'Invalidar el setup 2FA tras confirmar la contraseña institucional',
+  })
+  @ApiBody({ type: ResetTwoFactorDto })
+  @ApiResponse({ status: 204, description: 'Setup 2FA invalidado' })
+  @ApiResponse({ status: 401, description: 'Contraseña inválida' })
+  async resetTwoFactor(
+    @Body() dto: ResetTwoFactorDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    const user = assertAuthenticatedUser(request.user);
+    await this.authService.resetTwoFactor(user, dto.password);
   }
 
   @Post('refresh')
@@ -76,6 +151,10 @@ export class AuthController {
   @RateLimit({ tier: RateLimitTier.AUTH, bucket: 'auth-admin-refresh' })
   @ApiOperation({
     summary: 'Renovar sesión usando la cookie de refresh HttpOnly',
+    description:
+      'VOTAR-492 §12.2: nunca se corta por bloqueo de autenticación — es la ' +
+      'vía de salida de una autoridad ya autenticada. El corte de sesiones ' +
+      'comprometidas es `POST /auth/sessions/revocar` / `revocar-todas`.',
   })
   @ApiResponse({
     status: 200,
@@ -106,35 +185,48 @@ export class AuthController {
   })
   @ApiResponse({ status: 200, type: AuthUserDto })
   @ApiResponse({ status: 401, description: 'No autenticado' })
-  getCurrentUser(@Req() request: AuthenticatedRequest): AuthUserDto {
+  async getCurrentUser(
+    @Req() request: AuthenticatedRequest,
+  ): Promise<AuthUserDto> {
     const user = assertAuthenticatedUser(request.user);
+    const esPauser = await this.authService.esPauser(user);
     return {
       sub: user.sub,
       role: user.role,
       email: user.email,
       name: user.name,
+      esPauser,
     };
   }
 
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Cerrar sesión y revocar refresh token' })
-  @ApiResponse({ status: 204, description: 'Sesión cerrada' })
+  @ApiResponse({
+    status: 204,
+    description:
+      'Sesión cerrada (idempotente: 204 aunque la sesión ya estuviera revocada o expirada)',
+  })
   async logout(
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
-    await this.authService.logout(refreshToken);
-    clearAuthCookies(response, this.isProduction());
+      string | undefined;
+    // VOTAR-492: revocar en DB primero, limpiar cookies SIEMPRE. `logout` ya no
+    // lanza si la sesión no está activa (revocación idempotente); el try/finally
+    // cubre un fallo real de DB — las cookies se limpian igual y el error se
+    // propaga en vez de dejar cookies vivas sin aviso.
+    try {
+      await this.authService.logout(refreshToken);
+    } finally {
+      clearAuthCookies(response, this.isProduction());
+    }
   }
 
   private extractRefreshToken(request: Request): string {
     const refreshToken = request.cookies?.[REFRESH_COOKIE_NAME] as
-      | string
-      | undefined;
+      string | undefined;
     if (!refreshToken) {
       throw new UnauthorizedException('Sesión de refresco inválida');
     }

@@ -44,6 +44,8 @@ const TIPOS_CAMPO: TipoCampoCandidato[] = [
   'booleano',
 ];
 
+const PATTERN_MAX_LENGTH = 200;
+
 const CONFIG_BLOQUEADA_MESSAGE =
   'La configuración de datos de candidato no puede modificarse porque ya hay candidatos registrados';
 
@@ -214,6 +216,11 @@ export class ConfiguracionDatosCandidatoService {
       return;
     }
     if (validacion.pattern) {
+      if (validacion.pattern.length > PATTERN_MAX_LENGTH) {
+        throw new UnprocessableEntityException(
+          `El patrón de "${campo.clave}" supera los ${PATTERN_MAX_LENGTH} caracteres`,
+        );
+      }
       try {
         new RegExp(validacion.pattern);
       } catch {
