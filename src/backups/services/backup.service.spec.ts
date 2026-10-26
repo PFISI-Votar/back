@@ -1,6 +1,14 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  stat,
+  utimes,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MailService } from '@/common/mail/mail.service';
@@ -51,6 +59,7 @@ describe('BackupService (VOTAR-388)', () => {
   });
 
   afterEach(async () => {
+    delete configValues['BACKUP_REMOTE_DIR'];
     await rm(backupDir, { recursive: true, force: true });
   });
 
@@ -92,8 +101,32 @@ describe('BackupService (VOTAR-388)', () => {
 
     const result = await service.runBackup();
     expect(result.remotePath).toBeTruthy();
+    expect(result.prunedRemote).toEqual([]);
     const remoteBytes = await readFile(result.remotePath!);
     expect(remoteBytes.length).toBe(result.sizeBytes);
+  });
+
+  it('depura respaldos remotos con más de 30 días (VOTAR-513)', async () => {
+    const remoteDir = join(backupDir, 'remote');
+    configValues['BACKUP_REMOTE_DIR'] = remoteDir;
+    await mkdir(remoteDir, { recursive: true });
+    const old = join(remoteDir, 'votar-old.dump.enc');
+    await writeFile(old, 'x');
+    await writeFile(`${old}${BACKUP_CHECKSUM_SUFFIX}`, 'x');
+    const past = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+    await utimes(old, past, past);
+    jest
+      .spyOn(service, 'runPgDump')
+      .mockImplementation(async (outputPath: string) => {
+        await writeFile(outputPath, Buffer.from('dump'));
+      });
+
+    const result = await service.runBackup();
+
+    expect(result.prunedRemote).toEqual(['votar-old.dump.enc']);
+    await expect(stat(old)).rejects.toThrow();
+    await expect(stat(`${old}${BACKUP_CHECKSUM_SUFFIX}`)).rejects.toThrow();
+    await expect(stat(result.remotePath!)).resolves.toBeDefined();
   });
 
   it('notifica por mail cuando el backup falla (UAT-03)', async () => {

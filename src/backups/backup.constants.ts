@@ -12,6 +12,9 @@ export const BACKUP_CHECKSUM_SUFFIX = '.sha256';
 /** Retención mínima exigida por VOTAR-388 (días). */
 export const BACKUP_RETENTION_DAYS_DEFAULT = 30;
 
+/** Nivel de compresión gzip/zlib de pg_dump -Z (1-9). */
+export const BACKUP_GZIP_LEVEL = 6;
+
 /** Hora local de baja carga por defecto (03:00). */
 export const BACKUP_HOUR_DEFAULT = 3;
 

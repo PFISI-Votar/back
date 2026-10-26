@@ -24,6 +24,7 @@ import {
 import {
   BACKUP_CHECKSUM_SUFFIX,
   BACKUP_FILE_SUFFIX,
+  BACKUP_GZIP_LEVEL,
   BACKUP_RETENTION_DAYS_DEFAULT,
   DEFAULT_BACKUP_DIR,
 } from '../backup.constants';
@@ -43,6 +44,7 @@ export interface BackupResult {
   sizeBytes: number;
   sha256: string;
   pruned: string[];
+  prunedRemote: string[];
 }
 
 export interface RestoreResult {
@@ -100,7 +102,8 @@ export class BackupService {
   }
 
   /**
-   * Ejecuta pg_dump (formato custom) hacia un archivo temporal.
+   * Ejecuta pg_dump (formato custom, compresión zlib/gzip explícita) hacia un
+   * archivo temporal.
    * Inyectable vía override en tests reemplazando este método.
    */
   async runPgDump(outputPath: string): Promise<void> {
@@ -123,6 +126,8 @@ export class BackupService {
           database,
           '-F',
           'c',
+          '-Z',
+          String(BACKUP_GZIP_LEVEL),
           '-f',
           outputPath,
         ],
@@ -245,7 +250,10 @@ export class BackupService {
 
   async pruneExpiredBackups(backupDir: string): Promise<string[]> {
     const retentionDays = this.getRetentionDays();
-    const entries = await readdir(backupDir);
+    const entries = await readdir(backupDir).catch((error: unknown) => {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      throw error;
+    });
     const metas = await Promise.all(
       entries
         .filter((name) => name.endsWith(BACKUP_FILE_SUFFIX))
@@ -268,13 +276,18 @@ export class BackupService {
     return expired;
   }
 
+  private getRemoteDir(): string | null {
+    const remoteDir = this.configService
+      .get<string>('BACKUP_REMOTE_DIR')
+      ?.trim();
+    return remoteDir ? resolve(remoteDir) : null;
+  }
+
   private async copyToRemote(
     encryptedPath: string,
     checksumPath: string,
   ): Promise<string | null> {
-    const remoteDir = this.configService
-      .get<string>('BACKUP_REMOTE_DIR')
-      ?.trim();
+    const remoteDir = this.getRemoteDir();
     if (!remoteDir) {
       return null;
     }
@@ -355,7 +368,13 @@ export class BackupService {
       await this.assertIntegrity(encryptedPath);
 
       const remotePath = await this.copyToRemote(encryptedPath, checksumPath);
+      // VOTAR-513: la expiración a 30 días aplica también a la ubicación remota.
       const pruned = await this.pruneExpiredBackups(backupDir);
+      const remoteDir = this.getRemoteDir();
+      const prunedRemote =
+        remoteDir && remoteDir !== backupDir
+          ? await this.pruneExpiredBackups(remoteDir)
+          : [];
 
       const result: BackupResult = {
         encryptedPath,
@@ -364,6 +383,7 @@ export class BackupService {
         sizeBytes: encrypted.length,
         sha256: digest,
         pruned,
+        prunedRemote,
       };
       this.logger.log(
         `Respaldo OK: ${encryptedPath} (${encrypted.length} bytes, sha256=${digest.slice(0, 12)}…)`,
