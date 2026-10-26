@@ -11,8 +11,9 @@
 | Criterio | Implementación |
 | -------- | -------------- |
 | Respaldo automatizado diario en baja carga | `BackupScheduler` (hora local `BACKUP_HOUR`, default **03:00**) gated por `BACKUP_ENABLED` |
+| Compresión | `pg_dump -F c -Z 6` (zlib/gzip) antes del cifrado (VOTAR-513) |
 | Cifrado en reposo | AES-256-GCM (`BACKUP_ENCRYPTION_KEY`) antes de persistir `*.dump.enc` |
-| Almacenamiento remoto + retención ≥ 30 días | Copia opcional a `BACKUP_REMOTE_DIR` + poda automática (`BACKUP_RETENTION_DAYS=30`) |
+| Almacenamiento remoto + retención ≥ 30 días | Copia opcional a `BACKUP_REMOTE_DIR` + poda automática en local **y remoto** (`BACKUP_RETENTION_DAYS=30`, VOTAR-513) |
 | Alertas de fallo / integridad | Mail a `ALERT_EMAIL_TO` si `pg_dump` falla o el proceso aborta; checksum SHA-256 sidecar |
 | Validación mensual de restauración (RTO) | `npm run db:restore` + procedimiento UAT abajo |
 
