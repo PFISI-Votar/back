@@ -1,6 +1,7 @@
 import {
   RPC_FAILOVER_TIMEOUT_MS,
   RPC_MAX_BLOCK_SKEW,
+  RPC_RETRY_MAX_DELAY_MS,
 } from './rpc-failover.constants';
 import {
   classifyRpcFailoverReason,
@@ -41,7 +42,17 @@ export class RpcHttpError extends Error {
   }
 }
 
+export type RpcRetryOptions = {
+  /** Reintentos adicionales tras agotar la rotación completa de endpoints. */
+  maxRetries: number;
+  baseDelayMs: number;
+  maxDelayMs?: number;
+  sleep?: (ms: number) => Promise<void>;
+  random?: () => number;
+};
+
 export type SendJsonRpcWithFailoverOptions = {
+  retry?: RpcRetryOptions;
   timeoutMs?: number;
   maxBlockSkew?: number;
   lastKnownBlock?: number | null;
@@ -74,7 +85,7 @@ const jsonRpcRateLimited = (json: unknown): boolean => {
   });
 };
 
-export const sendJsonRpcWithFailover = async (
+const sendOnce = async (
   urls: readonly string[],
   body: JsonRpcRequestBody,
   options: SendJsonRpcWithFailoverOptions,
@@ -181,4 +192,60 @@ export const sendJsonRpcWithFailover = async (
   }
 
   throw lastError;
+};
+
+/** Backoff exponencial con jitter parcial: entre 50% y 100% del tramo. */
+export const computeRetryDelayMs = (
+  attempt: number,
+  retry: RpcRetryOptions,
+): number => {
+  const cap = retry.maxDelayMs ?? RPC_RETRY_MAX_DELAY_MS;
+  const exponential = Math.min(cap, retry.baseDelayMs * 2 ** attempt);
+  const random = retry.random ?? Math.random;
+  return Math.round(exponential / 2 + (random() * exponential) / 2);
+};
+
+/**
+ * Failover primario → respaldos (< 1s por salto) y, si TODOS los endpoints
+ * fallan por causas transitorias (timeout, 429, 5xx, red), reintenta la
+ * rotación completa con backoff exponencial. Los errores de autenticación
+ * (401/403) no se reintentan: no son transitorios.
+ */
+export const sendJsonRpcWithFailover = async (
+  urls: readonly string[],
+  body: JsonRpcRequestBody,
+  options: SendJsonRpcWithFailoverOptions,
+): Promise<unknown> => {
+  const retry = options.retry;
+  if (!retry || retry.maxRetries <= 0) {
+    return sendOnce(urls, body, options);
+  }
+
+  const sleep =
+    retry.sleep ??
+    ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  let lastKnownBlock = options.lastKnownBlock ?? null;
+
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      return await sendOnce(urls, body, {
+        ...options,
+        lastKnownBlock,
+        onReferenceBlock: (block) => {
+          lastKnownBlock = block;
+          options.onReferenceBlock?.(block);
+        },
+      });
+    } catch (error) {
+      const reason = classifyRpcFailoverReason(error);
+      if (attempt >= retry.maxRetries || reason == null || reason === 'auth') {
+        throw error;
+      }
+      const delayMs = computeRetryDelayMs(attempt, retry);
+      options.logger?.warn(
+        `retry ${attempt + 1}/${retry.maxRetries} in ${delayMs}ms reason=${reason}`,
+      );
+      await sleep(delayMs);
+    }
+  }
 };
