@@ -122,6 +122,14 @@ export const envValidationSchema = Joi.object({
     .max(15_000)
     .default(800),
   RPC_MAX_BLOCK_SKEW: Joi.number().integer().min(0).max(64).default(5),
+  /** VOTAR-515 — reintentos con backoff exponencial y caché local de lecturas. */
+  RPC_RETRY_MAX_RETRIES: Joi.number().integer().min(0).max(10).default(3),
+  RPC_RETRY_BASE_DELAY_MS: Joi.number()
+    .integer()
+    .min(50)
+    .max(5000)
+    .default(250),
+  RPC_CACHE_ENABLED: Joi.boolean().truthy('true').falsy('false').default(true),
   MERKLE_ROOT_STORE_ADDRESS: Joi.string().optional(),
 
   PRIVATE_KEY: Joi.string().optional(),
