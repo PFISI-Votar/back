@@ -20,3 +20,10 @@ export const RPC_CACHE_LATEST_TTL_MS = 2000;
 
 /** VOTAR-515 — tope de entradas del caché local (descarta las más viejas). */
 export const RPC_CACHE_MAX_ENTRIES = 500;
+
+/**
+ * VOTAR-515 — profundidad (en bloques) bajo el head desde la cual una
+ * respuesta atada a un bloque se considera finalizada y se cachea sin
+ * vencimiento (Sepolia: 2 épocas × 32 slots).
+ */
+export const RPC_CACHE_FINALITY_DEPTH = 64;

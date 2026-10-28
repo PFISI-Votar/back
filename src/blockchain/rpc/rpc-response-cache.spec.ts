@@ -68,4 +68,103 @@ describe('RpcResponseCache — VOTAR-515', () => {
     }
     expect(cache.size).toBe(2);
   });
+
+  describe('finality (reorg)', () => {
+    const head = async (cache: RpcResponseCache, n: number) =>
+      cache.resolve(payload('eth_blockNumber'), async () => ({
+        id: 1,
+        result: `0x${n.toString(16)}`,
+      }));
+
+    it('un bloque reciente vence por TTL y refleja el cambio tras un reorg', async () => {
+      let now = 1000;
+      const cache = new RpcResponseCache({
+        latestTtlMs: 2000,
+        finalityDepth: 64,
+        now: () => now,
+      });
+      await head(cache, 100);
+      const req = payload('eth_getBlockByNumber', ['0x63', false]);
+      const load = jest
+        .fn()
+        .mockResolvedValueOnce({ id: 1, result: { hash: '0xrama-vieja' } })
+        .mockResolvedValueOnce({ id: 1, result: { hash: '0xrama-nueva' } });
+
+      await cache.resolve(req, load);
+      expect(await cache.resolve(req, load)).toEqual({
+        id: 1,
+        result: { hash: '0xrama-vieja' },
+      });
+      expect(load).toHaveBeenCalledTimes(1);
+
+      now += 2001; // reorg: la rama descartada no debe persistir
+      expect(await cache.resolve(req, load)).toEqual({
+        id: 1,
+        result: { hash: '0xrama-nueva' },
+      });
+    });
+
+    it('sin head conocido no cachea indefinidamente', async () => {
+      let now = 1000;
+      const cache = new RpcResponseCache({ latestTtlMs: 2000, now: () => now });
+      const req = payload('eth_getBlockByNumber', ['0x1', false]);
+      const load = jest.fn(async () => ({ id: 1, result: { n: 1 } }));
+      await cache.resolve(req, load);
+      now += 2001;
+      await cache.resolve(req, load);
+      expect(load).toHaveBeenCalledTimes(2);
+    });
+
+    it('un bloque finalizado se cachea sin vencimiento', async () => {
+      let now = 1000;
+      const cache = new RpcResponseCache({
+        latestTtlMs: 2000,
+        finalityDepth: 64,
+        now: () => now,
+      });
+      await head(cache, 1000);
+      const req = payload('eth_getBlockByNumber', ['0x10', false]);
+      const load = jest.fn(async () => ({ id: 1, result: { n: 16 } }));
+      await cache.resolve(req, load);
+      now += 10 * 60 * 1000;
+      await cache.resolve(req, load);
+      expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('receipt y getLogs recientes también vencen; los finalizados no', async () => {
+      let now = 1000;
+      const cache = new RpcResponseCache({
+        latestTtlMs: 2000,
+        finalityDepth: 64,
+        now: () => now,
+      });
+      await head(cache, 1000);
+      const recentReceipt = payload('eth_getTransactionReceipt', ['0xa']);
+      const oldReceipt = payload('eth_getTransactionReceipt', ['0xb']);
+      const recentLogs = payload('eth_getLogs', [
+        { fromBlock: '0x3e0', toBlock: '0x3e7' },
+      ]);
+      const loadRecent = jest.fn(async () => ({
+        id: 1,
+        result: { blockNumber: '0x3e7' },
+      }));
+      const loadOld = jest.fn(async () => ({
+        id: 1,
+        result: { blockNumber: '0x10' },
+      }));
+      const loadLogs = jest.fn(async () => ({ id: 1, result: [{ a: 1 }] }));
+
+      await cache.resolve(recentReceipt, loadRecent);
+      await cache.resolve(oldReceipt, loadOld);
+      await cache.resolve(recentLogs, loadLogs);
+      now += 2001;
+      await cache.resolve(recentReceipt, loadRecent);
+      await cache.resolve(oldReceipt, loadOld);
+      await cache.resolve(recentLogs, loadLogs);
+
+      expect(loadRecent).toHaveBeenCalledTimes(2);
+      expect(loadLogs).toHaveBeenCalledTimes(2);
+      expect(loadOld).toHaveBeenCalledTimes(1);
+    });
+  });
 });
