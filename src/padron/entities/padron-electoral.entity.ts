@@ -9,6 +9,7 @@ import {
 } from 'typeorm';
 import { Eleccion } from '../../eleccion/entities/eleccion.entity';
 import { NovedadPadronDto } from '../dto/novedad-padron.dto';
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
 import { PadronEstado } from '../enums/padron-estado.enum';
 import { MerkleTree } from './merkle-tree.entity';
 import { PadronVotante } from './padron-votante.entity';
@@ -40,6 +41,14 @@ export class PadronElectoral {
     default: PadronEstado.BORRADOR,
   })
   estado: PadronEstado;
+
+  @Column({
+    name: 'criterio_hash',
+    type: 'enum',
+    enum: CriterioHashPadron,
+    default: CriterioHashPadron.DNI,
+  })
+  criterioHash: CriterioHashPadron;
 
   @CreateDateColumn({ name: 'fecha_generacion', type: 'timestamptz' })
   fechaGeneracion: Date;

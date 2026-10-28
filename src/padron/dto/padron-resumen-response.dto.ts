@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
 import { PadronEstado } from '../enums/padron-estado.enum';
 
 /**
@@ -30,6 +31,13 @@ export class PadronResumenResponseDto {
 
   @ApiProperty({ enum: PadronEstado, example: PadronEstado.BORRADOR })
   estado: PadronEstado;
+
+  @ApiProperty({
+    enum: CriterioHashPadron,
+    example: CriterioHashPadron.DNI,
+    description: 'Criterio utilizado para la generación del hash de identidad',
+  })
+  criterioHash: CriterioHashPadron;
 
   @ApiProperty({ description: 'Fecha de generación del padrón' })
   fechaGeneracion: Date;

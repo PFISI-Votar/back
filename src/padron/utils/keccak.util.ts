@@ -1,14 +1,30 @@
 import { keccak256 } from 'js-sha3';
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
+
+export { CriterioHashPadron };
 
 /**
- * Hashea la identidad compuesta de un votante con Keccak-256.
+ * Hashea la identidad de un votante con Keccak-256 según el criterio del padrón.
  * Normaliza: DNI a sólo dígitos, email a minúsculas sin espacios.
  * Devuelve hex de 64 caracteres (256 bits), sin prefijo `0x`.
  */
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function hashVotante(dni: string, _email?: string): string {
-  const dniNormalizado = dni.trim().replace(/\D/g, '');
-  return keccak256(dniNormalizado);
+export function hashVotante(
+  dni?: string | null,
+  email?: string | null,
+  criterio: CriterioHashPadron = CriterioHashPadron.DNI,
+): string {
+  const dniNormalizado = (dni ?? '').trim().replace(/\D/g, '');
+  const emailNormalizado = (email ?? '').trim().toLowerCase();
+
+  switch (criterio) {
+    case CriterioHashPadron.EMAIL:
+      return keccak256(emailNormalizado);
+    case CriterioHashPadron.DNI_Y_EMAIL:
+      return keccak256(`${dniNormalizado}:${emailNormalizado}`);
+    case CriterioHashPadron.DNI:
+    default:
+      return keccak256(dniNormalizado);
+  }
 }
 
 /**
