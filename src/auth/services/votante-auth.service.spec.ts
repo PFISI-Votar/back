@@ -252,4 +252,69 @@ describe('VotanteAuthService', () => {
     );
     expect(actualResult.accessToken).toBe('signed-voter-jwt');
   });
+
+  it('VOTAR-523: autentica con Google usando el email verificado del padrón', async () => {
+    mockPadronEligibilityService.obtenerCriterioHash.mockResolvedValue(
+      CriterioHashPadron.EMAIL,
+    );
+    configuracionRepository.findOne.mockResolvedValue({
+      metodosAutenticacion: [MetodoAutenticacion.GOOGLE],
+    } as ConfiguracionComicio);
+    mockPadronEligibilityService.isVotanteHabilitado.mockResolvedValue(true);
+
+    const result = await service.loginWithGoogle(
+      {
+        sub: 'google-sub-123',
+        email: 'ana@example.com',
+        name: 'Ana López',
+      },
+      1,
+    );
+
+    expect(
+      mockPadronEligibilityService.isVotanteHabilitado,
+    ).toHaveBeenCalledWith(
+      1,
+      hashVotante(undefined, 'ana@example.com', CriterioHashPadron.EMAIL),
+    );
+    expect(signAsyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: 'google:google-sub-123',
+        email: 'ana@example.com',
+        role: JwtRole.VOTER,
+        idEleccion: 1,
+      }),
+      expect.objectContaining({ expiresIn: '30m' }),
+    );
+    expect(result.user.sub).toBe('google:google-sub-123');
+  });
+
+  it('VOTAR-523: rechaza Google si el método no está habilitado', async () => {
+    configuracionRepository.findOne.mockResolvedValue({
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+    } as ConfiguracionComicio);
+
+    await expect(
+      service.loginWithGoogle(
+        { sub: 'google-sub-123', email: 'ana@example.com' },
+        1,
+      ),
+    ).rejects.toThrow(VOTANTE_CREDENCIALES_INVALIDAS);
+  });
+
+  it('VOTAR-523: rechaza Google cuando el padrón requiere DNI', async () => {
+    configuracionRepository.findOne.mockResolvedValue({
+      metodosAutenticacion: [MetodoAutenticacion.GOOGLE],
+    } as ConfiguracionComicio);
+    mockPadronEligibilityService.obtenerCriterioHash.mockResolvedValue(
+      CriterioHashPadron.DNI,
+    );
+
+    await expect(
+      service.loginWithGoogle(
+        { sub: 'google-sub-123', email: 'ana@example.com' },
+        1,
+      ),
+    ).rejects.toThrow(VOTANTE_CREDENCIALES_INVALIDAS);
+  });
 });
