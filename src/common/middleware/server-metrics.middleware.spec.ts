@@ -3,6 +3,8 @@ import type { NextFunction, Request, Response } from 'express';
 import { createServerMetrics } from '@/common/middleware/server-metrics.middleware';
 
 interface Window {
+  pid: number;
+  host: string;
   requests: number;
   errors5xx: number;
   avgMs: number;
@@ -62,5 +64,70 @@ describe('createServerMetrics — VOTAR-512', () => {
     const payload = windowAt(log, 1);
     expect(payload.requests).toBe(0);
     expect(payload.maxMs).toBe(0);
+  });
+
+  it('cuenta una sola vez el request que emite finish y close', () => {
+    const res = fakeResponse(200);
+    handle.middleware({} as Request, res, jest.fn());
+    res.emit('finish');
+    res.emit('close');
+
+    handle.flush();
+
+    expect(windowAt(log, 0).requests).toBe(1);
+  });
+
+  it('cuenta el request abortado por el cliente (close sin finish)', () => {
+    const res = fakeResponse(200);
+    handle.middleware({} as Request, res, jest.fn());
+    res.emit('close');
+
+    handle.flush();
+
+    const payload = windowAt(log, 0);
+    expect(payload.requests).toBe(1);
+    expect(payload.errors5xx).toBe(0);
+  });
+
+  it('considera error 5xx desde el status 500 inclusive', () => {
+    run(499);
+    run(500);
+
+    handle.flush();
+
+    expect(windowAt(log, 0).errors5xx).toBe(1);
+  });
+
+  it('incluye pid y host en el log', () => {
+    handle.flush();
+
+    const payload = windowAt(log, 0);
+    expect(payload.pid).toBe(process.pid);
+    expect(payload.host).toEqual(expect.any(String));
+  });
+
+  it('conserva decimales en maxMs para latencias sub-milisegundo', () => {
+    const hr = jest.spyOn(process.hrtime, 'bigint');
+    hr.mockReturnValueOnce(0n).mockReturnValueOnce(800_000n);
+    run(200);
+    hr.mockRestore();
+
+    handle.flush();
+
+    expect(windowAt(log, 0).maxMs).toBe(0.8);
+  });
+
+  it('emite el log por timer al cumplirse la ventana', () => {
+    jest.useFakeTimers();
+    try {
+      const timed = createServerMetrics({ intervalMs: 1_000, logger: { log } });
+      jest.advanceTimersByTime(1_000);
+      expect(log).toHaveBeenCalledTimes(1);
+      timed.stop();
+      jest.advanceTimersByTime(5_000);
+      expect(log).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

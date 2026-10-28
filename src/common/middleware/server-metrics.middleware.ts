@@ -1,3 +1,4 @@
+import { hostname } from 'os';
 import { Logger } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 
@@ -12,8 +13,9 @@ export interface ServerMetricsHandle {
   stop: () => void;
 }
 
-const NS_PER_MS = 1_000_000n;
+const NS_PER_MS = 1e6;
 const BYTES_PER_MB = 1024 * 1024;
+const HOST = hostname();
 
 /**
  * VOTAR-512 — métricas operativas por ventana: conteo de requests, tiempo de
@@ -32,14 +34,16 @@ export const createServerMetrics = ({
 
   const flush = (): void => {
     const { rss, heapUsed } = process.memoryUsage();
-    const avgMs = count > 0 ? Number(totalNs / BigInt(count)) / 1e6 : 0;
+    const avgMs = count > 0 ? Number(totalNs / BigInt(count)) / NS_PER_MS : 0;
     logger.log(
       JSON.stringify({
+        pid: process.pid,
+        host: HOST,
         windowMs: intervalMs,
         requests: count,
         errors5xx: errors,
         avgMs: Number(avgMs.toFixed(2)),
-        maxMs: Number(maxNs / NS_PER_MS),
+        maxMs: Number((Number(maxNs) / NS_PER_MS).toFixed(2)),
         rssMb: Math.round(rss / BYTES_PER_MB),
         heapUsedMb: Math.round(heapUsed / BYTES_PER_MB),
       }),
@@ -59,13 +63,19 @@ export const createServerMetrics = ({
     next: NextFunction,
   ): void => {
     const start = process.hrtime.bigint();
-    res.once('finish', () => {
+    let recorded = false;
+    // 'close' sin 'finish' = request abortado por el cliente; evita doble conteo.
+    const record = (): void => {
+      if (recorded) return;
+      recorded = true;
       const elapsed = process.hrtime.bigint() - start;
       count += 1;
       totalNs += elapsed;
       if (elapsed > maxNs) maxNs = elapsed;
       if (res.statusCode >= 500) errors += 1;
-    });
+    };
+    res.once('finish', record);
+    res.once('close', record);
     next();
   };
 

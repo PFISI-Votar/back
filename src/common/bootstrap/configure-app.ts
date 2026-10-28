@@ -29,8 +29,6 @@ export const configureApp = (app: NestExpressApplication): void => {
         configService.get<number>('SERVER_METRICS_INTERVAL_MS') ?? 60_000,
     });
     app.use(metrics.middleware);
-    app.enableShutdownHooks();
-    process.once('beforeExit', metrics.stop);
   }
 
   applySecurityHeaders(app, isProduction);
