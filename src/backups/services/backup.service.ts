@@ -52,6 +52,9 @@ export interface RestoreResult {
   restoredDatabase: string;
 }
 
+const isErrno = (error: unknown, code: string): boolean =>
+  (error as NodeJS.ErrnoException | undefined)?.code === code;
+
 @Injectable()
 export class BackupService {
   private readonly logger = new Logger(BackupService.name);
@@ -248,32 +251,91 @@ export class BackupService {
     return actual;
   }
 
-  async pruneExpiredBackups(backupDir: string): Promise<string[]> {
+  /**
+   * Elimina respaldos con más de `BACKUP_RETENTION_DAYS` días. Solo devuelve
+   * los que se borraron efectivamente; un fallo de unlink (≠ ENOENT) se loguea
+   * como warn y el archivo no figura como eliminado.
+   * `namePrefix` acota la poda a los respaldos de una base (ubicación remota).
+   */
+  async pruneExpiredBackups(
+    backupDir: string,
+    namePrefix?: string,
+  ): Promise<string[]> {
     const retentionDays = this.getRetentionDays();
     const entries = await readdir(backupDir).catch((error: unknown) => {
-      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
+      if (isErrno(error, 'ENOENT')) return [];
       throw error;
     });
-    const metas = await Promise.all(
+    const candidates = await Promise.all(
       entries
-        .filter((name) => name.endsWith(BACKUP_FILE_SUFFIX))
+        .filter(
+          (name) =>
+            name.endsWith(BACKUP_FILE_SUFFIX) &&
+            (!namePrefix || name.startsWith(namePrefix)),
+        )
         .map(async (name) => {
-          const info = await stat(join(backupDir, name));
-          return { name, mtimeMs: info.mtimeMs };
+          try {
+            const info = await stat(join(backupDir, name));
+            return { name, mtimeMs: info.mtimeMs };
+          } catch (error) {
+            // El archivo pudo desaparecer entre readdir y stat.
+            if (isErrno(error, 'ENOENT')) return null;
+            throw error;
+          }
         }),
     );
+    const metas = candidates.filter((meta) => meta !== null);
 
-    const expired = selectExpiredBackups(metas, retentionDays);
-    for (const name of expired) {
+    const deleted: string[] = [];
+    for (const name of selectExpiredBackups(metas, retentionDays)) {
       const encPath = join(backupDir, name);
-      const checksumPath = `${encPath}${BACKUP_CHECKSUM_SUFFIX}`;
-      await unlink(encPath).catch(() => undefined);
-      await unlink(checksumPath).catch(() => undefined);
+      try {
+        await unlink(encPath);
+      } catch (error) {
+        if (!isErrno(error, 'ENOENT')) {
+          this.logger.warn(
+            `No se pudo eliminar el respaldo expirado ${encPath}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+          continue;
+        }
+      }
+      await unlink(`${encPath}${BACKUP_CHECKSUM_SUFFIX}`).catch(
+        (error: unknown) => {
+          if (!isErrno(error, 'ENOENT')) {
+            this.logger.warn(
+              `No se pudo eliminar el checksum de ${name}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        },
+      );
       this.logger.log(
         `Respaldo expirado eliminado (>${retentionDays}d): ${name}`,
       );
+      deleted.push(name);
     }
-    return expired;
+    return deleted;
+  }
+
+  /**
+   * Poda la ubicación remota sin comprometer el respaldo ya generado: un fallo
+   * de retención se avisa aparte y no relanza.
+   */
+  private async pruneRemote(backupDir: string): Promise<string[]> {
+    try {
+      const remoteDir = this.getRemoteDir();
+      if (!remoteDir || remoteDir === backupDir) {
+        return [];
+      }
+      const dbName = this.configService.get<string>('DB_NAME') ?? 'votar';
+      return await this.pruneExpiredBackups(remoteDir, `${dbName}-`);
+    } catch (error) {
+      await this.notifyRetentionFailure(error);
+      return [];
+    }
   }
 
   private getRemoteDir(): string | null {
@@ -333,6 +395,34 @@ export class BackupService {
     }
   }
 
+  private async notifyRetentionFailure(error: unknown): Promise<void> {
+    const message =
+      error instanceof Error ? error.message : 'Error desconocido en retención';
+    this.logger.error(
+      `Respaldo generado, pero falló la retención remota: ${message}`,
+    );
+
+    const to = this.configService.get<string>('ALERT_EMAIL_TO')?.trim();
+    if (!to) {
+      return;
+    }
+    const sent = await this.mailService.sendMail({
+      to,
+      subject: '[VOTAR] Aviso: falló la depuración de respaldos remotos',
+      text: [
+        'El respaldo de PostgreSQL se generó correctamente, pero no se pudo aplicar la retención en la ubicación remota.',
+        '',
+        `Detalle: ${message}`,
+        `Momento: ${new Date().toISOString()}`,
+        '',
+        'Revisar permisos y disponibilidad de BACKUP_REMOTE_DIR (VOTAR-513).',
+      ].join('\n'),
+    });
+    if (!sent) {
+      this.logger.error('No se pudo enviar el aviso de fallo de retención.');
+    }
+  }
+
   /**
    * Volcado completo → cifrado AES-256-GCM → checksum → retención → remoto opcional.
    */
@@ -370,11 +460,7 @@ export class BackupService {
       const remotePath = await this.copyToRemote(encryptedPath, checksumPath);
       // VOTAR-513: la expiración a 30 días aplica también a la ubicación remota.
       const pruned = await this.pruneExpiredBackups(backupDir);
-      const remoteDir = this.getRemoteDir();
-      const prunedRemote =
-        remoteDir && remoteDir !== backupDir
-          ? await this.pruneExpiredBackups(remoteDir)
-          : [];
+      const prunedRemote = await this.pruneRemote(backupDir);
 
       const result: BackupResult = {
         encryptedPath,

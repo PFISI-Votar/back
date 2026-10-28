@@ -40,6 +40,8 @@ ALERT_EMAIL_TO=autoridad@institucion.edu.ar
 
 Para ubicación remota real (S3, GCS, otro datacenter): montar el bucket/FS en `BACKUP_REMOTE_DIR` o sincronizar ese path con el agente del cloud (rclone/aws s3 sync) fuera del proceso Node.
 
+La poda remota solo elimina respaldos con prefijo `<DB_NAME>-`, pero `BACKUP_REMOTE_DIR` debe ser **exclusivo por ambiente** (producción, staging y dev no deben compartirlo: cada uno aplica su propia retención). Si la poda remota falla (permisos, montaje caído), el respaldo se conserva como exitoso y se envía un aviso aparte a `ALERT_EMAIL_TO`; los archivos que no pudieron borrarse no figuran en `prunedRemote`.
+
 ---
 
 ## Comandos

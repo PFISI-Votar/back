@@ -9,12 +9,16 @@ import {
   utimes,
   writeFile,
 } from 'node:fs/promises';
+import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { MailService } from '@/common/mail/mail.service';
 import { BACKUP_CHECKSUM_SUFFIX } from '../backup.constants';
 import { deriveBackupKey, encryptBackup, sha256Hex } from '../backup.crypto';
 import { BackupService } from './backup.service';
+
+jest.mock('node:child_process', () => ({ spawn: jest.fn() }));
 
 describe('BackupService (VOTAR-388)', () => {
   let service: BackupService;
@@ -31,6 +35,7 @@ describe('BackupService (VOTAR-388)', () => {
     BACKUP_ENCRYPTION_KEY: encryptionKey,
     BACKUP_RETENTION_DAYS: 30,
     ALERT_EMAIL_TO: 'autoridad@utn.edu.ar',
+    DEVELOPMENT: true,
   };
 
   beforeEach(async () => {
@@ -127,6 +132,121 @@ describe('BackupService (VOTAR-388)', () => {
     await expect(stat(old)).rejects.toThrow();
     await expect(stat(`${old}${BACKUP_CHECKSUM_SUFFIX}`)).rejects.toThrow();
     await expect(stat(result.remotePath!)).resolves.toBeDefined();
+  });
+
+  describe('retención remota (VOTAR-513)', () => {
+    const daysAgo = (days: number) =>
+      new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    let remoteDir: string;
+
+    beforeEach(() => {
+      remoteDir = join(backupDir, 'remote');
+      configValues['BACKUP_REMOTE_DIR'] = remoteDir;
+      jest
+        .spyOn(service, 'runPgDump')
+        .mockImplementation(async (outputPath: string) => {
+          await writeFile(outputPath, Buffer.from('dump'));
+        });
+    });
+
+    it('conserva respaldos remotos con menos de 30 días', async () => {
+      await mkdir(remoteDir, { recursive: true });
+      const recent = join(remoteDir, 'votar-recent.dump.enc');
+      await writeFile(recent, 'x');
+      await utimes(recent, daysAgo(29), daysAgo(29));
+
+      const result = await service.runBackup();
+
+      expect(result.prunedRemote).toEqual([]);
+      await expect(stat(recent)).resolves.toBeDefined();
+    });
+
+    it('no toca respaldos remotos de otra base', async () => {
+      await mkdir(remoteDir, { recursive: true });
+      const foreign = join(remoteDir, 'otra_base-old.dump.enc');
+      await writeFile(foreign, 'x');
+      await utimes(foreign, daysAgo(40), daysAgo(40));
+
+      const result = await service.runBackup();
+
+      expect(result.prunedRemote).toEqual([]);
+      await expect(stat(foreign)).resolves.toBeDefined();
+    });
+
+    it('tolera que el directorio remoto no exista', async () => {
+      await expect(service.pruneExpiredBackups(remoteDir)).resolves.toEqual([]);
+    });
+
+    it('no informa como eliminado un respaldo que no se pudo borrar', async () => {
+      await mkdir(remoteDir, { recursive: true });
+      // unlink sobre un directorio falla con EISDIR/EPERM (≠ ENOENT).
+      const stuck = join(remoteDir, 'votar-stuck.dump.enc');
+      await mkdir(stuck);
+      await utimes(stuck, daysAgo(31), daysAgo(31));
+      const warn = jest
+        .spyOn(
+          (service as unknown as { logger: { warn: () => void } }).logger,
+          'warn',
+        )
+        .mockImplementation(() => undefined);
+
+      const result = await service.runBackup();
+
+      expect(result.prunedRemote).toEqual([]);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining('No se pudo eliminar') as string,
+      );
+    });
+
+    it('un fallo de la poda remota no falla el respaldo y avisa aparte', async () => {
+      const original = BackupService.prototype.pruneExpiredBackups.bind(
+        service,
+      ) as BackupService['pruneExpiredBackups'];
+      jest
+        .spyOn(service, 'pruneExpiredBackups')
+        .mockImplementation((dir: string, prefix?: string) =>
+          dir === remoteDir
+            ? Promise.reject(new Error('EACCES: permission denied'))
+            : original(dir, prefix),
+        );
+
+      const result = await service.runBackup();
+
+      expect(result.encryptedPath.endsWith('.dump.enc')).toBe(true);
+      expect(result.prunedRemote).toEqual([]);
+      expect(sendMail).toHaveBeenCalledTimes(1);
+      expect(sendMail).toHaveBeenCalledWith(
+        expect.objectContaining({
+          subject: expect.stringContaining('depuración') as string,
+          text: expect.stringContaining('EACCES') as string,
+        }),
+      );
+    });
+  });
+
+  it('pasa -Z 6 a pg_dump (compresión explícita)', async () => {
+    const child = Object.assign(new EventEmitter(), {
+      stderr: new EventEmitter(),
+    });
+    const spawnMock = spawn as unknown as jest.Mock<
+      unknown,
+      [string, string[]]
+    >;
+    spawnMock.mockImplementationOnce(() => {
+      setImmediate(() => child.emit('close', 0));
+      return child;
+    });
+
+    await service.runPgDump(join(backupDir, 'out.dump'));
+
+    const [command, args] = spawnMock.mock.calls[0];
+    expect(command).toBe('pg_dump');
+    expect(args.slice(args.indexOf('-F'), args.indexOf('-F') + 4)).toEqual([
+      '-F',
+      'c',
+      '-Z',
+      '6',
+    ]);
   });
 
   it('notifica por mail cuando el backup falla (UAT-03)', async () => {
