@@ -102,8 +102,9 @@ const runCsv = () => {
 const runMock = () => {
   const port = num('port', 4010);
   const nickToIndex = (nick) => {
-    const match = new RegExp(`^${PREFIX}(\\d{5})$`).exec(nick ?? '');
-    return match ? Number(match[1]) : null;
+    if (typeof nick !== 'string' || !nick.startsWith(PREFIX)) return null;
+    const digits = nick.slice(PREFIX.length);
+    return /^\d{5}$/.test(digits) ? Number(digits) : null;
   };
   createServer((req, res) => {
     const nick = req.headers.nick;
