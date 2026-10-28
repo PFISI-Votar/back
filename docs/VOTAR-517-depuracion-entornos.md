@@ -36,6 +36,9 @@ npm run env:cleanup -- --project otro-proyecto --skip-git
 
 - Contenedores y volúmenes de **otros proyectos** de la máquina (se filtra por proyecto compose).
 - El volumen `votar-pg-data-dev` (BD local), aunque el stack esté apagado.
+  Compose lo crea como `<proyecto>_votar-pg-data-dev` (p. ej. `codigo_votar-pg-data-dev`), por lo que la exclusión
+  contempla el nombre con o sin prefijo y la etiqueta `com.docker.compose.volume`.
+  `scripts/test-cleanup-dev-env.sh` lo verifica con un `docker` simulado.
 - Las ramas `dev`, `master`, `main`, `release/*`, la rama actual ni las que estén checkout en algún worktree.
 - Ramas remotas: solo se hace `git fetch --prune`.
 

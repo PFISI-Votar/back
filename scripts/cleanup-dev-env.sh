@@ -101,8 +101,13 @@ if [ "$SKIP_DOCKER" = false ]; then
     echo ""
 
     echo "💾 Volúmenes en desuso del proyecto '${PROJECT}' (se conservan los votar-*)"
-    VOLUMES=$(docker volume ls -q --filter dangling=true \
-      --filter "label=com.docker.compose.project=${PROJECT}" | grep -v -E '^votar-' || true)
+    # Compose antepone el proyecto al nombre real (codigo_votar-pg-data-dev), así que
+    # se protege tanto por el nombre lógico (etiqueta com.docker.compose.volume) como
+    # por el nombre efectivo, con o sin prefijo.
+    VOLUMES=$(docker volume ls --filter dangling=true \
+      --filter "label=com.docker.compose.project=${PROJECT}" \
+      --format '{{.Name}}|{{.Label "com.docker.compose.volume"}}' |
+      grep -v -E '(^|_)votar-|\|votar-' | cut -d'|' -f1 || true)
     if [ -z "$VOLUMES" ]; then
       echo "   (ninguno)"
     else
