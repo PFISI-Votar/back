@@ -10,6 +10,8 @@ import {
   RPC_FAILOVER_LOG_PREFIX,
   RPC_FAILOVER_TIMEOUT_MS,
   RPC_MAX_BLOCK_SKEW,
+  RPC_RETRY_BASE_DELAY_MS,
+  RPC_RETRY_MAX_RETRIES,
 } from './rpc-failover.constants';
 import {
   assertRpcUrlsUseHttpsExceptLoopback,
@@ -62,6 +64,17 @@ export class RpcProviderFactory {
         RPC_MAX_BLOCK_SKEW,
     );
 
+    const maxRetries = Number(
+      this.configService.get<number>('RPC_RETRY_MAX_RETRIES') ??
+        RPC_RETRY_MAX_RETRIES,
+    );
+    const baseDelayMs = Number(
+      this.configService.get<number>('RPC_RETRY_BASE_DELAY_MS') ??
+        RPC_RETRY_BASE_DELAY_MS,
+    );
+    const cacheEnabled =
+      this.configService.get<boolean>('RPC_CACHE_ENABLED') !== false;
+
     const provider =
       urls.length === 1
         ? new JsonRpcProvider(urls[0])
@@ -69,6 +82,8 @@ export class RpcProviderFactory {
             chainId,
             timeoutMs,
             maxBlockSkew,
+            retry: { maxRetries, baseDelayMs },
+            cache: cacheEnabled ? {} : false,
             logger: {
               warn: (message, ...optionalParams) => {
                 this.logger.warn(
