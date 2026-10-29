@@ -3,6 +3,12 @@ import * as Joi from 'joi';
 export const envValidationSchema = Joi.object({
   DEVELOPMENT: Joi.boolean().truthy('true').falsy('false').default(false),
   REQUIRE_HTTPS: Joi.boolean().truthy('true').falsy('false').default(false),
+  /** VOTAR-512 — métricas de servidor agregadas en logs. */
+  SERVER_METRICS_ENABLED: Joi.boolean()
+    .truthy('true')
+    .falsy('false')
+    .default(true),
+  SERVER_METRICS_INTERVAL_MS: Joi.number().integer().min(1000).default(60000),
   PORT: Joi.number().port().default(3000),
   FRONTEND_URL: Joi.string().uri().default('http://localhost:5173'),
   /** VOTAR-380 — whitelist CORS (comma-separated). Falls back to FRONTEND_URL when empty. */

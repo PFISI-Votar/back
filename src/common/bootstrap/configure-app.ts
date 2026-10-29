@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
 import { GlobalExceptionFilter } from '@/common/filters/global-exception.filter';
 import { UploadTooLargeFilter } from '@/common/filters/upload-too-large.filter';
+import { createServerMetrics } from '@/common/middleware/server-metrics.middleware';
 import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
 import { buildCorsOptions } from '@/config/cors.config';
 import {
@@ -19,6 +20,15 @@ export const configureApp = (app: NestExpressApplication): void => {
 
   if (isProduction) {
     app.set('trust proxy', 1);
+  }
+
+  // VOTAR-512: métricas operativas agregadas en logs (opt-out vía env).
+  if (configService.get<boolean>('SERVER_METRICS_ENABLED') !== false) {
+    const metrics = createServerMetrics({
+      intervalMs:
+        configService.get<number>('SERVER_METRICS_INTERVAL_MS') ?? 60_000,
+    });
+    app.use(metrics.middleware);
   }
 
   applySecurityHeaders(app, isProduction);
