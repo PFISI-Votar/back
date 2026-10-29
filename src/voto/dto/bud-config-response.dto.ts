@@ -25,6 +25,17 @@ export class VisibilidadDashboardPublicoDto {
   transacciones!: boolean;
 }
 
+export class PopupAlertaBudDto {
+  @ApiProperty({
+    description:
+      'VOTAR-524: título del pop-up. La BUD lo muestra en mayúsculas.',
+  })
+  titulo!: string;
+
+  @ApiProperty({ description: 'VOTAR-524: descripción del pop-up' })
+  descripcion!: string;
+}
+
 export class BudConfigResponseDto {
   @ApiProperty()
   idEleccion!: number;
@@ -79,4 +90,12 @@ export class BudConfigResponseDto {
     type: VisibilidadDashboardPublicoDto,
   })
   visibilidadDashboard!: VisibilidadDashboardPublicoDto;
+
+  @ApiProperty({
+    description:
+      'VOTAR-524: pop-up de alerta que la BUD muestra antes de comenzar. Null cuando está deshabilitado.',
+    type: PopupAlertaBudDto,
+    nullable: true,
+  })
+  popupAlerta!: PopupAlertaBudDto | null;
 }

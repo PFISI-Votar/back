@@ -18,6 +18,10 @@ import {
   MensajeBudResponseDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-mensaje-bud.dto';
 import {
+  ConfiguracionPopupAlertaResponseDto,
+  GuardarConfiguracionPopupAlertaDto,
+} from '@/eleccion/configuracion-comicio/dto/configuracion-popup-alerta.dto';
+import {
   ConfiguracionRevotoResponseDto,
   GuardarConfiguracionRevotoDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-revoto.dto';
@@ -38,7 +42,9 @@ import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { CrearEleccionValidationException } from '@/eleccion/exceptions/crear-eleccion-validation.exception';
 import {
   assertEleccionEditable,
+  assertPopupAlertaEditable,
   assertVisibilidadDashboardEditable,
+  isPopupAlertaEditable,
 } from '@/eleccion/utils/eleccion-editable.util';
 
 @Injectable()
@@ -257,6 +263,66 @@ export class ConfiguracionComicioService {
       idEleccion: guardada.idEleccion,
       observacionLogin: guardada.observacionLogin ?? null,
       editable: guardada.estado !== EleccionEstado.ARCHIVADA,
+    };
+  }
+
+  async obtenerConfiguracionPopupAlerta(
+    idEleccion: number,
+  ): Promise<ConfiguracionPopupAlertaResponseDto> {
+    const eleccion = await this.assertEleccionExists(idEleccion);
+    const config = await this.findOrCreateConfig(idEleccion);
+    return this.toPopupAlertaResponse(config, eleccion.estado);
+  }
+
+  async guardarConfiguracionPopupAlerta(
+    idEleccion: number,
+    dto: GuardarConfiguracionPopupAlertaDto,
+    auditContext: ConfiguracionRevotoAuditContext,
+  ): Promise<ConfiguracionPopupAlertaResponseDto> {
+    const eleccion = await this.assertEleccionExists(idEleccion);
+    assertPopupAlertaEditable(eleccion);
+    const config = await this.findOrCreateConfig(idEleccion);
+    const antes = {
+      habilitado: config.popupAlertaHabilitado,
+      titulo: config.popupAlertaTitulo,
+      descripcion: config.popupAlertaDescripcion,
+    };
+    config.popupAlertaHabilitado = dto.habilitado;
+    if (dto.habilitado) {
+      config.popupAlertaTitulo = dto.titulo ?? null;
+      config.popupAlertaDescripcion = dto.descripcion ?? null;
+    }
+    const guardada = await this.configRepository.save(config);
+    const despues = {
+      habilitado: guardada.popupAlertaHabilitado,
+      titulo: guardada.popupAlertaTitulo,
+      descripcion: guardada.popupAlertaDescripcion,
+    };
+    if (
+      antes.habilitado !== despues.habilitado ||
+      antes.titulo !== despues.titulo ||
+      antes.descripcion !== despues.descripcion
+    ) {
+      await this.auditLoggerService.logConfigModificada({
+        idEleccion,
+        actorId: auditContext.actorId,
+        ipOrigen: auditContext.ipOrigen,
+        cambios: { popupAlerta: { antes, despues } },
+      });
+    }
+    return this.toPopupAlertaResponse(guardada, eleccion.estado);
+  }
+
+  private toPopupAlertaResponse(
+    config: ConfiguracionComicio,
+    estado: EleccionEstado,
+  ): ConfiguracionPopupAlertaResponseDto {
+    return {
+      idEleccion: config.idEleccion,
+      habilitado: config.popupAlertaHabilitado,
+      titulo: config.popupAlertaTitulo,
+      descripcion: config.popupAlertaDescripcion,
+      editable: isPopupAlertaEditable(estado),
     };
   }
 
