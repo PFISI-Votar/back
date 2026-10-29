@@ -5,6 +5,10 @@ import {
   OneToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import {
+  POPUP_ALERTA_DESCRIPCION_MAX_LENGTH,
+  POPUP_ALERTA_TITULO_MAX_LENGTH,
+} from '@/eleccion/configuracion-comicio/constants/popup-alerta.constants';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { PoliticaRevoto } from '@/eleccion/configuracion-comicio/enums/politica-revoto.enum';
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
@@ -89,4 +93,23 @@ export class ConfiguracionComicio {
     default: true,
   })
   mostrarDashboardTransacciones: boolean;
+
+  @Column({ name: 'popup_alerta_habilitado', type: 'boolean', default: false })
+  popupAlertaHabilitado: boolean;
+
+  @Column({
+    name: 'popup_alerta_titulo',
+    type: 'varchar',
+    length: POPUP_ALERTA_TITULO_MAX_LENGTH,
+    nullable: true,
+  })
+  popupAlertaTitulo: string | null;
+
+  @Column({
+    name: 'popup_alerta_descripcion',
+    type: 'varchar',
+    length: POPUP_ALERTA_DESCRIPCION_MAX_LENGTH,
+    nullable: true,
+  })
+  popupAlertaDescripcion: string | null;
 }

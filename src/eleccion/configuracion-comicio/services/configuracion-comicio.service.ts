@@ -82,6 +82,9 @@ export class ConfiguracionComicioService {
       mostrarDashboardParticipacion: true,
       mostrarDashboardRevoto: true,
       mostrarDashboardTransacciones: true,
+      popupAlertaHabilitado: false,
+      popupAlertaTitulo: null,
+      popupAlertaDescripcion: null,
     });
     return this.configRepository.save(config);
   }
