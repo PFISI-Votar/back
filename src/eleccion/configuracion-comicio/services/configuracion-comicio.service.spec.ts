@@ -542,6 +542,164 @@ describe('ConfiguracionComicioService', () => {
     });
   });
 
+  describe('VOTAR-524 configuracion-popup-alerta', () => {
+    beforeEach(() => {
+      mockEleccionRepository.findOne.mockResolvedValue({ ...baseEleccion });
+      mockConfigRepository.findOne.mockResolvedValue({
+        ...baseConfig,
+        popupAlertaHabilitado: false,
+        popupAlertaTitulo: null,
+        popupAlertaDescripcion: null,
+      });
+      mockConfigRepository.save.mockImplementation(
+        (entity: ConfiguracionComicio) => Promise.resolve(entity),
+      );
+    });
+
+    it('crearConfiguracionInicial deja el pop-up deshabilitado y sin texto', async () => {
+      mockConfigRepository.create.mockReturnValue({ idEleccion: 1 });
+
+      await service.crearConfiguracionInicial(1, [
+        MetodoAutenticacion.SSO_INSTITUCIONAL,
+      ]);
+
+      expect(mockConfigRepository.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          popupAlertaHabilitado: false,
+          popupAlertaTitulo: null,
+          popupAlertaDescripcion: null,
+        }),
+      );
+    });
+
+    it('obtener refleja el estado persistido', async () => {
+      const actual = await service.obtenerConfiguracionPopupAlerta(1);
+
+      expect(actual).toEqual({
+        idEleccion: 1,
+        habilitado: false,
+        titulo: null,
+        descripcion: null,
+        editable: true,
+      });
+    });
+
+    it('guardar habilitado persiste titulo y descripcion y registra auditoria', async () => {
+      const actual = await service.guardarConfiguracionPopupAlerta(
+        1,
+        { habilitado: true, titulo: 'Aviso', descripcion: 'Texto del aviso' },
+        { actorId: 'admin-1', ipOrigen: '127.0.0.1' },
+      );
+
+      expect(actual.habilitado).toBe(true);
+      expect(actual.titulo).toBe('Aviso');
+      expect(actual.descripcion).toBe('Texto del aviso');
+      expect(mockAuditLoggerService.logConfigModificada).toHaveBeenCalledWith(
+        expect.objectContaining({
+          idEleccion: 1,
+          actorId: 'admin-1',
+          cambios: {
+            popupAlerta: {
+              antes: { habilitado: false, titulo: null, descripcion: null },
+              despues: {
+                habilitado: true,
+                titulo: 'Aviso',
+                descripcion: 'Texto del aviso',
+              },
+            },
+          },
+        }),
+      );
+    });
+
+    it('deshabilitar conserva el titulo y la descripcion guardados', async () => {
+      mockConfigRepository.findOne.mockResolvedValue({
+        ...baseConfig,
+        popupAlertaHabilitado: true,
+        popupAlertaTitulo: 'Aviso',
+        popupAlertaDescripcion: 'Texto del aviso',
+      });
+
+      const actual = await service.guardarConfiguracionPopupAlerta(
+        1,
+        { habilitado: false },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.habilitado).toBe(false);
+      expect(actual.titulo).toBe('Aviso');
+      expect(actual.descripcion).toBe('Texto del aviso');
+      expect(mockConfigRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          popupAlertaHabilitado: false,
+          popupAlertaTitulo: 'Aviso',
+          popupAlertaDescripcion: 'Texto del aviso',
+        }),
+      );
+    });
+
+    it('no registra auditoria cuando no hay cambios', async () => {
+      await service.guardarConfiguracionPopupAlerta(
+        1,
+        { habilitado: false },
+        { actorId: 'admin-1' },
+      );
+
+      expect(mockAuditLoggerService.logConfigModificada).not.toHaveBeenCalled();
+    });
+
+    it('permite guardar con el comicio ABIERTA', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue({
+        ...baseEleccion,
+        estado: EleccionEstado.ABIERTA,
+      });
+
+      const actual = await service.guardarConfiguracionPopupAlerta(
+        1,
+        { habilitado: true, titulo: 'Aviso', descripcion: 'Texto del aviso' },
+        { actorId: 'admin-1' },
+      );
+
+      expect(actual.editable).toBe(true);
+      expect(actual.habilitado).toBe(true);
+    });
+
+    it('lanza 409 y no persiste si el comicio esta ARCHIVADA', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue({
+        ...baseEleccion,
+        estado: EleccionEstado.ARCHIVADA,
+      });
+
+      await expect(
+        service.guardarConfiguracionPopupAlerta(
+          1,
+          { habilitado: true, titulo: 'Aviso', descripcion: 'Texto' },
+          { actorId: 'admin-1' },
+        ),
+      ).rejects.toBeInstanceOf(ConflictException);
+      expect(mockConfigRepository.save).not.toHaveBeenCalled();
+    });
+
+    it('editable es false cuando el comicio esta ARCHIVADA', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue({
+        ...baseEleccion,
+        estado: EleccionEstado.ARCHIVADA,
+      });
+
+      const actual = await service.obtenerConfiguracionPopupAlerta(1);
+
+      expect(actual.editable).toBe(false);
+    });
+
+    it('lanza 404 si la elección no existe', async () => {
+      mockEleccionRepository.findOne.mockResolvedValue(null);
+
+      await expect(
+        service.obtenerConfiguracionPopupAlerta(99),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
   describe('Mensaje BUD (observacionLogin)', () => {
     it('obtiene el mensaje del BUD de un comicio', async () => {
       mockEleccionRepository.findOne.mockResolvedValue({

@@ -22,7 +22,10 @@ import {
 } from '@/eleccion/lista/services/oferta-electoral-query.service';
 import { PadronVotante } from '@/padron/entities/padron-votante.entity';
 import { BlockchainService } from '@/blockchain/blockchain.service';
-import { BudConfigResponseDto } from '@/voto/dto/bud-config-response.dto';
+import {
+  BudConfigResponseDto,
+  PopupAlertaBudDto,
+} from '@/voto/dto/bud-config-response.dto';
 import {
   BoletaDigitalResponseDto,
   CandidatoBoletaDigitalDto,
@@ -39,6 +42,23 @@ const ESTADOS_ELECCION_CERRADOS = [
   EleccionEstado.ESCRUTADA,
   EleccionEstado.ARCHIVADA,
 ];
+
+/** VOTAR-524: null si esta deshabilitado o si faltan titulo o descripcion. */
+const toPopupAlertaBud = (
+  configuracion: ConfiguracionComicio,
+): PopupAlertaBudDto | null => {
+  if (
+    !configuracion.popupAlertaHabilitado ||
+    !configuracion.popupAlertaTitulo ||
+    !configuracion.popupAlertaDescripcion
+  ) {
+    return null;
+  }
+  return {
+    titulo: configuracion.popupAlertaTitulo,
+    descripcion: configuracion.popupAlertaDescripcion,
+  };
+};
 
 @Injectable()
 export class VotoService {
@@ -85,6 +105,7 @@ export class VotoService {
       permitirVotoNulo: configuracion.permitirVotoNulo,
       pausada: eleccion.pausada,
       observacionLogin: eleccion.observacionLogin ?? null,
+      popupAlerta: toPopupAlertaBud(configuracion),
       visibilidadDashboard: {
         resultados: isSeccionDashboardVisible(
           configuracion,

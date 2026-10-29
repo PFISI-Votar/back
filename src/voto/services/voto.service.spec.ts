@@ -171,6 +171,7 @@ describe('VotoService', () => {
       permitirVotoNulo: true,
       pausada: false,
       observacionLogin: null,
+      popupAlerta: null,
       visibilidadDashboard: {
         resultados: true,
         participacion: true,
@@ -283,6 +284,72 @@ describe('VotoService', () => {
     await expect(service.obtenerConfiguracionBud(99)).rejects.toThrow(
       NotFoundException,
     );
+  });
+
+  describe('VOTAR-524 popupAlerta en configuracion BUD', () => {
+    const configuracionConPopup = (popup: object) => ({
+      idEleccion: 1,
+      permitirVotoEnBlanco: false,
+      permitirVotoNulo: true,
+      metodosAutenticacion: [MetodoAutenticacion.SSO_INSTITUCIONAL],
+      mostrarResultadosTiempoReal: false,
+      mostrarDashboardResultados: true,
+      mostrarDashboardParticipacion: true,
+      mostrarDashboardRevoto: true,
+      mostrarDashboardTransacciones: true,
+      ...popup,
+    });
+
+    it('expone titulo y descripcion cuando esta habilitado', async () => {
+      const repositories = createRepositories();
+      repositories.configuracionRepository.findOne.mockResolvedValue(
+        configuracionConPopup({
+          popupAlertaHabilitado: true,
+          popupAlertaTitulo: 'Aviso importante',
+          popupAlertaDescripcion: 'Texto del aviso',
+        }),
+      );
+      const service = createService(repositories);
+
+      const actual = await service.obtenerConfiguracionBud(1);
+
+      expect(actual.popupAlerta).toEqual({
+        titulo: 'Aviso importante',
+        descripcion: 'Texto del aviso',
+      });
+    });
+
+    it('devuelve null cuando esta deshabilitado aunque haya texto guardado', async () => {
+      const repositories = createRepositories();
+      repositories.configuracionRepository.findOne.mockResolvedValue(
+        configuracionConPopup({
+          popupAlertaHabilitado: false,
+          popupAlertaTitulo: 'Aviso importante',
+          popupAlertaDescripcion: 'Texto del aviso',
+        }),
+      );
+      const service = createService(repositories);
+
+      const actual = await service.obtenerConfiguracionBud(1);
+
+      expect(actual.popupAlerta).toBeNull();
+    });
+
+    it('devuelve null si esta habilitado pero falta titulo o descripcion', async () => {
+      const repositories = createRepositories();
+      repositories.configuracionRepository.findOne.mockResolvedValue(
+        configuracionConPopup({
+          popupAlertaHabilitado: true,
+          popupAlertaTitulo: null,
+          popupAlertaDescripcion: 'Texto del aviso',
+        }),
+      );
+      const service = createService(repositories);
+
+      const actual = await service.obtenerConfiguracionBud(1);
+
+      expect(actual.popupAlerta).toBeNull();
+    });
   });
 
   it('devuelve la boleta digital ordenada y con foto nullable', async () => {
