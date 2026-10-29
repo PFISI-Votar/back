@@ -45,6 +45,7 @@ async function main() {
           sizeBytes: result.sizeBytes,
           sha256: result.sha256,
           pruned: result.pruned,
+          prunedRemote: result.prunedRemote,
         },
         null,
         2,

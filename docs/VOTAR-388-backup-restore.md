@@ -11,8 +11,9 @@
 | Criterio | Implementación |
 | -------- | -------------- |
 | Respaldo automatizado diario en baja carga | `BackupScheduler` (hora local `BACKUP_HOUR`, default **03:00**) gated por `BACKUP_ENABLED` |
+| Compresión | `pg_dump -F c -Z 6` (zlib/gzip) antes del cifrado (VOTAR-513) |
 | Cifrado en reposo | AES-256-GCM (`BACKUP_ENCRYPTION_KEY`) antes de persistir `*.dump.enc` |
-| Almacenamiento remoto + retención ≥ 30 días | Copia opcional a `BACKUP_REMOTE_DIR` + poda automática (`BACKUP_RETENTION_DAYS=30`) |
+| Almacenamiento remoto + retención ≥ 30 días | Copia opcional a `BACKUP_REMOTE_DIR` + poda automática en local **y remoto** (`BACKUP_RETENTION_DAYS=30`, VOTAR-513) |
 | Alertas de fallo / integridad | Mail a `ALERT_EMAIL_TO` si `pg_dump` falla o el proceso aborta; checksum SHA-256 sidecar |
 | Validación mensual de restauración (RTO) | `npm run db:restore` + procedimiento UAT abajo |
 
@@ -38,6 +39,8 @@ ALERT_EMAIL_TO=autoridad@institucion.edu.ar
 `BACKUP_ENCRYPTION_KEY`: passphrase arbitraria (scrypt) **o** 64 caracteres hex (32 bytes crudos).
 
 Para ubicación remota real (S3, GCS, otro datacenter): montar el bucket/FS en `BACKUP_REMOTE_DIR` o sincronizar ese path con el agente del cloud (rclone/aws s3 sync) fuera del proceso Node.
+
+La poda remota solo elimina respaldos con prefijo `<DB_NAME>-`, pero `BACKUP_REMOTE_DIR` debe ser **exclusivo por ambiente** (producción, staging y dev no deben compartirlo: cada uno aplica su propia retención). Si la poda remota falla (permisos, montaje caído), el respaldo se conserva como exitoso y se envía un aviso aparte a `ALERT_EMAIL_TO`; los archivos que no pudieron borrarse no figuran en `prunedRemote`.
 
 ---
 
