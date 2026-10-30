@@ -1,6 +1,7 @@
 import type { CookieOptions, Response } from 'express';
 import {
   ACCESS_COOKIE_NAME,
+  GOOGLE_OAUTH_STATE_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
   VOTER_ACCESS_COOKIE_NAME,
 } from '@/auth/constants/auth-cookie.constants';
@@ -74,4 +75,32 @@ export const clearVoterAccessCookie = (
   secure: boolean,
 ): void => {
   response.clearCookie(VOTER_ACCESS_COOKIE_NAME, sessionCookieOptions(secure));
+};
+
+const googleOAuthCookieOptions = (secure: boolean): CookieOptions => ({
+  httpOnly: true,
+  secure,
+  sameSite: 'lax',
+  path: '/auth/votante/google',
+});
+
+export const setGoogleOAuthStateCookie = (
+  response: Response,
+  value: string,
+  secure: boolean,
+): void => {
+  response.cookie(GOOGLE_OAUTH_STATE_COOKIE_NAME, value, {
+    ...googleOAuthCookieOptions(secure),
+    maxAge: 5 * 60 * 1000,
+  });
+};
+
+export const clearGoogleOAuthStateCookie = (
+  response: Response,
+  secure: boolean,
+): void => {
+  response.clearCookie(
+    GOOGLE_OAUTH_STATE_COOKIE_NAME,
+    googleOAuthCookieOptions(secure),
+  );
 };

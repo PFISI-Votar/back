@@ -19,11 +19,18 @@ import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/meto
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { PadronEligibilityService } from '@/padron/services/padron-eligibility.service';
 import { hashVotante } from '@/padron/utils/keccak.util';
+import { CriterioHashPadron } from '@/padron/enums/criterio-hash-padron.enum';
 import { parseDurationToSeconds } from '@/auth/utils/parse-duration.util';
 
 export type VotanteAuthLoginResult = {
   accessToken: string;
   user: VotanteAuthUserDto;
+};
+
+export type GoogleVoterIdentity = {
+  sub: string;
+  email: string;
+  name?: string;
 };
 
 @Injectable()
@@ -53,10 +60,24 @@ export class VotanteAuthService {
     const persona = usuario.persona;
     const dni = resolveDni(persona);
     const email = persona.email ?? persona.mail ?? null;
-    if (!dni) {
+    const criterioHash =
+      await this.padronEligibilityService.obtenerCriterioHash(idEleccion);
+
+    if (criterioHash === CriterioHashPadron.DNI && !dni) {
       throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
     }
-    const votanteHash = hashVotante(dni, email ?? undefined);
+    if (criterioHash === CriterioHashPadron.EMAIL && !email) {
+      throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
+    }
+    if (criterioHash === CriterioHashPadron.DNI_Y_EMAIL && (!dni || !email)) {
+      throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
+    }
+
+    const votanteHash = hashVotante(
+      dni ?? '',
+      email ?? undefined,
+      criterioHash,
+    );
     const habilitado = await this.padronEligibilityService.isVotanteHabilitado(
       idEleccion,
       votanteHash,
@@ -64,24 +85,56 @@ export class VotanteAuthService {
     if (!habilitado) {
       throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
     }
-    const sub = persona.legajo?.toString() ?? nick;
-    const name = [persona.nombre, persona.apellido].filter(Boolean).join(' ');
-    this.jwksService.assertCanIssueLocalAccessTokens();
-    const payload: VoterJwtPayload = {
-      sub,
-      role: JwtRole.VOTER,
+    return this.issueVoterSession({
+      sub: persona.legajo?.toString() ?? nick,
       votanteHash,
       idEleccion,
       email: email ?? undefined,
-      name: name || undefined,
-    };
-    const accessToken = await this.jwtService.signAsync(payload, {
-      expiresIn: this.getVoterAccessExpiresIn(),
+      name:
+        [persona.nombre, persona.apellido].filter(Boolean).join(' ') ||
+        undefined,
     });
-    return {
-      accessToken,
-      user: this.toAuthUser(payload),
-    };
+  }
+
+  async assertGoogleLoginAllowed(idEleccion: number): Promise<void> {
+    await this.assertEleccionExists(idEleccion);
+    const configuracion = await this.configuracionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (
+      !configuracion?.metodosAutenticacion.includes(MetodoAutenticacion.GOOGLE)
+    ) {
+      throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
+    }
+  }
+
+  async loginWithGoogle(
+    identity: GoogleVoterIdentity,
+    idEleccion: number,
+  ): Promise<VotanteAuthLoginResult> {
+    await this.assertGoogleLoginAllowed(idEleccion);
+    const criterioHash =
+      await this.padronEligibilityService.obtenerCriterioHash(idEleccion);
+    // Google no entrega DNI. Para mantener la validación contra el padrón sin
+    // pedir un segundo dato, este proveedor requiere un padrón basado en email.
+    if (criterioHash !== CriterioHashPadron.EMAIL) {
+      throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
+    }
+    const votanteHash = hashVotante(undefined, identity.email, criterioHash);
+    const habilitado = await this.padronEligibilityService.isVotanteHabilitado(
+      idEleccion,
+      votanteHash,
+    );
+    if (!habilitado) {
+      throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
+    }
+    return this.issueVoterSession({
+      sub: `google:${identity.sub}`,
+      votanteHash,
+      idEleccion,
+      email: identity.email,
+      name: identity.name,
+    });
   }
 
   toAuthUser(payload: VoterJwtPayload): VotanteAuthUserDto {
@@ -100,6 +153,20 @@ export class VotanteAuthService {
 
   getVoterAccessTtlSeconds(): number {
     return parseDurationToSeconds(this.getVoterAccessExpiresIn());
+  }
+
+  private async issueVoterSession(
+    payloadInput: Omit<VoterJwtPayload, 'role'>,
+  ): Promise<VotanteAuthLoginResult> {
+    this.jwksService.assertCanIssueLocalAccessTokens();
+    const payload: VoterJwtPayload = {
+      ...payloadInput,
+      role: JwtRole.VOTER,
+    };
+    const accessToken = await this.jwtService.signAsync(payload, {
+      expiresIn: this.getVoterAccessExpiresIn(),
+    });
+    return { accessToken, user: this.toAuthUser(payload) };
   }
 
   private getVoterAccessExpiresIn(): `${number}${'s' | 'm' | 'h' | 'd'}` {
