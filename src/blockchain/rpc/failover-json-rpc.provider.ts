@@ -11,7 +11,9 @@ import {
   RPC_MAX_BLOCK_SKEW,
 } from './rpc-failover.constants';
 import { RpcHttpError, sendJsonRpcWithFailover } from './rpc-failover.sender';
-import type { RpcFailoverLogger } from './rpc-failover.sender';
+import type { RpcFailoverLogger, RpcRetryOptions } from './rpc-failover.sender';
+import { RpcResponseCache } from './rpc-response-cache';
+import type { RpcCacheOptions } from './rpc-response-cache';
 
 export type FailoverFetch = (
   input: string,
@@ -24,6 +26,10 @@ export type FailoverJsonRpcProviderOptions = {
   maxBlockSkew?: number;
   logger?: RpcFailoverLogger;
   fetchImpl?: FailoverFetch;
+  /** VOTAR-515 — backoff exponencial; omitido = sin reintentos. */
+  retry?: RpcRetryOptions;
+  /** VOTAR-515 — caché local de lecturas; `false` lo desactiva. */
+  cache?: RpcCacheOptions | false;
 };
 
 const defaultLogger: RpcFailoverLogger = {
@@ -49,6 +55,8 @@ export class FailoverJsonRpcProvider extends JsonRpcApiProvider {
   readonly #maxBlockSkew: number;
   readonly #logger: RpcFailoverLogger;
   readonly #fetchImpl: FailoverFetch;
+  readonly #retry: RpcRetryOptions | undefined;
+  readonly #cache: RpcResponseCache | null;
   #lastKnownBlock: number | null = null;
 
   constructor(
@@ -68,10 +76,26 @@ export class FailoverJsonRpcProvider extends JsonRpcApiProvider {
     this.#maxBlockSkew = options.maxBlockSkew ?? RPC_MAX_BLOCK_SKEW;
     this.#logger = options.logger ?? defaultLogger;
     this.#fetchImpl = options.fetchImpl ?? fetch;
+    this.#retry = options.retry;
+    this.#cache =
+      options.cache === false ? null : new RpcResponseCache(options.cache);
     this._start();
   }
 
   async _send(
+    payload: JsonRpcPayload | JsonRpcPayload[],
+  ): Promise<Array<JsonRpcResult | JsonRpcError>> {
+    if (this.#cache && !Array.isArray(payload)) {
+      const response = await this.#cache.resolve(payload, async () => {
+        const [first] = await this.#sendUncached(payload);
+        return first;
+      });
+      return [response as JsonRpcResult | JsonRpcError];
+    }
+    return this.#sendUncached(payload);
+  }
+
+  async #sendUncached(
     payload: JsonRpcPayload | JsonRpcPayload[],
   ): Promise<Array<JsonRpcResult | JsonRpcError>> {
     const json = await sendJsonRpcWithFailover(this.#urls, payload, {
@@ -82,6 +106,7 @@ export class FailoverJsonRpcProvider extends JsonRpcApiProvider {
         this.#lastKnownBlock = block;
       },
       logger: this.#logger,
+      retry: this.#retry,
       send: (url, body, timeoutMs) => this.#post(url, body, timeoutMs),
       readBlockNumber: (url) => this.#ethBlockNumber(url),
     });
