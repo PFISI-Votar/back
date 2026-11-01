@@ -24,6 +24,10 @@ import {
   MensajeBudResponseDto,
 } from '@/eleccion/configuracion-comicio/dto/configuracion-mensaje-bud.dto';
 import {
+  ConfiguracionPopupAlertaResponseDto,
+  GuardarConfiguracionPopupAlertaDto,
+} from '@/eleccion/configuracion-comicio/dto/configuracion-popup-alerta.dto';
+import {
   GuardarVisibilidadDashboardDto,
   VisibilidadDashboardResponseDto,
 } from '@/eleccion/configuracion-comicio/dto/visibilidad-dashboard.dto';
@@ -204,6 +208,48 @@ export class ConfiguracionComicioController {
       actorId: user.sub,
       ipOrigen: this.resolveClientIp(req),
     });
+  }
+
+  @Get('elecciones/:idEleccion/configuracion-popup-alerta')
+  @ApiOperation({
+    summary: 'Obtener configuración del pop-up de alerta de la BUD (VOTAR-524)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: ConfiguracionPopupAlertaResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  async obtenerConfiguracionPopupAlerta(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+  ): Promise<ConfiguracionPopupAlertaResponseDto> {
+    return this.configuracionComicioService.obtenerConfiguracionPopupAlerta(
+      idEleccion,
+    );
+  }
+
+  @Put('elecciones/:idEleccion/configuracion-popup-alerta')
+  @ApiOperation({
+    summary: 'Guardar configuración del pop-up de alerta de la BUD (VOTAR-524)',
+  })
+  @ApiParam({ name: 'idEleccion', type: Number })
+  @ApiResponse({ status: 200, type: ConfiguracionPopupAlertaResponseDto })
+  @ApiResponse({ status: 404, description: 'Not Found' })
+  @ApiResponse({
+    status: 409,
+    description: 'Conflict — comicio archivado',
+  })
+  async guardarConfiguracionPopupAlerta(
+    @Param('idEleccion', ParseIntPipe) idEleccion: number,
+    @Body() dto: GuardarConfiguracionPopupAlertaDto,
+    @Req() req: AuthenticatedRequest,
+  ): Promise<ConfiguracionPopupAlertaResponseDto> {
+    const user = assertAuthenticatedUser(req.user);
+    return this.configuracionComicioService.guardarConfiguracionPopupAlerta(
+      idEleccion,
+      dto,
+      {
+        actorId: user.sub,
+        ipOrigen: this.resolveClientIp(req),
+      },
+    );
   }
 
   private resolveClientIp(request: AuthenticatedRequest): string {
