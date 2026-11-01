@@ -67,3 +67,4 @@ Dockerfile
 # VOTAR-498 — certificados TLS de desarrollo generados por
 # deploy/postgres/generate-dev-certs.sh (nunca versionar material de clave privada)
 deploy/postgres/certs/
+.vercel
