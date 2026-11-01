@@ -13,6 +13,7 @@ import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/metodo-autenticacion.enum';
 import { VOTANTE_CREDENCIALES_INVALIDAS } from '@/auth/constants/votante-auth.constants';
+import { CriterioHashPadron } from '@/padron/enums/criterio-hash-padron.enum';
 import { hashVotante } from '@/padron/utils/keccak.util';
 
 describe('VotanteAuthService', () => {
@@ -30,6 +31,7 @@ describe('VotanteAuthService', () => {
 
   const mockPadronEligibilityService = {
     isVotanteHabilitado: jest.fn(),
+    obtenerCriterioHash: jest.fn(),
   };
 
   beforeEach(async () => {
@@ -78,6 +80,9 @@ describe('VotanteAuthService', () => {
     );
     jest.clearAllMocks();
     signAsyncMock.mockResolvedValue('signed-voter-jwt');
+    mockPadronEligibilityService.obtenerCriterioHash.mockResolvedValue(
+      CriterioHashPadron.DNI,
+    );
     eleccionRepository.findOne.mockResolvedValue({
       idEleccion: 1,
     } as Eleccion);
@@ -162,5 +167,89 @@ describe('VotanteAuthService', () => {
     ).rejects.toThrow(
       new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS),
     );
+  });
+
+  it('issues JWT with EMAIL criterion hash when padron uses EMAIL', async () => {
+    const inputDni = '30111222';
+    const inputEmail = 'ana@frvm.utn.edu.ar';
+    const expectedHash = hashVotante(
+      inputDni,
+      inputEmail,
+      CriterioHashPadron.EMAIL,
+    );
+
+    mockPadronEligibilityService.obtenerCriterioHash.mockResolvedValue(
+      CriterioHashPadron.EMAIL,
+    );
+    mockAutogestionService.login.mockResolvedValue('hash123');
+    mockAutogestionService.fetchUsuario.mockResolvedValue({
+      persona: {
+        legajo: '14988',
+        nombre: 'Ana',
+        apellido: 'López',
+        email: inputEmail,
+        dni: inputDni,
+      },
+    });
+    mockPadronEligibilityService.isVotanteHabilitado.mockResolvedValue(true);
+
+    const actualResult = await service.login({
+      nick: '14988',
+      password: 'secret',
+      idEleccion: 1,
+    });
+
+    expect(signAsyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: '14988',
+        role: JwtRole.VOTER,
+        votanteHash: expectedHash,
+        idEleccion: 1,
+      }),
+      expect.objectContaining({ expiresIn: '30m' }),
+    );
+    expect(actualResult.accessToken).toBe('signed-voter-jwt');
+  });
+
+  it('issues JWT with DNI_Y_EMAIL criterion hash when padron uses DNI_Y_EMAIL', async () => {
+    const inputDni = '30111222';
+    const inputEmail = 'ana@frvm.utn.edu.ar';
+    const expectedHash = hashVotante(
+      inputDni,
+      inputEmail,
+      CriterioHashPadron.DNI_Y_EMAIL,
+    );
+
+    mockPadronEligibilityService.obtenerCriterioHash.mockResolvedValue(
+      CriterioHashPadron.DNI_Y_EMAIL,
+    );
+    mockAutogestionService.login.mockResolvedValue('hash123');
+    mockAutogestionService.fetchUsuario.mockResolvedValue({
+      persona: {
+        legajo: '14988',
+        nombre: 'Ana',
+        apellido: 'López',
+        email: inputEmail,
+        dni: inputDni,
+      },
+    });
+    mockPadronEligibilityService.isVotanteHabilitado.mockResolvedValue(true);
+
+    const actualResult = await service.login({
+      nick: '14988',
+      password: 'secret',
+      idEleccion: 1,
+    });
+
+    expect(signAsyncMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sub: '14988',
+        role: JwtRole.VOTER,
+        votanteHash: expectedHash,
+        idEleccion: 1,
+      }),
+      expect.objectContaining({ expiresIn: '30m' }),
+    );
+    expect(actualResult.accessToken).toBe('signed-voter-jwt');
   });
 });

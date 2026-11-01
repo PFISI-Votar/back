@@ -1,3 +1,4 @@
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
 import { NovedadPadronDto } from '../dto/novedad-padron.dto';
 import { Eleccion } from '../../eleccion/entities/eleccion.entity';
 import { MerkleTree } from '../entities/merkle-tree.entity';
@@ -21,6 +22,7 @@ export interface CrearPadronInput {
   totalProcesados: number;
   totalOmitidos: number;
   novedades: NovedadPadronDto[];
+  criterioHash?: CriterioHashPadron;
 }
 
 export interface IPadronRepository {

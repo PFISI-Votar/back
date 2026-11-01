@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
@@ -17,12 +18,14 @@ import {
   ApiConsumes,
   ApiOperation,
   ApiParam,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { AdminAuth } from '@/auth/decorators/admin-auth.decorator';
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
 import { assertAuthenticatedUser } from '@/auth/strategies/jwt.strategy';
+import { ImportarPadronBodyDto } from '../dto/importar-padron-body.dto';
 import { ImportarPadronResponseDto } from '../dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from '../dto/listar-votantes-response.dto';
 import { PaginacionPadronQueryDto } from '../dto/paginacion-padron-query.dto';
@@ -31,6 +34,7 @@ import { ReporteNovedadesResponseDto } from '../dto/reporte-novedades-response.d
 import { MerkleProofResponseDto } from '../dto/merkle-proof-response.dto';
 import { MerkleResumenResponseDto } from '../dto/merkle-resumen-response.dto';
 import { PublicarMerkleResponseDto } from '../dto/publicar-merkle-response.dto';
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
 import { IPadronController } from '../interfaces/padron.controller.interface';
 import { PadronService } from '../padron.service';
 
@@ -48,7 +52,7 @@ export class PadronController implements IPadronController {
   )
   @ApiOperation({
     summary:
-      'Importar el padrón electoral desde CSV o Excel (.xlsx/.xls), hasheando cada identidad (dni+email) con Keccak-256. Acepta columnas adicionales que se ignoran (VOTAR-417). En Excel sólo se procesa la primera hoja. Tolera filas defectuosas e ignora duplicados (preserva la primera aparición), consolidando las omisiones en un registro de novedades (US-331)',
+      'Importar el padrón electoral desde CSV o Excel (.xlsx/.xls), hasheando cada identidad según el criterio configurado (DNI, EMAIL, DNI_Y_EMAIL) con Keccak-256. Acepta columnas adicionales que se ignoran (VOTAR-417). En Excel sólo se procesa la primera hoja. Tolera filas defectuosas e ignora duplicados (preserva la primera aparición), consolidando las omisiones en un registro de novedades (US-331)',
   })
   @ApiConsumes('multipart/form-data')
   @ApiBody({
@@ -59,10 +63,24 @@ export class PadronController implements IPadronController {
           type: 'string',
           format: 'binary',
           description:
-            'CSV o Excel (máx. 5 MB) con columnas dni y email; otras se ignoran. Excel: solo la primera hoja.',
+            'CSV o Excel (máx. 5 MB) con columnas dni y/o email según criterio; otras se ignoran. Excel: solo la primera hoja.',
+        },
+        criterioHash: {
+          type: 'string',
+          enum: Object.values(CriterioHashPadron),
+          default: CriterioHashPadron.DNI,
+          description:
+            'Criterio para generar el hash de la hoja (DNI, EMAIL, DNI_Y_EMAIL)',
         },
       },
     },
+  })
+  @ApiQuery({
+    name: 'criterioHash',
+    enum: CriterioHashPadron,
+    required: false,
+    description:
+      'Criterio para generar el hash de la hoja (opcional por query)',
   })
   @ApiParam({ name: 'idEleccion', type: Number })
   @ApiResponse({
@@ -74,7 +92,7 @@ export class PadronController implements IPadronController {
   @ApiResponse({
     status: 400,
     description:
-      'Archivo vacío, formato no soportado, sin registros, o sin las columnas requeridas (dni, email)',
+      'Archivo vacío, formato no soportado, sin registros, o sin las columnas requeridas según criterio',
   })
   @ApiResponse({ status: 404, description: 'Elección inexistente' })
   @ApiResponse({
@@ -89,12 +107,21 @@ export class PadronController implements IPadronController {
     @Param('idEleccion', ParseIntPipe) idEleccion: number,
     @UploadedFile() archivo: Express.Multer.File,
     @Req() request: AuthenticatedRequest,
+    @Body() body?: ImportarPadronBodyDto,
+    @Query('criterioHash') criterioQuery?: CriterioHashPadron,
   ): Promise<ImportarPadronResponseDto> {
     const user = assertAuthenticatedUser(request.user);
-    return this.padronService.importarPadron(idEleccion, archivo, {
-      actorId: user.sub,
-      ipOrigen: this.resolveClientIp(request),
-    });
+    const criterioHash =
+      body?.criterioHash ?? criterioQuery ?? CriterioHashPadron.DNI;
+    return this.padronService.importarPadron(
+      idEleccion,
+      archivo,
+      {
+        actorId: user.sub,
+        ipOrigen: this.resolveClientIp(request),
+      },
+      criterioHash,
+    );
   }
 
   @Get()

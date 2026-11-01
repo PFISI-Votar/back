@@ -178,33 +178,57 @@ export function validarMagicBytesPadron(
   );
 }
 
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
+
 /**
  * Extrae filas de identidad (dni + email) desde CSV o Excel.
  * Columnas adicionales se ignoran (generalización VOTAR-417).
- * Sólo se usan `dni` y `email` para el hash Keccak-256 (Ley 25.326).
+ * Valida la presencia de columnas requeridas según el CriterioHashPadron.
  * En Excel sólo se procesa la primera hoja del libro.
  */
 export function extraerFilasIdentidad(
   buffer: Buffer,
   originalname: string,
   mimetype: string,
+  criterio: CriterioHashPadron = CriterioHashPadron.DNI,
 ): FilaPadronIdentidad[] {
   const filas = esExcel(originalname, mimetype)
     ? leerFilasExcel(buffer)
     : leerFilasCsv(buffer);
 
   if (filas.length === 0 || filas[0] === null) {
+    const columnaRequerida =
+      criterio === CriterioHashPadron.EMAIL
+        ? 'email'
+        : criterio === CriterioHashPadron.DNI_Y_EMAIL
+          ? 'dni, email'
+          : 'dni';
     throw new BadRequestException(
-      'El archivo no tiene la columna requerida: dni.',
+      `El archivo no tiene la columna requerida: ${columnaRequerida}.`,
     );
   }
 
   const cabecera = filas[0].map((c) => c.trim().toLowerCase());
   const indiceDni = cabecera.indexOf('dni');
   const indiceEmail = cabecera.indexOf('email');
-  if (indiceDni === -1) {
+
+  if (
+    (criterio === CriterioHashPadron.DNI ||
+      criterio === CriterioHashPadron.DNI_Y_EMAIL) &&
+    indiceDni === -1
+  ) {
     throw new BadRequestException(
       'El archivo no tiene la columna requerida: dni.',
+    );
+  }
+
+  if (
+    (criterio === CriterioHashPadron.EMAIL ||
+      criterio === CriterioHashPadron.DNI_Y_EMAIL) &&
+    indiceEmail === -1
+  ) {
+    throw new BadRequestException(
+      'El archivo no tiene la columna requerida: email.',
     );
   }
 
