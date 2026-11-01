@@ -1,3 +1,4 @@
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
 import { ImportarPadronResponseDto } from '../dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from '../dto/listar-votantes-response.dto';
 import { MerkleProofResponseDto } from '../dto/merkle-proof-response.dto';
@@ -19,6 +20,7 @@ export interface IPadronService {
     idEleccion: number,
     archivo: Express.Multer.File,
     auditContext?: PadronAuditContext,
+    criterioHash?: CriterioHashPadron,
   ): Promise<ImportarPadronResponseDto>;
   obtenerResumen(idEleccion: number): Promise<PadronResumenResponseDto>;
   obtenerReporteNovedades(

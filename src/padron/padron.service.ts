@@ -20,6 +20,7 @@ import { MerkleProofResponseDto } from './dto/merkle-proof-response.dto';
 import { MerkleResumenResponseDto } from './dto/merkle-resumen-response.dto';
 import { PublicarMerkleResponseDto } from './dto/publicar-merkle-response.dto';
 import { VoterMerkleProofResponseDto } from '@/voto/dto/voter-merkle-proof-response.dto';
+import { CriterioHashPadron } from './enums/criterio-hash-padron.enum';
 import { TipoNovedad } from './enums/tipo-novedad.enum';
 import { MerkleTreeEstado } from './enums/merkle-tree-estado.enum';
 import {
@@ -65,9 +66,15 @@ export class PadronService implements IPadronService {
     idEleccion: number,
     archivo: Express.Multer.File,
     auditContext?: PadronAuditContext,
+    criterioHash: CriterioHashPadron = CriterioHashPadron.DNI,
   ): Promise<ImportarPadronResponseDto> {
     try {
-      return await this.ejecutarImportacion(idEleccion, archivo, auditContext);
+      return await this.ejecutarImportacion(
+        idEleccion,
+        archivo,
+        auditContext,
+        criterioHash,
+      );
     } catch (error) {
       // VOTAR-370 UAT-03: registrar fallo de integridad sin romper la cadena
       if (auditContext && this.esFalloIntegridadPadron(error)) {
@@ -87,6 +94,7 @@ export class PadronService implements IPadronService {
     idEleccion: number,
     archivo: Express.Multer.File,
     auditContext?: PadronAuditContext,
+    criterioHash: CriterioHashPadron = CriterioHashPadron.DNI,
   ): Promise<ImportarPadronResponseDto> {
     this.validarArchivo(archivo);
 
@@ -104,8 +112,10 @@ export class PadronService implements IPadronService {
       throw new ConflictException('La elección ya tiene un padrón cargado.');
     }
 
-    const { hashesHoja, novedades, totalProcesados } =
-      this.procesarArchivo(archivo);
+    const { hashesHoja, novedades, totalProcesados } = this.procesarArchivo(
+      archivo,
+      criterioHash,
+    );
     if (totalProcesados === 0) {
       throw new BadRequestException(
         'El archivo no contiene registros de padrón.',
@@ -118,6 +128,7 @@ export class PadronService implements IPadronService {
       totalImportados: hashesHoja.length,
       totalOmitidos: novedades.length,
       novedades,
+      criterioHash,
     };
 
     // Carga parcial: sólo se persiste si hay al menos una identidad válida.
@@ -143,6 +154,7 @@ export class PadronService implements IPadronService {
       totalProcesados,
       totalOmitidos: novedades.length,
       novedades,
+      criterioHash,
     });
 
     // VOTAR-370 UAT-02: registro enriquecido de carga exitosa
@@ -212,6 +224,7 @@ export class PadronService implements IPadronService {
       totalVotantesHabilitados: padron.totalVotantesHabilitados,
       hashPadron: padron.hashPadron,
       estado: padron.estado,
+      criterioHash: padron.criterioHash,
       fechaGeneracion: padron.fechaGeneracion,
       totalProcesados: padron.totalProcesados,
       totalOmitidos: padron.totalOmitidos,
@@ -559,11 +572,13 @@ export class PadronService implements IPadronService {
    */
   private procesarArchivo(
     archivo: Express.Multer.File,
+    criterioHash: CriterioHashPadron = CriterioHashPadron.DNI,
   ): ResultadoProcesamiento {
     const filas = extraerFilasIdentidad(
       archivo.buffer,
       archivo.originalname,
       archivo.mimetype,
+      criterioHash,
     );
 
     const hashesUnicos = new Set<string>();
@@ -574,24 +589,55 @@ export class PadronService implements IPadronService {
       totalProcesados++;
       const { linea: numeroLinea, dni, email } = fila;
 
-      if (dni === '') {
-        novedades.push(this.crearNovedad(numeroLinea, TipoNovedad.DNI_AUSENTE));
-        continue;
-      }
-      if (!REGEX_DNI.test(dni.replace(/\D/g, ''))) {
+      // Validar DNI según criterio
+      if (
+        criterioHash === CriterioHashPadron.DNI ||
+        criterioHash === CriterioHashPadron.DNI_Y_EMAIL
+      ) {
+        if (dni === '') {
+          novedades.push(
+            this.crearNovedad(numeroLinea, TipoNovedad.DNI_AUSENTE),
+          );
+          continue;
+        }
+        if (!REGEX_DNI.test(dni.replace(/\D/g, ''))) {
+          novedades.push(
+            this.crearNovedad(numeroLinea, TipoNovedad.DNI_INVALIDO),
+          );
+          continue;
+        }
+      } else if (dni !== '' && !REGEX_DNI.test(dni.replace(/\D/g, ''))) {
         novedades.push(
           this.crearNovedad(numeroLinea, TipoNovedad.DNI_INVALIDO),
         );
         continue;
       }
-      if (email !== '' && !REGEX_EMAIL.test(email)) {
+
+      // Validar Email según criterio
+      if (
+        criterioHash === CriterioHashPadron.EMAIL ||
+        criterioHash === CriterioHashPadron.DNI_Y_EMAIL
+      ) {
+        if (email === '') {
+          novedades.push(
+            this.crearNovedad(numeroLinea, TipoNovedad.EMAIL_AUSENTE),
+          );
+          continue;
+        }
+        if (!REGEX_EMAIL.test(email)) {
+          novedades.push(
+            this.crearNovedad(numeroLinea, TipoNovedad.EMAIL_INVALIDO),
+          );
+          continue;
+        }
+      } else if (email !== '' && !REGEX_EMAIL.test(email)) {
         novedades.push(
           this.crearNovedad(numeroLinea, TipoNovedad.EMAIL_INVALIDO),
         );
         continue;
       }
 
-      const hash = hashVotante(dni, email);
+      const hash = hashVotante(dni, email, criterioHash);
       if (hashesUnicos.has(hash)) {
         novedades.push(this.crearNovedad(numeroLinea, TipoNovedad.DUPLICADO));
         continue;

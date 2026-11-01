@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { CriterioHashPadron } from '../enums/criterio-hash-padron.enum';
 import { PadronEstado } from '../enums/padron-estado.enum';
 import { NovedadPadronDto } from './novedad-padron.dto';
 
@@ -49,6 +50,13 @@ export class ImportarPadronResponseDto {
     nullable: true,
   })
   estado: PadronEstado | null;
+
+  @ApiProperty({
+    enum: CriterioHashPadron,
+    example: CriterioHashPadron.DNI,
+    description: 'Criterio utilizado para la generación del hash de identidad',
+  })
+  criterioHash: CriterioHashPadron;
 
   @ApiProperty({
     nullable: true,

@@ -1,4 +1,5 @@
 import type { AuthenticatedRequest } from '@/auth/interfaces/authenticated-request.interface';
+import { ImportarPadronBodyDto } from '../dto/importar-padron-body.dto';
 import { ImportarPadronResponseDto } from '../dto/importar-padron-response.dto';
 import { ListarVotantesResponseDto } from '../dto/listar-votantes-response.dto';
 import { PaginacionPadronQueryDto } from '../dto/paginacion-padron-query.dto';
@@ -10,6 +11,8 @@ export interface IPadronController {
     idEleccion: number,
     archivo: Express.Multer.File,
     request: AuthenticatedRequest,
+    body?: ImportarPadronBodyDto,
+    criterioQuery?: string,
   ): Promise<ImportarPadronResponseDto>;
   obtenerResumen(idEleccion: number): Promise<PadronResumenResponseDto>;
   obtenerReporteNovedades(

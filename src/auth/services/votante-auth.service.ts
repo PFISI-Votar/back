@@ -19,6 +19,7 @@ import { MetodoAutenticacion } from '@/eleccion/configuracion-comicio/enums/meto
 import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 import { PadronEligibilityService } from '@/padron/services/padron-eligibility.service';
 import { hashVotante } from '@/padron/utils/keccak.util';
+import { CriterioHashPadron } from '@/padron/enums/criterio-hash-padron.enum';
 import { parseDurationToSeconds } from '@/auth/utils/parse-duration.util';
 
 export type VotanteAuthLoginResult = {
@@ -53,10 +54,24 @@ export class VotanteAuthService {
     const persona = usuario.persona;
     const dni = resolveDni(persona);
     const email = persona.email ?? persona.mail ?? null;
-    if (!dni) {
+    const criterioHash =
+      await this.padronEligibilityService.obtenerCriterioHash(idEleccion);
+
+    if (criterioHash === CriterioHashPadron.DNI && !dni) {
       throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
     }
-    const votanteHash = hashVotante(dni, email ?? undefined);
+    if (criterioHash === CriterioHashPadron.EMAIL && !email) {
+      throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
+    }
+    if (criterioHash === CriterioHashPadron.DNI_Y_EMAIL && (!dni || !email)) {
+      throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
+    }
+
+    const votanteHash = hashVotante(
+      dni ?? '',
+      email ?? undefined,
+      criterioHash,
+    );
     const habilitado = await this.padronEligibilityService.isVotanteHabilitado(
       idEleccion,
       votanteHash,
