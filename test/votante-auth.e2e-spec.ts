@@ -29,7 +29,7 @@ import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Lista } from '@/eleccion/lista/entities/lista.entity';
 import { PadronEligibilityService } from '@/padron/services/padron-eligibility.service';
-import { hashVotante } from '@/padron/utils/keccak.util';
+import { CriterioHashPadron, hashVotante } from '@/padron/utils/keccak.util';
 import {
   decodeJwtPayload,
   extractVoterAccessToken,
@@ -104,6 +104,7 @@ const seedVoterFixtures = async (dataSource: DataSource): Promise<void> => {
 };
 
 const buildPadronEligibilityMock = () => ({
+  obtenerCriterioHash: jest.fn().mockResolvedValue(CriterioHashPadron.DNI),
   isVotanteHabilitado: jest
     .fn()
     .mockImplementation(
