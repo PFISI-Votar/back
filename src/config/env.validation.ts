@@ -119,6 +119,12 @@ export const envValidationSchema = Joi.object({
   AUTOGESTION_BASE_URL: Joi.string()
     .uri()
     .default('https://webservice.frvm.utn.edu.ar/autogestion'),
+  /** VOTAR-523 — OAuth 2.0 / OpenID Connect de Google para votantes. */
+  GOOGLE_OAUTH_CLIENT_ID: Joi.string().allow('').optional(),
+  GOOGLE_OAUTH_CLIENT_SECRET: Joi.string().allow('').optional(),
+  GOOGLE_OAUTH_REDIRECT_URI: Joi.string()
+    .uri()
+    .default('http://localhost:3000/auth/votante/google/callback'),
   SEPOLIA_RPC_URL: Joi.string().uri().optional(),
   /** VOTAR-386 — extra Infura/Alchemy/QuickNode URLs, comma-separated. */
   SEPOLIA_RPC_FALLBACK_URLS: Joi.string().allow('').optional(),
