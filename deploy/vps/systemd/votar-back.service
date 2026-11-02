@@ -1,0 +1,24 @@
+# VOTAR-516 — backend NestJS en el VPS bajo demanda.
+[Unit]
+Description=VOTAR backend (NestJS)
+After=network-online.target postgresql.service
+Wants=network-online.target
+Requires=postgresql.service
+
+[Service]
+Type=simple
+User=votar
+Group=votar
+WorkingDirectory=/opt/votar/back
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node dist/main
+Restart=on-failure
+RestartSec=5
+# Hardening básico del proceso.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target
