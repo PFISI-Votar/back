@@ -177,18 +177,11 @@ export class VotanteAuthController {
     stateCookie: string | undefined,
     withError: boolean,
   ): string {
-    try {
-      const parsed = JSON.parse(
-        Buffer.from(stateCookie ?? '', 'base64url').toString('utf8'),
-      ) as { idEleccion?: number };
-      if (Number.isInteger(parsed.idEleccion) && (parsed.idEleccion ?? 0) > 0) {
-        return this.buildFrontendVoterUrl(
-          parsed.idEleccion as number,
-          withError,
-        );
-      }
-    } catch {
-      // El estado inválido no se refleja en la URL; sólo elegimos un destino seguro.
+    // El estado inválido no se refleja en la URL; sólo elegimos un destino seguro.
+    const idEleccion =
+      this.googleOidcService.readIdEleccionFromStateCookie(stateCookie);
+    if (idEleccion !== null) {
+      return this.buildFrontendVoterUrl(idEleccion, withError);
     }
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') ?? 'http://localhost:5173';

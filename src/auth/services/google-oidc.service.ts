@@ -5,7 +5,14 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { createPublicKey, randomBytes, timingSafeEqual } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createPublicKey,
+  hkdfSync,
+  randomBytes,
+  timingSafeEqual,
+} from 'node:crypto';
 import {
   decodeJwtProtectedHeader,
   JwtJwk,
@@ -21,6 +28,12 @@ const GOOGLE_ISSUERS: [string, ...string[]] = [
 ];
 const STATE_TTL_MS = 5 * 60 * 1000;
 const JWKS_TTL_MS = 60 * 60 * 1000;
+// La cookie de estado viaja cifrada y autenticada (AES-256-GCM): el browser
+// no puede leer el nonce ni alterar idEleccion/expiresAt.
+const STATE_CIPHER = 'aes-256-gcm';
+const STATE_IV_LENGTH = 12;
+const STATE_AUTH_TAG_LENGTH = 16;
+const STATE_KEY_INFO = 'votar-google-oauth-state-v1';
 
 type GoogleOAuthState = {
   state: string;
@@ -80,10 +93,23 @@ export class GoogleOidcService {
 
     return {
       authorizationUrl: url.toString(),
-      stateCookie: Buffer.from(JSON.stringify(oauthState)).toString(
-        'base64url',
-      ),
+      stateCookie: this.sealState(oauthState),
     };
+  }
+
+  /**
+   * Devuelve el comicio de la cookie de estado sólo para elegir a dónde
+   * redirigir tras un error; no valida state ni vencimiento.
+   */
+  readIdEleccionFromStateCookie(
+    encodedCookie: string | undefined,
+  ): number | null {
+    try {
+      const { idEleccion } = this.openState(encodedCookie ?? '');
+      return Number.isInteger(idEleccion) && idEleccion > 0 ? idEleccion : null;
+    } catch {
+      return null;
+    }
   }
 
   async authenticateCallback(
@@ -137,9 +163,7 @@ export class GoogleOidcService {
       throw new UnauthorizedException('Estado OAuth inválido o expirado');
     }
     try {
-      const parsed = JSON.parse(
-        Buffer.from(encodedCookie, 'base64url').toString('utf8'),
-      ) as GoogleOAuthState;
+      const parsed = this.openState(encodedCookie);
       const expected = Buffer.from(parsed.state ?? '');
       const actual = Buffer.from(returnedState);
       if (
@@ -157,6 +181,45 @@ export class GoogleOidcService {
     } catch {
       throw new UnauthorizedException('Estado OAuth inválido o expirado');
     }
+  }
+
+  private getStateKey(): Buffer {
+    const { clientSecret } = this.getConfig();
+    return Buffer.from(
+      hkdfSync('sha256', clientSecret, Buffer.alloc(0), STATE_KEY_INFO, 32),
+    );
+  }
+
+  private sealState(oauthState: GoogleOAuthState): string {
+    const iv = randomBytes(STATE_IV_LENGTH);
+    const cipher = createCipheriv(STATE_CIPHER, this.getStateKey(), iv);
+    const ciphertext = Buffer.concat([
+      cipher.update(JSON.stringify(oauthState), 'utf8'),
+      cipher.final(),
+    ]);
+    return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString(
+      'base64url',
+    );
+  }
+
+  private openState(encodedCookie: string): GoogleOAuthState {
+    const raw = Buffer.from(encodedCookie, 'base64url');
+    if (raw.length <= STATE_IV_LENGTH + STATE_AUTH_TAG_LENGTH) {
+      throw new Error('invalid state cookie');
+    }
+    const iv = raw.subarray(0, STATE_IV_LENGTH);
+    const authTag = raw.subarray(
+      STATE_IV_LENGTH,
+      STATE_IV_LENGTH + STATE_AUTH_TAG_LENGTH,
+    );
+    const ciphertext = raw.subarray(STATE_IV_LENGTH + STATE_AUTH_TAG_LENGTH);
+    const decipher = createDecipheriv(STATE_CIPHER, this.getStateKey(), iv);
+    decipher.setAuthTag(authTag);
+    const plaintext = Buffer.concat([
+      decipher.update(ciphertext),
+      decipher.final(),
+    ]).toString('utf8');
+    return JSON.parse(plaintext) as GoogleOAuthState;
   }
 
   private async exchangeAuthorizationCode(code: string): Promise<string> {
