@@ -4,4 +4,5 @@ export enum EleccionEstado {
   ABIERTA = 'ABIERTA',
   CERRADA = 'CERRADA',
   ESCRUTADA = 'ESCRUTADA',
+  ARCHIVADA = 'ARCHIVADA',
 }

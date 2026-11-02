@@ -18,6 +18,8 @@ import { MerkleTreeEstado } from '@/padron/enums/merkle-tree-estado.enum';
 import { EleccionGateway } from '@/eleccion/gateways/eleccion.gateway';
 import { BlockchainService } from '@/blockchain/blockchain.service';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
+import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
+import { RolAutoridad } from '@/auth/enums/rol-autoridad.enum';
 
 describe('AperturaComicioService', () => {
   let service: AperturaComicioService;
@@ -25,6 +27,7 @@ describe('AperturaComicioService', () => {
   let padronRepository: jest.Mocked<Repository<PadronElectoral>>;
   let merkleTreeRepository: jest.Mocked<Repository<MerkleTree>>;
   let configuracionRepository: jest.Mocked<Repository<ConfiguracionComicio>>;
+  let autoridadRepository: jest.Mocked<Repository<AutoridadElectoral>>;
   let electionStateService: jest.Mocked<ElectionStateService>;
   let blockchainService: jest.Mocked<BlockchainService>;
   let auditLoggerService: jest.Mocked<AuditLoggerService>;
@@ -61,6 +64,15 @@ describe('AperturaComicioService', () => {
     mostrarResultadosTiempoReal: false,
   } as ConfiguracionComicio;
 
+  const mockAutoridad: AutoridadElectoral = {
+    idAutoridad: 1,
+    identificadorSso: 'admin-123',
+    email: 'admin@votar.local',
+    nombre: 'Ana Gómez',
+    rol: RolAutoridad.ELECTION_ADMIN,
+    fechaRegistro: new Date(),
+  };
+
   beforeEach(async () => {
     const mockEleccionRepository = {
       findOne: jest.fn(),
@@ -78,6 +90,10 @@ describe('AperturaComicioService', () => {
     const mockConfiguracionRepository = {
       findOne: jest.fn(),
       save: jest.fn(),
+    };
+
+    const mockAutoridadRepository = {
+      findOne: jest.fn(),
     };
 
     const mockElectionStateService = {
@@ -116,6 +132,10 @@ describe('AperturaComicioService', () => {
           useValue: mockConfiguracionRepository,
         },
         {
+          provide: getRepositoryToken(AutoridadElectoral),
+          useValue: mockAutoridadRepository,
+        },
+        {
           provide: ElectionStateService,
           useValue: mockElectionStateService,
         },
@@ -141,6 +161,7 @@ describe('AperturaComicioService', () => {
     configuracionRepository = module.get(
       getRepositoryToken(ConfiguracionComicio),
     );
+    autoridadRepository = module.get(getRepositoryToken(AutoridadElectoral));
     electionStateService = module.get(ElectionStateService);
     blockchainService = module.get(BlockchainService);
     auditLoggerService = module.get(AuditLoggerService);
@@ -161,6 +182,10 @@ describe('AperturaComicioService', () => {
       configuracionRepository.save.mockImplementation((entity) =>
         Promise.resolve(entity),
       );
+      autoridadRepository.findOne.mockResolvedValue(mockAutoridad);
+      eleccionRepository.save.mockImplementation((entity) =>
+        Promise.resolve(entity),
+      );
 
       const eleccionAbierta = {
         ...mockEleccion,
@@ -176,6 +201,18 @@ describe('AperturaComicioService', () => {
       expect(electionStateService.transitionToAbierta).toHaveBeenCalledWith(1);
       expect(configuracionRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({ mostrarResultadosTiempoReal: true }),
+      );
+      expect(autoridadRepository.findOne).toHaveBeenCalledWith({
+        where: { identificadorSso: 'admin-123' },
+      });
+      expect(eleccionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aperturaModo: 'MANUAL',
+          aperturaActorNombre: 'Ana Gómez',
+          aperturaActorRol: RolAutoridad.ELECTION_ADMIN,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          aperturaRealEn: expect.any(Date),
+        }),
       );
       expect(auditLoggerService.logComicioAbierto).toHaveBeenCalledWith({
         idEleccion: 1,
@@ -281,6 +318,9 @@ describe('AperturaComicioService', () => {
       configuracionRepository.save.mockImplementation((entity) =>
         Promise.resolve(entity),
       );
+      eleccionRepository.save.mockImplementation((entity) =>
+        Promise.resolve(entity),
+      );
 
       const eleccionAbierta = {
         ...mockEleccion,
@@ -296,6 +336,16 @@ describe('AperturaComicioService', () => {
       expect(electionStateService.transitionToAbierta).toHaveBeenCalledWith(1);
       expect(configuracionRepository.save).toHaveBeenCalledWith(
         expect.objectContaining({ mostrarResultadosTiempoReal: true }),
+      );
+      expect(autoridadRepository.findOne).not.toHaveBeenCalled();
+      expect(eleccionRepository.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          aperturaModo: 'AUTOMATICO',
+          aperturaActorNombre: null,
+          aperturaActorRol: null,
+          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+          aperturaRealEn: expect.any(Date),
+        }),
       );
       expect(auditLoggerService.logComicioAbierto).toHaveBeenCalledWith({
         idEleccion: 1,

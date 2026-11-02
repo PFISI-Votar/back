@@ -72,6 +72,22 @@ export const VOTE_REGISTRY_CONTRACT_ABI = [
       { name: 'candidateId', type: 'uint256' },
     ],
   },
+  // VOTAR-474 — multi-candidate ballot validation errors from recordVote.
+  {
+    type: 'error',
+    name: 'EmptyBallotSelection',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'TooManyCandidates',
+    inputs: [{ name: 'count', type: 'uint256' }],
+  },
+  {
+    type: 'error',
+    name: 'DuplicateCandidateId',
+    inputs: [{ name: 'candidateId', type: 'uint256' }],
+  },
   // OpenZeppelin AccessControl — inherited by VoteRegistry via VotarAccessControl.
   {
     type: 'error',
@@ -80,5 +96,39 @@ export const VOTE_REGISTRY_CONTRACT_ABI = [
       { name: 'account', type: 'address' },
       { name: 'neededRole', type: 'bytes32' },
     ],
+  },
+  // VOTAR-347 — pause/unpause (VotarAccessControl, PAUSER_ROLE). `pause` is
+  // overloaded (zero-arg + reason); ethers needs both fragments to resolve
+  // the qualified selector `pause(string)` used by BlockchainService.pauseContract.
+  {
+    type: 'function',
+    name: 'pause',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'pause',
+    stateMutability: 'nonpayable',
+    inputs: [{ name: 'reason', type: 'string' }],
+    outputs: [],
+  },
+  {
+    type: 'function',
+    name: 'unpause',
+    stateMutability: 'nonpayable',
+    inputs: [],
+    outputs: [],
+  },
+  {
+    type: 'error',
+    name: 'EnforcedPause',
+    inputs: [],
+  },
+  {
+    type: 'error',
+    name: 'ExpectedPause',
+    inputs: [],
   },
 ] as const;

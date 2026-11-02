@@ -53,7 +53,7 @@ export class CrearCategoriaDto {
   @ApiProperty({
     example: 1,
     description:
-      'Máximo de postulantes permitidos por lista para esta categoría.',
+      'Máximo de postulantes por lista y de candidatos que el votante puede elegir en esta categoría (VOTAR-474).',
   })
   @IsInt({ message: 'El máximo de postulantes debe ser un número entero.' })
   @Min(1, { message: 'El máximo de postulantes debe ser al menos 1.' })

@@ -52,11 +52,11 @@ export class VotanteAuthService {
     }
     const persona = usuario.persona;
     const dni = resolveDni(persona);
-    const email = persona.email ?? persona.mail;
-    if (!dni || !email) {
+    const email = persona.email ?? persona.mail ?? null;
+    if (!dni) {
       throw new UnauthorizedException(VOTANTE_CREDENCIALES_INVALIDAS);
     }
-    const votanteHash = hashVotante(dni, email);
+    const votanteHash = hashVotante(dni, email ?? undefined);
     const habilitado = await this.padronEligibilityService.isVotanteHabilitado(
       idEleccion,
       votanteHash,

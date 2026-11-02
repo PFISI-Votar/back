@@ -1,9 +1,10 @@
-import { join } from 'node:path';
 import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import cookieParser from 'cookie-parser';
+import { GlobalExceptionFilter } from '@/common/filters/global-exception.filter';
+import { UploadTooLargeFilter } from '@/common/filters/upload-too-large.filter';
 import { requireHttpsMiddleware } from '@/common/middleware/require-https.middleware';
 import { buildCorsOptions } from '@/config/cors.config';
 import {
@@ -36,13 +37,14 @@ export const configureApp = (app: NestExpressApplication): void => {
       transform: true,
     }),
   );
+  // Nest invierte el array y usa el primero que matchea. UploadTooLargeFilter
+  // va último para ganar el 413 de multer (contrato VOTAR-490: 400) antes
+  // que el catch-all de VOTAR-491, que no filtra stack/PII al cliente.
+  app.useGlobalFilters(new GlobalExceptionFilter(), new UploadTooLargeFilter());
 
-  app.useStaticAssets(
-    join(process.cwd(), process.env.UPLOADS_DIR ?? 'uploads'),
-    {
-      prefix: '/uploads/',
-    },
-  );
+  // VOTAR-466: las imágenes electorales dejaron de servirse desde el disco
+  // local (/uploads) y ahora viven en Postgres, servidas por
+  // GET /imagenes/:idImagen (ElectoralImageController).
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('VOTAR API')
@@ -54,6 +56,14 @@ export const configureApp = (app: NestExpressApplication): void => {
     .addTag('padron', 'Importación y gestión del padrón electoral (US 330)')
     .addTag('listas', 'Gestión de listas y candidatos (US 318)')
     .addTag('escrutinio', 'Resultados públicos del Dashboard (VOTAR-364)')
+    .addTag(
+      'imagenes',
+      'Servido de imágenes electorales persistidas en Postgres (VOTAR-466)',
+    )
+    .addTag(
+      'validacion',
+      'Entidad de Firmas Digitales — Tercero de Confianza (VOTAR-377, Ley 25.506)',
+    )
     .addBearerAuth()
     .build();
 

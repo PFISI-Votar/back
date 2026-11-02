@@ -1,6 +1,6 @@
 {
   "contractName": "MerkleRootStore",
-  "abiHash": "0x4deae45074057985448c8cb060c7ad74405dbef910d16da9212227f9182f3e39",
+  "abiHash": "0x9799b6fb20d521abeeaafcff90f2ae6912b430a1e8b8b3c8e1cac39964d9680f",
   "abi": [
     {
       "inputs": [
@@ -157,6 +157,25 @@
           "internalType": "address",
           "name": "account",
           "type": "address"
+        }
+      ],
+      "name": "Paused",
+      "type": "event"
+    },
+    {
+      "anonymous": false,
+      "inputs": [
+        {
+          "indexed": true,
+          "internalType": "address",
+          "name": "account",
+          "type": "address"
+        },
+        {
+          "indexed": false,
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
         }
       ],
       "name": "Paused",
@@ -330,6 +349,19 @@
     {
       "inputs": [],
       "name": "PAUSER_ROLE",
+      "outputs": [
+        {
+          "internalType": "bytes32",
+          "name": "",
+          "type": "bytes32"
+        }
+      ],
+      "stateMutability": "view",
+      "type": "function"
+    },
+    {
+      "inputs": [],
+      "name": "VALIDATOR_ROLE",
       "outputs": [
         {
           "internalType": "bytes32",
@@ -539,6 +571,19 @@
       "type": "function"
     },
     {
+      "inputs": [
+        {
+          "internalType": "string",
+          "name": "reason",
+          "type": "string"
+        }
+      ],
+      "name": "pause",
+      "outputs": [],
+      "stateMutability": "nonpayable",
+      "type": "function"
+    },
+    {
       "inputs": [],
       "name": "pause",
       "outputs": [],
@@ -680,6 +725,6 @@
       "type": "function"
     }
   ],
-  "exportedAt": "2026-08-08T17:44:12.962Z",
+  "exportedAt": "2026-09-27T02:46:26.368Z",
   "source": "blockchain/scripts/lib/export-abis.ts (VOTAR-385)"
 }

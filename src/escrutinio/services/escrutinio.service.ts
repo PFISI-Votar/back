@@ -22,11 +22,15 @@ const ESTADOS_ESCRUTINIO_VISIBLE: EleccionEstado[] = [
   EleccionEstado.ABIERTA,
   EleccionEstado.CERRADA,
   EleccionEstado.ESCRUTADA,
+  // VOTAR-322: el Dashboard de resultados definitivos debe seguir
+  // accesible públicamente tras archivar (archivado es off-chain).
+  EleccionEstado.ARCHIVADA,
 ];
 
 const ESTADOS_CERRADOS: EleccionEstado[] = [
   EleccionEstado.CERRADA,
   EleccionEstado.ESCRUTADA,
+  EleccionEstado.ARCHIVADA,
 ];
 
 @Injectable()
@@ -179,6 +183,7 @@ export class EscrutinioService {
         porcentajeParticipacion,
       },
       candidatos: candidatosDto,
+      permitirVotoNulo: configuracion.permitirVotoNulo,
     };
   }
 

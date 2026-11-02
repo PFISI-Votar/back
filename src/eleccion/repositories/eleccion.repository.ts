@@ -14,6 +14,10 @@ import { Categoria } from '@/eleccion/lista/entities/categoria.entity';
 import { Boleta } from '@/eleccion/lista/entities/boleta.entity';
 import { EstadoBoleta } from '@/eleccion/lista/enums/estado-boleta.enum';
 import { parseUtcDateTime } from '@/common/utils/parse-utc-datetime.util';
+import {
+  OBSERVACION_LOGIN_DEFAULT,
+  parseObservacionLogin,
+} from '@/eleccion/constants/observacion-login.constant';
 import { assertEleccionEditable } from '@/eleccion/utils/eleccion-editable.util';
 
 export type CrearEleccionCompletaResult = {
@@ -44,6 +48,10 @@ export class EleccionRepository implements IEleccionRepository {
         eleccionRepo.create({
           nombre: dto.nombre,
           descripcion: dto.descripcion,
+          observacionLogin:
+            dto.observacionLogin === undefined
+              ? OBSERVACION_LOGIN_DEFAULT
+              : parseObservacionLogin(dto.observacionLogin),
           fechaInicio: parseUtcDateTime(dto.fechaInicio),
           fechaFin: parseUtcDateTime(dto.fechaFin),
           estado: EleccionEstado.BORRADOR,
@@ -119,6 +127,9 @@ export class EleccionRepository implements IEleccionRepository {
 
       eleccion.nombre = dto.nombre;
       eleccion.descripcion = dto.descripcion ?? null;
+      if (dto.observacionLogin !== undefined) {
+        eleccion.observacionLogin = parseObservacionLogin(dto.observacionLogin);
+      }
       eleccion.fechaInicio = parseUtcDateTime(dto.fechaInicio);
       eleccion.fechaFin = parseUtcDateTime(dto.fechaFin);
       eleccion.tipoVotacion = dto.tipoVotacion;

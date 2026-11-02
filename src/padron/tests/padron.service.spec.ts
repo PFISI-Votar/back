@@ -108,9 +108,9 @@ function buildCsvUat01(): Express.Multer.File {
     const dni = (30000000 + i).toString();
     filas.push(`${dni},votante${i}@frvm.utn.edu.ar`);
   }
-  // 3 filas con campos obligatorios nulos
+  // 3 filas con campos obligatorios nulos o inválidos
   filas.push(',sin-dni@frvm.utn.edu.ar');
-  filas.push('30000200,');
+  filas.push('ABC,');
   filas.push(',');
   // 2 duplicados de identidades ya cargadas
   filas.push('30000000,votante0@frvm.utn.edu.ar');
@@ -412,6 +412,37 @@ describe('PadronService', () => {
     expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
   });
 
+  it('VOTAR-490: no persiste path traversal ni controles en el nombre auditado', async () => {
+    const archivo = buildCsvValido(1);
+    archivo.originalname = '../../../../etc/passwd.csv\r\n';
+
+    await service.importarPadron(ID_ELECCION, archivo, {
+      actorId: '14988',
+      ipOrigen: '10.0.0.5',
+    });
+
+    const payload = mockAuditLoggerService.logPadronCargado.mock.calls[0][0];
+    expect(payload.nombreArchivo).toBe('passwd.csv');
+    expect(payload.nombreArchivo).not.toMatch(/\.\.|[\0\r\n]/);
+  });
+
+  it('VOTAR-490: cancela (400) si el archivo tiene extensión .csv pero contenido binario (anti-spoofing)', async () => {
+    const binaryBuffer = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x00, 0x05]);
+    const inputArchivo = {
+      fieldname: 'file',
+      originalname: 'padron.csv',
+      encoding: '7bit',
+      mimetype: 'text/csv',
+      size: binaryBuffer.length,
+      buffer: binaryBuffer,
+    } as Express.Multer.File;
+
+    await expect(
+      service.importarPadron(ID_ELECCION, inputArchivo),
+    ).rejects.toThrow(BadRequestException);
+    expect(mockPadronRepository.crearPadronConVotantes).not.toHaveBeenCalled();
+  });
+
   it('UAT-01: importa 100 únicas y omite 5 (3 campos nulos + 2 duplicados) sobre 105 filas', async () => {
     const inputArchivo = buildCsvUat01();
 
@@ -433,14 +464,14 @@ describe('PadronService', () => {
   });
 
   it('UAT-02: el reporte de novedades lista número de línea exacto, motivo por tipo y ordenado', async () => {
-    // Línea 2 válida; 3 DNI ausente; 4 email ausente; 5 DNI inválido;
+    // Línea 2 válida; 3 DNI ausente; 4 DNI ausente; 5 DNI inválido;
     // 6 email inválido; 7 duplicado de la línea 2.
     const inputArchivo = buildCsvFile(
       [
         'dni,email',
         '30111222,ana@frvm.utn.edu.ar',
         ',elena@frvm.utn.edu.ar',
-        '30666777,',
+        ',dora@frvm.utn.edu.ar',
         'ABC,franco@frvm.utn.edu.ar',
         '30888999,no-es-email',
         '30111222,ana@frvm.utn.edu.ar',
@@ -458,8 +489,8 @@ describe('PadronService', () => {
       },
       {
         linea: 4,
-        tipo: TipoNovedad.EMAIL_AUSENTE,
-        motivo: 'Línea 4: Campo email ausente',
+        tipo: TipoNovedad.DNI_AUSENTE,
+        motivo: 'Línea 4: Campo DNI ausente',
       },
       {
         linea: 5,

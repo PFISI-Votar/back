@@ -4,12 +4,15 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   OneToOne,
 } from 'typeorm';
 import { ApiProperty } from '@nestjs/swagger';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
 import { TipoVotacion } from '@/eleccion/enums/tipo-votacion.enum';
 import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
+
+export type AperturaModo = 'MANUAL' | 'AUTOMATICO';
 
 @Entity('eleccion')
 export class Eleccion {
@@ -24,6 +27,20 @@ export class Eleccion {
   @ApiProperty({ example: 'Elecciones de centro estudiantil', required: false })
   @Column({ name: 'descripcion', type: 'varchar', nullable: true })
   descripcion!: string | null;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    description:
+      'VOTAR-454: texto mostrado en el login de la BUD. Vacío oculta el recuadro.',
+  })
+  @Column({
+    name: 'observacion_login',
+    type: 'varchar',
+    length: 1000,
+    nullable: true,
+  })
+  observacionLogin!: string | null;
 
   @ApiProperty({ example: '2026-09-01T10:00:00Z' })
   @Column({ name: 'fecha_inicio', type: 'timestamptz' })
@@ -50,6 +67,18 @@ export class Eleccion {
   @Column({ name: 'minimo_candidatos_por_lista', type: 'int', nullable: true })
   minimoCandidatosPorLista!: number | null;
 
+  @ApiProperty({
+    description:
+      'VOTAR-347: eje ortogonal a `estado` — el comicio puede estar ABIERTA y pausada a la vez.',
+    default: false,
+  })
+  @Column({ name: 'pausada', type: 'boolean', default: false })
+  pausada!: boolean;
+
+  @ApiProperty({ required: false })
+  @Column({ name: 'pausada_en', type: 'timestamptz', nullable: true })
+  pausadaEn!: Date | null;
+
   @ApiProperty()
   @CreateDateColumn({ name: 'fecha_creacion', type: 'timestamptz' })
   fechaCreacion!: Date;
@@ -58,6 +87,48 @@ export class Eleccion {
   @UpdateDateColumn({ name: 'fecha_actualizacion', type: 'timestamptz' })
   fechaActualizacion!: Date;
 
+  /**
+   * VOTAR-486: marca de borrado lógico. Un comicio con valor no nulo queda
+   * excluido de forma automática de todas las lecturas de TypeORM.
+   * Se usa soft delete porque el DELETE físico dispara el `ON DELETE SET NULL`
+   * de la FK audit_log→eleccion, y el trigger de inmutabilidad de audit_log
+   * (VOTAR-372) aborta ese UPDATE.
+   */
+  @ApiProperty({ required: false, nullable: true })
+  @DeleteDateColumn({
+    name: 'fecha_eliminacion',
+    type: 'timestamptz',
+    nullable: true,
+  })
+  fechaEliminacion!: Date | null;
+
   @OneToOne(() => ConfiguracionComicio, (config) => config.eleccion)
   configuracionComicio?: ConfiguracionComicio;
+
+  /**
+   * Snapshot de la apertura real del comicio (VOTAR-374, Acta de Apertura).
+   * `aperturaActorNombre`/`Rol` provienen de AUTORIDAD_ELECTORAL, que no
+   * está sujeta al anonimato de Ley 25.326 (eso aplica solo a VOTANTE/VOTO).
+   * En apertura automática (scheduler) quedan en null: no hay responsable
+   * humano que registrar.
+   */
+  @ApiProperty({ required: false, nullable: true })
+  @Column({ name: 'apertura_real_en', type: 'timestamptz', nullable: true })
+  aperturaRealEn!: Date | null;
+
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    example: 'MANUAL',
+  })
+  @Column({ name: 'apertura_modo', type: 'varchar', nullable: true })
+  aperturaModo!: AperturaModo | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @Column({ name: 'apertura_actor_nombre', type: 'varchar', nullable: true })
+  aperturaActorNombre!: string | null;
+
+  @ApiProperty({ required: false, nullable: true })
+  @Column({ name: 'apertura_actor_rol', type: 'varchar', nullable: true })
+  aperturaActorRol!: string | null;
 }

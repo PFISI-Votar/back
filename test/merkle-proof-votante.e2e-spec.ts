@@ -15,6 +15,7 @@ import { BlockchainService } from '@/blockchain/blockchain.service';
 import { VOTER_ACCESS_COOKIE_NAME } from '@/auth/constants/auth-cookie.constants';
 import { AutoridadElectoral } from '@/auth/entities/autoridad-electoral.entity';
 import { RefreshSession } from '@/auth/entities/refresh-session.entity';
+import { ConfiguracionSistema } from '@/configuracion-sistema/entities/configuracion-sistema.entity';
 import { JwtRole } from '@/auth/enums/jwt-role.enum';
 import { AutogestionService } from '@/auth/services/autogestion.service';
 import { Candidato } from '@/eleccion/candidato/entities/candidato.entity';
@@ -37,6 +38,7 @@ import { VotoModule } from '@/voto/voto.module';
 import {
   createAuthedRequest,
   type AuthedRequest,
+  issueTestSessionToken,
 } from './helpers/auth-test.helper';
 import { extractVoterAccessToken } from './helpers/voter-auth-test.helper';
 
@@ -61,6 +63,7 @@ const entities = [
   ConfiguracionComicio,
   AutoridadElectoral,
   RefreshSession,
+  ConfiguracionSistema,
   AuditLog,
   PadronElectoral,
   PadronVotante,
@@ -173,10 +176,14 @@ describe('MerkleProofVotante (e2e) — VOTAR-354', () => {
     );
     await app.init();
 
-    const adminToken = app.get(JwtService).sign({
-      sub: '14988',
-      role: JwtRole.ELECTION_ADMIN,
-    });
+    const adminToken = await issueTestSessionToken(
+      dataSource,
+      app.get(JwtService),
+      {
+        sub: '14988',
+        role: JwtRole.ELECTION_ADMIN,
+      },
+    );
     adminReq = createAuthedRequest(app, adminToken);
 
     const createResponse = await adminReq
@@ -360,10 +367,14 @@ describe('MerkleProofVotante rate limit (e2e) — VOTAR-354', () => {
     );
     await app.init();
 
-    const adminToken = app.get(JwtService).sign({
-      sub: '14988',
-      role: JwtRole.ELECTION_ADMIN,
-    });
+    const adminToken = await issueTestSessionToken(
+      dataSource,
+      app.get(JwtService),
+      {
+        sub: '14988',
+        role: JwtRole.ELECTION_ADMIN,
+      },
+    );
     const adminReq = createAuthedRequest(app, adminToken);
 
     const createResponse = await adminReq
@@ -483,10 +494,14 @@ describe('MerkleProofVotante expiration (e2e) — VOTAR-354 UAT-02', () => {
     );
     await app.init();
 
-    const adminToken = app.get(JwtService).sign({
-      sub: '14988',
-      role: JwtRole.ELECTION_ADMIN,
-    });
+    const adminToken = await issueTestSessionToken(
+      dataSource,
+      app.get(JwtService),
+      {
+        sub: '14988',
+        role: JwtRole.ELECTION_ADMIN,
+      },
+    );
     const adminReq = createAuthedRequest(app, adminToken);
 
     const createResponse = await adminReq

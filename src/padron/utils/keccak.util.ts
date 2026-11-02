@@ -5,10 +5,10 @@ import { keccak256 } from 'js-sha3';
  * Normaliza: DNI a sólo dígitos, email a minúsculas sin espacios.
  * Devuelve hex de 64 caracteres (256 bits), sin prefijo `0x`.
  */
-export function hashVotante(dni: string, email: string): string {
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function hashVotante(dni: string, _email?: string): string {
   const dniNormalizado = dni.trim().replace(/\D/g, '');
-  const emailNormalizado = email.trim().toLowerCase();
-  return keccak256(`${dniNormalizado}:${emailNormalizado}`);
+  return keccak256(dniNormalizado);
 }
 
 /**
