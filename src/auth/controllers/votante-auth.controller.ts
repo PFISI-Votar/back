@@ -62,7 +62,7 @@ export class VotanteAuthController {
     await this.votanteAuthService.assertGoogleLoginAllowed(idEleccion);
     const { authorizationUrl, stateCookie } =
       this.googleOidcService.createAuthorizationRequest(idEleccion);
-    setGoogleOAuthStateCookie(response, stateCookie, this.isProduction());
+    setGoogleOAuthStateCookie(response, stateCookie);
     response.redirect(authorizationUrl);
   }
 
@@ -100,10 +100,10 @@ export class VotanteAuthController {
         maxAgeSeconds: this.votanteAuthService.getVoterAccessTtlSeconds(),
         secure: this.isProduction(),
       });
-      clearGoogleOAuthStateCookie(response, this.isProduction());
+      clearGoogleOAuthStateCookie(response);
       response.redirect(this.buildFrontendVoterUrl(idEleccion));
     } catch {
-      clearGoogleOAuthStateCookie(response, this.isProduction());
+      clearGoogleOAuthStateCookie(response);
       response.redirect(this.buildFrontendVoterUrlFromState(stateCookie, true));
     }
   }

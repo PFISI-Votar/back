@@ -77,30 +77,27 @@ export const clearVoterAccessCookie = (
   response.clearCookie(VOTER_ACCESS_COOKIE_NAME, sessionCookieOptions(secure));
 };
 
-const googleOAuthCookieOptions = (secure: boolean): CookieOptions => ({
-  httpOnly: true,
-  secure,
-  sameSite: 'lax',
-  path: '/auth/votante/google',
-});
-
+// La cookie de estado OAuth es siempre Secure: los browsers la aceptan
+// también en http://localhost, así que no hace falta relajarla en desarrollo.
+// SameSite=Lax porque debe viajar en la navegación top-level desde Google.
 export const setGoogleOAuthStateCookie = (
   response: Response,
   value: string,
-  secure: boolean,
 ): void => {
   response.cookie(GOOGLE_OAUTH_STATE_COOKIE_NAME, value, {
-    ...googleOAuthCookieOptions(secure),
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/auth/votante/google',
     maxAge: 5 * 60 * 1000,
   });
 };
 
-export const clearGoogleOAuthStateCookie = (
-  response: Response,
-  secure: boolean,
-): void => {
-  response.clearCookie(
-    GOOGLE_OAUTH_STATE_COOKIE_NAME,
-    googleOAuthCookieOptions(secure),
-  );
+export const clearGoogleOAuthStateCookie = (response: Response): void => {
+  response.clearCookie(GOOGLE_OAUTH_STATE_COOKIE_NAME, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/auth/votante/google',
+  });
 };
