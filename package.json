@@ -36,6 +36,7 @@
     "db:certs": "sh deploy/postgres/generate-dev-certs.sh",
     "admin:register": "node scripts/register-election-admin.mjs",
     "verify:merkle-proof": "node scripts/verify-merkle-proof.mjs",
+    "stress:votacion": "node scripts/stress-votacion.mjs",
     "sync:election-factory": "ts-node -r tsconfig-paths/register scripts/sync-election-factory.ts",
     "validate:exported-abis": "ts-node -r tsconfig-paths/register scripts/validate-exported-abis.ts",
     "vault:seal": "ts-node -r tsconfig-paths/register scripts/seal-vault.ts",
