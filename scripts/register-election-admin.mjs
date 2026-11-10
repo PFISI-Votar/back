@@ -147,7 +147,9 @@ const main = async () => {
   printRegisteredAdmin(saved);
 };
 
-main().catch((error) => {
-  console.error(error.message);
+main().catch(() => {
+  console.error(
+    'No se pudo registrar la autoridad electoral. Verificá la configuración y las credenciales ingresadas.',
+  );
   process.exit(1);
 });

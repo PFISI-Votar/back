@@ -139,7 +139,8 @@ export class AuthLockdownGuard implements CanActivate {
    */
   private async resolveNick(request: Request): Promise<string | null> {
     const body = request.body as
-      { nick?: unknown; challengeToken?: unknown } | undefined;
+      | { nick?: unknown; challengeToken?: unknown }
+      | undefined;
     const bodyNick = typeof body?.nick === 'string' ? body.nick.trim() : '';
     if (bodyNick.length > 0) {
       return bodyNick;

@@ -1,6 +1,6 @@
 {
   "name": "votar.back",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "API off-chain de VOTAR (UTN FRVM)",
   "author": "Equipo 09 — Five Stack, UTN FRVM",
   "private": true,

@@ -1,5 +1,10 @@
 export type TipoCampoCandidato =
-  'texto' | 'numero' | 'email' | 'url' | 'fecha' | 'booleano';
+  | 'texto'
+  | 'numero'
+  | 'email'
+  | 'url'
+  | 'fecha'
+  | 'booleano';
 
 export interface ValidacionCampoCandidato {
   minLength?: number;
