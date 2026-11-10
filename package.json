@@ -76,7 +76,7 @@
     "sanitize-html": "^2.17.7",
     "sharp": "^0.35.5",
     "socket.io": "^4.8.3",
-    "typeorm": "^0.3.31",
+    "typeorm": "^1.1.2",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
