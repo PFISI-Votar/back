@@ -1,0 +1,8 @@
+# VOTAR-516 — chequeo de inactividad post-electoral (lo dispara el .timer).
+[Unit]
+Description=VOTAR: apagado automatico del VPS por inactividad post-electoral
+After=votar-back.service postgresql.service nginx.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/votar/bin/idle-shutdown.sh

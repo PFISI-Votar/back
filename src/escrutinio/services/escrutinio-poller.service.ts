@@ -53,6 +53,7 @@ export class EscrutinioPollerService implements OnModuleInit, OnModuleDestroy {
           const { changed, snapshot } =
             await this.escrutinioService.refreshAndDetectChange(idEleccion);
           if (changed) {
+            this.eleccionGateway.emitDashboardActualizado(idEleccion);
             this.eleccionGateway.emitResultadosActualizados({
               idEleccion,
               actualizadoEn: snapshot.actualizadoEn,

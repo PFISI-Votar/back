@@ -15,6 +15,20 @@ export const isEleccionOficializada = (eleccion: Eleccion): boolean => {
   return eleccion.estado !== EleccionEstado.BORRADOR;
 };
 
+export const POPUP_ALERTA_NO_EDITABLE_MESSAGE =
+  'El comicio está archivado y no admite modificaciones del pop-up de alerta';
+
+/** VOTAR-524: el pop-up de alerta es editable hasta ARCHIVADA, como el mensaje de la BUD. */
+export const isPopupAlertaEditable = (estado: EleccionEstado): boolean => {
+  return estado !== EleccionEstado.ARCHIVADA;
+};
+
+export const assertPopupAlertaEditable = (eleccion: Eleccion): void => {
+  if (!isPopupAlertaEditable(eleccion.estado)) {
+    throw new ConflictException(POPUP_ALERTA_NO_EDITABLE_MESSAGE);
+  }
+};
+
 export const VISIBILIDAD_DASHBOARD_NO_EDITABLE_MESSAGE =
   'La visibilidad del dashboard público solo puede modificarse antes de abrir el comicio';
 

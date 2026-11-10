@@ -14,7 +14,12 @@ describe('EscrutinioPollerService — VOTAR-364', () => {
       'listarComiciosParaPolling' | 'refreshAndDetectChange'
     >
   >;
-  let gateway: jest.Mocked<Pick<EleccionGateway, 'emitResultadosActualizados'>>;
+  let gateway: jest.Mocked<
+    Pick<
+      EleccionGateway,
+      'emitResultadosActualizados' | 'emitDashboardActualizado'
+    >
+  >;
 
   beforeEach(async () => {
     jest.useFakeTimers();
@@ -29,6 +34,7 @@ describe('EscrutinioPollerService — VOTAR-364', () => {
     };
     gateway = {
       emitResultadosActualizados: jest.fn(),
+      emitDashboardActualizado: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -70,8 +76,12 @@ describe('EscrutinioPollerService — VOTAR-364', () => {
       totalVotos: 5,
     });
 
+    expect(gateway.emitDashboardActualizado).toHaveBeenCalledWith(3);
+
     gateway.emitResultadosActualizados.mockClear();
+    gateway.emitDashboardActualizado.mockClear();
     await jest.advanceTimersByTimeAsync(4_000);
     expect(gateway.emitResultadosActualizados).not.toHaveBeenCalled();
+    expect(gateway.emitDashboardActualizado).not.toHaveBeenCalled();
   });
 });
