@@ -30,6 +30,20 @@ Incremento post-MVP (Sprint 4). Alcance cubierto en esta versión:
 - **Blockchain:** decodificación de custom errors on-chain, índice append-only de transacciones y sincronización de ABIs
 - **Correcciones:** resultados en dashboard, comprobante de voto por contrato Ballot por elección y creación de listas duplicadas
 
+## Estado del proyecto — v3.0.0
+ 
+**Versión 3 — Hardening de seguridad, firmas anónimas, escrutinio multi-candidato y publicación open source** (octubre de 2026).
+ 
+Incremento post-v2 con foco en seguridad ofensiva, cumplimiento normativo y madurez operativa. Alcance cubierto en esta versión:
+ 
+- **Hardening de seguridad:** refactorización de secretos con vault y relayer backend, hardening de CI (Dependabot, CodeQL y secret scanning), hardening de base de datos y encriptación en reposo, hardening de uploads (MIME real, tamaño y path traversal), hardening de sesiones con revocación masiva y timeout por inactividad, cookies SameSite estricto, respuestas fail-secure sin stack traces ni PII, y pruebas E2E con cabeceras CORS y rate limit en auth/2FA/voto
+- **Compliance normativo:** entidad de firmas anónimas, pruebas UAT de PII y publicación completa del ecosistema open source
+- **Escrutinio:** soporte de escrutinio multi-candidato
+- **Funcionalidad electoral:** pausa de emergencia, acta de apertura, archivado de comicio finalizado, voto nulo configurable, intervalo entre sufragios, failover de nodos RPC, aprovisionamiento de gas Sepolia, automatización de resguardo PostgreSQL y optimización del almacenamiento de imágenes
+- **Correcciones y mejoras:** audit log con rol restringido, 2FA anti-phishing, reintento de despliegue on-chain, consumo idempotente, eliminación del tipo de votación mixto, feedback ante transacciones on-chain automáticas y logo institucional
+ 
+
+
 ## Requisitos
 
 - Node.js 24+
