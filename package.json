@@ -65,7 +65,7 @@
     "joi": "^18.2.9",
     "js-sha3": "^0.9.3",
     "jsonwebtoken": "^9.0.3",
-    "multer": "^2.4.0",
+    "multer": "^2.5.0",
     "nodemailer": "^9.0.5",
     "otpauth": "^9.5.1",
     "passport": "^0.7.0",
