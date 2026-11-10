@@ -1,5 +1,3 @@
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import { INestApplication, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -13,7 +11,6 @@ import * as securityHeaders from '@/config/security-headers.config';
 
 describe('Rate limiting and CORS (e2e) — VOTAR-380', () => {
   let app: INestApplication<App>;
-  const uploadsDir = join(process.cwd(), 'uploads-rate-limit-cors-e2e');
   const allowedOrigin = 'http://localhost:5173';
 
   const createApp = async (development: boolean): Promise<void> => {
@@ -68,9 +65,6 @@ describe('Rate limiting and CORS (e2e) — VOTAR-380', () => {
   };
 
   beforeAll(() => {
-    mkdirSync(uploadsDir, { recursive: true });
-    writeFileSync(join(uploadsDir, 'fixture.txt'), 'fixture');
-    process.env.UPLOADS_DIR = 'uploads-rate-limit-cors-e2e';
     process.env.DEVELOPMENT = 'true';
   });
 

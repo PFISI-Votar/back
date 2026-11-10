@@ -1,0 +1,20 @@
+# VOTAR-498 — regla nftables para el host que corre PostgreSQL en producción.
+# Mitiga: unguarded-direct-datastore-access (defensa en profundidad respecto
+# de pg_hba.conf: si alguien reconfigura pg_hba por error, el firewall igual
+# corta el acceso a nivel de red).
+#
+# Reemplazar <BACKEND_IP> por la IP (o rango) real del host donde corre el
+# backend NestJS antes de aplicar. Cargar con:
+#   nft -f deploy/firewall/votar-db.nft
+
+table inet votar_db_filter {
+  chain input {
+    type filter hook input priority 0; policy accept;
+
+    # Solo el backend puede llegar al puerto de PostgreSQL.
+    ip saddr <BACKEND_IP> tcp dport 5432 accept
+
+    # Cualquier otro origen al puerto de PostgreSQL: descartado.
+    tcp dport 5432 drop
+  }
+}

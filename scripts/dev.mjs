@@ -66,8 +66,10 @@ const main = async () => {
     });
 
     logReady();
-  } catch (error) {
-    console.error(`[dev] Error: ${error.message}`);
+  } catch {
+    console.error(
+      '[dev] No se pudo iniciar el entorno. Revisá la salida anterior para identificar el paso que falló.',
+    );
     shutdown('error');
     process.exit(1);
   }

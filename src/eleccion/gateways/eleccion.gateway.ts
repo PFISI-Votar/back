@@ -8,14 +8,29 @@ import {
   WebSocketGateway,
   WebSocketServer,
 } from '@nestjs/websockets';
+import { InjectRepository } from '@nestjs/typeorm';
 import type { Server, Socket } from 'socket.io';
+import { Repository } from 'typeorm';
 import { resolveAllowedOriginsFromEnv } from '@/config/cors.config';
+import {
+  SeccionDashboard,
+  isSeccionDashboardVisible,
+} from '@/eleccion/configuracion-comicio/constants/visibilidad-dashboard.constants';
+import { ConfiguracionComicio } from '@/eleccion/configuracion-comicio/entities/configuracion-comicio.entity';
+import { Eleccion } from '@/eleccion/entities/eleccion.entity';
 
 export type ResultadosActualizadosPayload = {
   idEleccion: number;
   actualizadoEn: string;
   totalVotos: number;
 };
+
+/**
+ * VOTAR-481: distingue qué transición on-chain está en curso o en conflicto,
+ * para que el cliente pueda mostrar un mensaje específico ("abriendo",
+ * "cerrando") en lugar de un spinner genérico.
+ */
+export type TransaccionEleccionTipo = 'APERTURA' | 'CIERRE';
 
 /**
  * Gateway WebSocket para eventos de elecciones en tiempo real.
@@ -37,6 +52,13 @@ export class EleccionGateway
 
   private readonly logger = new Logger(EleccionGateway.name);
 
+  constructor(
+    @InjectRepository(Eleccion)
+    private readonly eleccionRepository: Repository<Eleccion>,
+    @InjectRepository(ConfiguracionComicio)
+    private readonly configRepository: Repository<ConfiguracionComicio>,
+  ) {}
+
   handleConnection(client: Socket): void {
     const clientId = client.id;
     this.logger.log(`Cliente WebSocket conectado: ${clientId}`);
@@ -49,14 +71,21 @@ export class EleccionGateway
 
   /**
    * Dashboard público: join room for live tally updates (VOTAR-364).
+   * VOTAR-459: no admite la suscripción si la solapa "Resultados" fue
+   * ocultada por la autoridad electoral mientras el comicio está en curso —
+   * de lo contrario el 403 de GET /resultados sería evadible por WebSocket.
    */
   @SubscribeMessage('dashboard:subscribe')
-  handleDashboardSubscribe(
+  async handleDashboardSubscribe(
     @ConnectedSocket() client: Socket,
     @MessageBody() body: { idEleccion?: number },
-  ): void {
+  ): Promise<void> {
     const idEleccion = Number(body?.idEleccion);
     if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
+      return;
+    }
+    const puedeSuscribirse = await this.puedeSuscribirseAResultados(idEleccion);
+    if (!puedeSuscribirse) {
       return;
     }
     const room = this.roomName(idEleccion);
@@ -91,6 +120,48 @@ export class EleccionGateway
   }
 
   /**
+   * VOTAR-481 — avisa a los clientes que una transacción on-chain de
+   * apertura/cierre (manual o automática) fue tomada por el backend y está
+   * en curso, para que el usuario no interprete la demora de confirmación
+   * en Sepolia como una falla silenciosa.
+   */
+  emitTransaccionEnProgreso(
+    idEleccion: number,
+    tipo: TransaccionEleccionTipo,
+  ): void {
+    this.logger.log(
+      `Emitiendo transacción en progreso (${tipo}) para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:transaccion-en-progreso', {
+      idEleccion,
+      tipo,
+    });
+  }
+
+  /**
+   * VOTAR-481 — avisa que la transacción on-chain de apertura/cierre que
+   * estaba en curso (ver `emitTransaccionEnProgreso`) terminó en falla o
+   * revert, para que el cliente pueda limpiar el spinner/toast de carga en
+   * vez de dejarlo colgado indefinidamente. El conflicto de lock (409) NO
+   * emite este evento ni ninguno por WebSocket: ya le llega al solicitante
+   * por la respuesta HTTP, y transmitirlo a todos los clientes conectados
+   * pisaría el feedback de "en progreso" de la transacción que sí tiene
+   * el lock.
+   */
+  emitTransaccionFallida(
+    idEleccion: number,
+    tipo: TransaccionEleccionTipo,
+  ): void {
+    this.logger.warn(
+      `Emitiendo falla de transacción (${tipo}) para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:transaccion-fallida', {
+      idEleccion,
+      tipo,
+    });
+  }
+
+  /**
    * Emite un evento de Merkle publicado on-chain a todos los clientes conectados.
    * @param idEleccion ID de la elección cuya raíz Merkle fue publicada
    */
@@ -111,6 +182,33 @@ export class EleccionGateway
   }
 
   /**
+   * VOTAR-347 — emite pausa/reanudación de emergencia a todos los clientes
+   * conectados (autoridades y observadores monitoreando el comicio).
+   */
+  emitEleccionPausada(idEleccion: number, razon: string): void {
+    this.logger.log(`Emitiendo evento de pausa para elección ${idEleccion}`);
+    this.server.emit('eleccion:pausada', { idEleccion, razon });
+  }
+
+  emitEleccionReanudada(idEleccion: number): void {
+    this.logger.log(
+      `Emitiendo evento de reanudación para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:reanudada', { idEleccion });
+  }
+
+  /**
+   * Emite un evento de elección archivada a todos los clientes conectados (VOTAR-322).
+   * @param idEleccion ID de la elección que fue archivada
+   */
+  emitEleccionArchivada(idEleccion: number): void {
+    this.logger.log(
+      `Emitiendo evento de archivado para elección ${idEleccion}`,
+    );
+    this.server.emit('eleccion:archivada', { idEleccion });
+  }
+
+  /**
    * VOTAR-364: push tally update to dashboard subscribers of a comicio.
    */
   emitResultadosActualizados(payload: ResultadosActualizadosPayload): void {
@@ -124,5 +222,27 @@ export class EleccionGateway
 
   private roomName(idEleccion: number): string {
     return `eleccion:${idEleccion}`;
+  }
+
+  private async puedeSuscribirseAResultados(
+    idEleccion: number,
+  ): Promise<boolean> {
+    const eleccion = await this.eleccionRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!eleccion) {
+      return false;
+    }
+    const config = await this.configRepository.findOne({
+      where: { idEleccion },
+    });
+    if (!config) {
+      return false;
+    }
+    return isSeccionDashboardVisible(
+      config,
+      eleccion.estado,
+      SeccionDashboard.RESULTADOS,
+    );
   }
 }

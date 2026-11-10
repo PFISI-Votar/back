@@ -10,6 +10,9 @@ import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { IpRateLimitGuard } from '@/common/rate-limit/ip-rate-limit.guard';
 import { RateLimit } from '@/common/rate-limit/rate-limit.decorator';
 import { RateLimitTier } from '@/common/rate-limit/rate-limit-tier.enum';
+import { SeccionDashboardTag } from '@/dashboard-publico/decorators/seccion-dashboard.decorator';
+import { SeccionDashboardVisibleGuard } from '@/dashboard-publico/guards/seccion-dashboard-visible.guard';
+import { SeccionDashboard } from '@/eleccion/configuracion-comicio/constants/visibilidad-dashboard.constants';
 import { EscrutinioResponseDto } from '@/escrutinio/dto/escrutinio-response.dto';
 import { EscrutinioService } from '@/escrutinio/services/escrutinio.service';
 
@@ -30,6 +33,8 @@ export class EscrutinioPublicController {
    * Served from in-memory cache populated by the on-chain poller (UAT-02).
    */
   @Get('resultados')
+  @UseGuards(SeccionDashboardVisibleGuard)
+  @SeccionDashboardTag(SeccionDashboard.RESULTADOS)
   @Header('Cache-Control', 'public, max-age=3')
   @ApiOperation({
     summary:
@@ -42,6 +47,10 @@ export class EscrutinioPublicController {
     type: EscrutinioResponseDto,
   })
   @ApiResponse({ status: 404, description: 'Comicio no encontrado' })
+  @ApiResponse({
+    status: 403,
+    description: 'Sección oculta por configuración del comicio (VOTAR-459)',
+  })
   @ApiResponse({
     status: 422,
     description: 'Comicio aún no admite escrutinio público',
