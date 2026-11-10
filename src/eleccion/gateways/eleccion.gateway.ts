@@ -84,6 +84,8 @@ export class EleccionGateway
     if (!Number.isFinite(idEleccion) || idEleccion <= 0) {
       return;
     }
+    // VOTAR-518: el aviso sin datos no depende de la visibilidad de Resultados.
+    void client.join(this.avisoRoomName(idEleccion));
     const puedeSuscribirse = await this.puedeSuscribirseAResultados(idEleccion);
     if (!puedeSuscribirse) {
       return;
@@ -107,6 +109,7 @@ export class EleccionGateway
     }
     const room = this.roomName(idEleccion);
     void client.leave(room);
+    void client.leave(this.avisoRoomName(idEleccion));
     this.logger.debug(`Cliente ${client.id} desuscripto de ${room}`);
   }
 
@@ -220,8 +223,24 @@ export class EleccionGateway
       .emit('resultados:actualizados', payload);
   }
 
+  /**
+   * VOTAR-518: aviso sin datos (solo `idEleccion`) de que cambió algo en el
+   * dashboard. Va a una sala sin control de visibilidad para que Participación,
+   * Re-voto, Transacciones y Estado se refresquen aunque Resultados esté
+   * oculto. No lleva conteos, por lo que no filtra lo protegido por VOTAR-459.
+   */
+  emitDashboardActualizado(idEleccion: number): void {
+    this.server
+      .to(this.avisoRoomName(idEleccion))
+      .emit('dashboard:actualizado', { idEleccion });
+  }
+
   private roomName(idEleccion: number): string {
     return `eleccion:${idEleccion}`;
+  }
+
+  private avisoRoomName(idEleccion: number): string {
+    return `dashboard-aviso:${idEleccion}`;
   }
 
   private async puedeSuscribirseAResultados(
