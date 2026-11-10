@@ -1,6 +1,7 @@
 import type { CookieOptions, Response } from 'express';
 import {
   ACCESS_COOKIE_NAME,
+  GOOGLE_OAUTH_STATE_COOKIE_NAME,
   REFRESH_COOKIE_NAME,
   VOTER_ACCESS_COOKIE_NAME,
 } from '@/auth/constants/auth-cookie.constants';
@@ -74,4 +75,29 @@ export const clearVoterAccessCookie = (
   secure: boolean,
 ): void => {
   response.clearCookie(VOTER_ACCESS_COOKIE_NAME, sessionCookieOptions(secure));
+};
+
+// La cookie de estado OAuth es siempre Secure: los browsers la aceptan
+// también en http://localhost, así que no hace falta relajarla en desarrollo.
+// SameSite=Lax porque debe viajar en la navegación top-level desde Google.
+export const setGoogleOAuthStateCookie = (
+  response: Response,
+  value: string,
+): void => {
+  response.cookie(GOOGLE_OAUTH_STATE_COOKIE_NAME, value, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/auth/votante/google',
+    maxAge: 5 * 60 * 1000,
+  });
+};
+
+export const clearGoogleOAuthStateCookie = (response: Response): void => {
+  response.clearCookie(GOOGLE_OAUTH_STATE_COOKIE_NAME, {
+    httpOnly: true,
+    secure: true,
+    sameSite: 'lax',
+    path: '/auth/votante/google',
+  });
 };
