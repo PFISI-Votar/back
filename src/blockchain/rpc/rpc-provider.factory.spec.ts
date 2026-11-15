@@ -42,10 +42,12 @@ describe('RpcProviderFactory — VOTAR-386', () => {
     });
 
     factory.create();
-    const connection = (JsonRpcProvider as unknown as jest.Mock).mock.calls.at(
-      -1,
-    )?.[0] as FetchRequest;
+    const mockedProvider = jest.mocked(JsonRpcProvider);
+    const connection = mockedProvider.mock.calls.at(-1)?.at(0);
     expect(connection).toBeInstanceOf(FetchRequest);
+    if (!(connection instanceof FetchRequest)) {
+      throw new Error('Expected a FetchRequest connection');
+    }
     expect(connection.getHeader('CF-Access-Client-Id')).toBe('client-id');
     expect(connection.getHeader('CF-Access-Client-Secret')).toBe(
       'client-secret',
