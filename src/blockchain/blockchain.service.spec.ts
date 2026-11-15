@@ -255,7 +255,7 @@ describe('BlockchainService', () => {
       ballot: '0x4444444444444444444444444444444444444444',
       voteRegistry: '0x5555555555555555555555555555555555555555',
       auditView: '0x6666666666666666666666666666666666666666',
-      exists: false,
+      exists: true,
     });
     mockContratoBlockchain.getElectionFactory.mockResolvedValue({
       direccionContrato: '0x3333333333333333333333333333333333333333',
@@ -401,7 +401,7 @@ describe('BlockchainService', () => {
   });
 
   describe('getVoteParticipationByTxHash — VOTAR-360/366', () => {
-    const ballot = '0x5FbDB2315678afecb367f032d93F642f64180aa3';
+    const ballot = '0x4444444444444444444444444444444444444444';
     const txHash = '0x' + 'ab'.repeat(32);
 
     beforeEach(() => {
@@ -634,6 +634,15 @@ describe('BlockchainService', () => {
       policy: 0,
     };
 
+    beforeEach(() => {
+      mockGetElection.mockResolvedValue({
+        ballot: '0x0000000000000000000000000000000000000000',
+        voteRegistry: '0x0000000000000000000000000000000000000000',
+        auditView: '0x0000000000000000000000000000000000000000',
+        exists: false,
+      });
+    });
+
     it('deploys the election stack and returns addresses', async () => {
       mockGetElection
         .mockResolvedValueOnce({
@@ -718,6 +727,15 @@ describe('BlockchainService', () => {
       minIntervalSeconds: 0,
       policy: 0,
     };
+
+    beforeEach(() => {
+      mockGetElection.mockResolvedValue({
+        ballot: '0x0000000000000000000000000000000000000000',
+        voteRegistry: '0x0000000000000000000000000000000000000000',
+        auditView: '0x0000000000000000000000000000000000000000',
+        exists: false,
+      });
+    });
 
     it('throws 503 when the wallet balance is below the createElection estimate', async () => {
       mockGetBalance.mockResolvedValue(0n);
@@ -1216,7 +1234,7 @@ describe('BlockchainService', () => {
       );
     });
 
-    it('resolveElectionContracts falls back to factory when env addresses missing', async () => {
+    it('resolveElectionContracts prefers the election factory over legacy env addresses', async () => {
       mockConfig.get.mockImplementation((key: string) => {
         const values: Record<string, string> = {
           SEPOLIA_RPC_URL: 'https://sepolia.example.com',
@@ -1224,6 +1242,10 @@ describe('BlockchainService', () => {
             '0x55d1d115309872C16B9646362C82fFa246F3F652',
           PRIVATE_KEY: '0x' + '1'.repeat(64),
           BALLOT_CONTRACT_ADDRESS: '0x5FbDB2315678afecb367f032d93F642f64180aa3',
+          VOTE_REGISTRY_CONTRACT_ADDRESS:
+            '0x7777777777777777777777777777777777777777',
+          AUDIT_VIEW_CONTRACT_ADDRESS:
+            '0x8888888888888888888888888888888888888888',
           ETHERSCAN_BASE_URL: 'https://sepolia.etherscan.io',
         };
         return values[key];
@@ -1244,6 +1266,30 @@ describe('BlockchainService', () => {
         '0x6666666666666666666666666666666666666666',
       );
       expect(mockGetElection).toHaveBeenCalledWith(9);
+    });
+
+    it('resolveElectionContracts uses legacy env addresses when no factory is registered', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        const values: Record<string, string> = {
+          SEPOLIA_RPC_URL: 'http://127.0.0.1:8545',
+          BALLOT_CONTRACT_ADDRESS: '0x4444444444444444444444444444444444444444',
+          VOTE_REGISTRY_CONTRACT_ADDRESS:
+            '0x5555555555555555555555555555555555555555',
+          AUDIT_VIEW_CONTRACT_ADDRESS:
+            '0x6666666666666666666666666666666666666666',
+        };
+        return values[key];
+      });
+      mockContratoBlockchain.getElectionFactory.mockRejectedValue(
+        new NotFoundException(),
+      );
+
+      await expect(service.resolveElectionContracts(9)).resolves.toEqual({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+      });
+      expect(mockGetElection).not.toHaveBeenCalled();
     });
 
     it('resolveElectionContracts throws 422 when factory has no deployment', async () => {

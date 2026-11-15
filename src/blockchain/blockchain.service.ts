@@ -1681,22 +1681,24 @@ export class BlockchainService {
 
   /**
    * VOTAR-365: resolves AuditView + VoteRegistry addresses for an election.
-   * Prefers ElectionFactory.getElection; falls back to env vars for local/dev.
+   * Prefers ElectionFactory.getElection; falls back to legacy env vars only
+   * when no ElectionFactory is registered. Local Hardhat writes both sets of
+   * addresses, but the env contracts are a shared compatibility stack and do
+   * not contain the immutable policy of each election.
    */
   async resolveElectionContracts(
     idEleccion: number,
   ): Promise<ElectionContractAddresses> {
-    const fromEnv = this.resolveContractsFromEnv();
-    if (fromEnv) {
-      return fromEnv;
-    }
-
     this.requireRpcUrl();
     let factory: { direccionContrato: string };
     try {
       factory = await this.contratoBlockchainService.getElectionFactory();
     } catch (error) {
       if (error instanceof NotFoundException) {
+        const fromEnv = this.resolveContractsFromEnv();
+        if (fromEnv) {
+          return fromEnv;
+        }
         throw new ServiceUnavailableException(
           'ElectionFactory no registrada y no hay AUDIT_VIEW_CONTRACT_ADDRESS / VOTE_REGISTRY_CONTRACT_ADDRESS configuradas.',
         );
