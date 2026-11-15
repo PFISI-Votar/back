@@ -3,6 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditModule } from '@/audit/audit.module';
 import { BlockchainModule } from '@/blockchain/blockchain.module';
 import { CommonRateLimitModule } from '@/common/rate-limit/common-rate-limit.module';
+import { EscrutinioModule } from '@/escrutinio/escrutinio.module';
 import { PadronModule } from '@/padron/padron.module';
 import { RelayerCapacidad } from '@/relayer/entities/relayer-capacidad.entity';
 import { EthersRelayBroadcaster } from '@/relayer/ethers-relay-broadcaster';
@@ -15,6 +16,7 @@ import { VotoModule } from '@/voto/voto.module';
     AuditModule,
     BlockchainModule,
     CommonRateLimitModule,
+    EscrutinioModule,
     PadronModule,
     VotoModule,
     TypeOrmModule.forFeature([RelayerCapacidad]),

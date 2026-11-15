@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import { EscrutinioCacheService } from '@/escrutinio/services/escrutinio-cache.service';
 import { PadronService } from '@/padron/padron.service';
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
@@ -65,6 +66,9 @@ describe('RelayerService — VOTAR-497', () => {
     logRelayerCapacidadEmitida: jest.fn(),
     logRelayerCastEnviado: jest.fn(),
   };
+  const escrutinioCacheService = {
+    delete: jest.fn(),
+  };
 
   let service: RelayerService;
 
@@ -99,6 +103,10 @@ describe('RelayerService — VOTAR-497', () => {
         },
         { provide: RevotePolicyService, useValue: revotePolicyService },
         { provide: AuditLoggerService, useValue: auditLogger },
+        {
+          provide: EscrutinioCacheService,
+          useValue: escrutinioCacheService,
+        },
       ],
     }).compile();
     service = moduleRef.get(RelayerService);
@@ -189,6 +197,7 @@ describe('RelayerService — VOTAR-497', () => {
     expect(auditLogger.logRelayerCastEnviado).toHaveBeenCalledWith({
       idEleccion: 7,
     });
+    expect(escrutinioCacheService.delete).toHaveBeenCalledWith(7);
     expect(actual.txHash).toBe('0x' + 'f'.repeat(64));
   });
 
@@ -240,6 +249,7 @@ describe('RelayerService — VOTAR-497', () => {
     await expect(service.transmitir(7, dto)).rejects.toBeInstanceOf(
       HttpException,
     );
+    expect(escrutinioCacheService.delete).not.toHaveBeenCalled();
     expect(queryBuilder.set).toHaveBeenCalledWith({
       consumidaEn: expect.any(Function) as () => string,
     });

@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AuditLoggerService } from '@/audit/audit-logger.service';
 import { BlockchainService } from '@/blockchain/blockchain.service';
+import { EscrutinioCacheService } from '@/escrutinio/services/escrutinio-cache.service';
 import { stripBytes32Prefix, toBytes32Hex } from '@/padron/utils/merkle.util';
 import { PadronService } from '@/padron/padron.service';
 import { RelayCastDto } from '@/relayer/dto/relay-cast.dto';
@@ -35,6 +36,7 @@ export class RelayerService {
     private readonly configService: ConfigService,
     private readonly revotePolicyService: RevotePolicyService,
     private readonly auditLogger: AuditLoggerService,
+    private readonly escrutinioCacheService: EscrutinioCacheService,
   ) {}
 
   /**
@@ -179,6 +181,11 @@ export class RelayerService {
         }
       }
 
+      // Hardhat mines immediately. Drop the previous dashboard snapshot as
+      // soon as the receipt is confirmed so the next REST/WebSocket-triggered
+      // refresh reads the vote that was just recorded instead of waiting for
+      // the four-second escrutinio poller cycle.
+      this.escrutinioCacheService.delete(idEleccion);
       await this.auditLogger.logRelayerCastEnviado({ idEleccion });
       return { txHash };
     } catch (error) {
