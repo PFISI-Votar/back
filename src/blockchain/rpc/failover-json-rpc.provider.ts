@@ -30,6 +30,10 @@ export type FailoverJsonRpcProviderOptions = {
   retry?: RpcRetryOptions;
   /** VOTAR-515 — caché local de lecturas; `false` lo desactiva. */
   cache?: RpcCacheOptions | false;
+  /** Headers scoped by exact RPC URL (for example Cloudflare Access). */
+  headersByUrl?: Readonly<
+    Record<string, Readonly<Record<string, string>> | undefined>
+  >;
 };
 
 const defaultLogger: RpcFailoverLogger = {
@@ -57,6 +61,9 @@ export class FailoverJsonRpcProvider extends JsonRpcApiProvider {
   readonly #fetchImpl: FailoverFetch;
   readonly #retry: RpcRetryOptions | undefined;
   readonly #cache: RpcResponseCache | null;
+  readonly #headersByUrl: Readonly<
+    Record<string, Readonly<Record<string, string>> | undefined>
+  >;
   #lastKnownBlock: number | null = null;
 
   constructor(
@@ -77,6 +84,7 @@ export class FailoverJsonRpcProvider extends JsonRpcApiProvider {
     this.#logger = options.logger ?? defaultLogger;
     this.#fetchImpl = options.fetchImpl ?? fetch;
     this.#retry = options.retry;
+    this.#headersByUrl = options.headersByUrl ?? {};
     this.#cache =
       options.cache === false ? null : new RpcResponseCache(options.cache);
     this._start();
@@ -126,7 +134,10 @@ export class FailoverJsonRpcProvider extends JsonRpcApiProvider {
     try {
       const response = await this.#fetchImpl(url, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: {
+          'content-type': 'application/json',
+          ...this.#headersByUrl[url],
+        },
         body: JSON.stringify(body),
         signal: controller.signal,
       });

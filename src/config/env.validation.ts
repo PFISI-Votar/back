@@ -126,6 +126,9 @@ export const envValidationSchema = Joi.object({
     .uri()
     .default('http://localhost:3000/auth/votante/google/callback'),
   SEPOLIA_RPC_URL: Joi.string().uri().optional(),
+  /** Credenciales máquina-a-máquina para el RPC privado detrás de Cloudflare Access. */
+  CF_ACCESS_CLIENT_ID: Joi.string().allow('').optional(),
+  CF_ACCESS_CLIENT_SECRET: Joi.string().allow('').optional(),
   /** VOTAR-386 — extra Infura/Alchemy/QuickNode URLs, comma-separated. */
   SEPOLIA_RPC_FALLBACK_URLS: Joi.string().allow('').optional(),
   RPC_FAILOVER_TIMEOUT_MS: Joi.number()

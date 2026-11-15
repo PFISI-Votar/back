@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { JsonRpcProvider, type Provider } from 'ethers';
+import { FetchRequest, JsonRpcProvider, type Provider } from 'ethers';
 import { FailoverJsonRpcProvider } from './failover-json-rpc.provider';
 import {
   RPC_FAILOVER_LOG_PREFIX,
@@ -74,16 +74,21 @@ export class RpcProviderFactory {
     );
     const cacheEnabled =
       this.configService.get<boolean>('RPC_CACHE_ENABLED') !== false;
+    const accessHeaders = this.getCloudflareAccessHeaders();
 
     const provider =
       urls.length === 1
-        ? new JsonRpcProvider(urls[0])
+        ? new JsonRpcProvider(this.createConnection(urls[0], accessHeaders))
         : new FailoverJsonRpcProvider(urls, {
             chainId,
             timeoutMs,
             maxBlockSkew,
             retry: { maxRetries, baseDelayMs },
             cache: cacheEnabled ? {} : false,
+            // Never forward the private service token to third-party backups.
+            headersByUrl: accessHeaders
+              ? { [urls[0]]: accessHeaders }
+              : undefined,
             logger: {
               warn: (message, ...optionalParams) => {
                 this.logger.warn(
@@ -97,5 +102,40 @@ export class RpcProviderFactory {
     this.cachedProvider = provider;
     this.cachedUrlsKey = urlsKey;
     return provider;
+  }
+
+  private getCloudflareAccessHeaders(): Record<string, string> | null {
+    const clientId = this.configService
+      .get<string>('CF_ACCESS_CLIENT_ID')
+      ?.trim();
+    const clientSecret = this.configService
+      .get<string>('CF_ACCESS_CLIENT_SECRET')
+      ?.trim();
+    if (!clientId && !clientSecret) {
+      return null;
+    }
+    if (!clientId || !clientSecret) {
+      throw new ServiceUnavailableException(
+        'Cloudflare Access requiere CF_ACCESS_CLIENT_ID y CF_ACCESS_CLIENT_SECRET.',
+      );
+    }
+    return {
+      'CF-Access-Client-Id': clientId,
+      'CF-Access-Client-Secret': clientSecret,
+    };
+  }
+
+  private createConnection(
+    url: string,
+    headers: Readonly<Record<string, string>> | null,
+  ): string | FetchRequest {
+    if (!headers) {
+      return url;
+    }
+    const request = new FetchRequest(url);
+    for (const [name, value] of Object.entries(headers)) {
+      request.setHeader(name, value);
+    }
+    return request;
   }
 }

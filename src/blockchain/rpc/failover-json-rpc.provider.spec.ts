@@ -41,6 +41,44 @@ describe('FailoverJsonRpcProvider — VOTAR-386', () => {
     expect(logger.warn.mock.calls[0][0]).not.toContain('backupsecret');
   });
 
+  it('scopes Cloudflare Access headers to the configured private URL', async () => {
+    const calls: Array<{ url: string; headers: Headers }> = [];
+    const fetchImpl = jest.fn(async (input: string, init: RequestInit) => {
+      calls.push({ url: input, headers: new Headers(init.headers) });
+      if (input.includes('private')) {
+        return {
+          status: 429,
+          json: async () => ({ error: { message: 'Too Many Requests' } }),
+        } as Response;
+      }
+      return {
+        status: 200,
+        json: async () => jsonRpc('0x7a69'),
+      } as Response;
+    });
+    const privateUrl = 'https://private.example/rpc';
+    const provider = new FailoverJsonRpcProvider(
+      [privateUrl, 'https://backup.example/rpc'],
+      {
+        chainId: 31337,
+        fetchImpl,
+        headersByUrl: {
+          [privateUrl]: {
+            'CF-Access-Client-Id': 'id',
+            'CF-Access-Client-Secret': 'secret',
+          },
+        },
+      },
+    );
+
+    await expect(provider.send('eth_chainId', [])).resolves.toBe('0x7a69');
+    const privateCall = calls.find(({ url }) => url === privateUrl);
+    const backupCall = calls.find(({ url }) => url.includes('backup'));
+    expect(privateCall?.headers.get('CF-Access-Client-Id')).toBe('id');
+    expect(backupCall?.headers.get('CF-Access-Client-Id')).toBeNull();
+    expect(backupCall?.headers.get('CF-Access-Client-Secret')).toBeNull();
+  });
+
   it('UAT-02: aborts a slow primary under the 1s budget and uses the backup', async () => {
     const logger = { warn: jest.fn() };
     const fetchImpl = jest.fn(async (input: string, init: RequestInit) => {
