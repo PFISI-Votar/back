@@ -100,4 +100,11 @@ export class BoletaDigitalResponseDto {
       'Address del BallotContract desplegado por ElectionFactory para este comicio (VOTAR-337). Solo presente en la boleta autenticada del votante — la vista pública no lo expone.',
   })
   ballotContractAddress?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Chain ID real del contrato electoral. El cliente debe usarlo en el dominio EIP-712 y no inferirlo del build.',
+    example: 31337,
+  })
+  blockchainChainId?: number;
 }
