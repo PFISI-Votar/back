@@ -186,6 +186,7 @@ export class VotoService {
     return {
       ...this.mapOfertaToBoletaDigital(oferta),
       ballotContractAddress: ballot,
+      blockchainChainId: this.blockchainService.getChainId(),
     };
   }
 

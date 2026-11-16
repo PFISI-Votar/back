@@ -127,6 +127,7 @@ const createRepositories = () => {
       obtenerOfertaPublicada: jest.fn().mockResolvedValue(createOfertaMock()),
     },
     blockchainService: {
+      getChainId: jest.fn().mockReturnValue(31337),
       resolveElectionContracts: jest.fn().mockResolvedValue({
         ballot: '0x9BBDaC872c5781532ec32A9b14B906751d5B8C61',
         voteRegistry: '0xa4b0c8f557d40DDDF6E150C31335a77f9c41Bb4F',
@@ -359,6 +360,7 @@ describe('VotoService', () => {
     const actual = await service.obtenerBoletaDigital(1, VOTANTE_HASH);
 
     expect(actual.permitirVotoNulo).toBe(true);
+    expect(actual.blockchainChainId).toBe(31337);
     expect(actual.categorias.map((categoria) => categoria.nombre)).toEqual([
       'Presidente',
       'Vocales',
