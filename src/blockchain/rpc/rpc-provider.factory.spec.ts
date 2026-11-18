@@ -1,16 +1,7 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { FetchRequest, JsonRpcProvider } from 'ethers';
 import { FailoverJsonRpcProvider } from './failover-json-rpc.provider';
 import { RpcProviderFactory } from './rpc-provider.factory';
-
-jest.mock('ethers', () => {
-  const actual = jest.requireActual<typeof import('ethers')>('ethers');
-  return {
-    ...actual,
-    JsonRpcProvider: jest.fn().mockImplementation((url: string) => ({ url })),
-  };
-});
 
 describe('RpcProviderFactory — VOTAR-386', () => {
   const createFactory = (
@@ -22,18 +13,24 @@ describe('RpcProviderFactory — VOTAR-386', () => {
     return new RpcProviderFactory(config as unknown as ConfigService);
   };
 
-  it('uses JsonRpcProvider when a single URL is configured', () => {
+  it('uses the resilient provider when a single URL is configured', () => {
     const factory = createFactory({
       SEPOLIA_RPC_URL: 'https://sepolia.example/rpc',
       CHAIN_ID: 11155111,
     });
 
-    const provider = factory.create();
-    expect(JsonRpcProvider).toHaveBeenCalledWith('https://sepolia.example/rpc');
-    expect(provider).toEqual({ url: 'https://sepolia.example/rpc' });
+    expect(factory.create()).toBeInstanceOf(FailoverJsonRpcProvider);
   });
 
-  it('attaches Cloudflare Access credentials to the private primary RPC', () => {
+  it('attaches Cloudflare Access credentials to a single private RPC', async () => {
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: 1, result: '0x7a69' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
     const factory = createFactory({
       SEPOLIA_RPC_URL: 'https://rpc-admin11.probit.com.ar',
       CHAIN_ID: 31337,
@@ -41,17 +38,15 @@ describe('RpcProviderFactory — VOTAR-386', () => {
       CF_ACCESS_CLIENT_SECRET: 'client-secret',
     });
 
-    factory.create();
-    const mockedProvider = jest.mocked(JsonRpcProvider);
-    const connection = mockedProvider.mock.calls.at(-1)?.at(0);
-    expect(connection).toBeInstanceOf(FetchRequest);
-    if (!(connection instanceof FetchRequest)) {
-      throw new Error('Expected a FetchRequest connection');
+    try {
+      const provider = factory.create() as FailoverJsonRpcProvider;
+      await expect(provider.send('eth_chainId', [])).resolves.toBe('0x7a69');
+      const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
+      expect(headers.get('CF-Access-Client-Id')).toBe('client-id');
+      expect(headers.get('CF-Access-Client-Secret')).toBe('client-secret');
+    } finally {
+      fetchMock.mockRestore();
     }
-    expect(connection.getHeader('CF-Access-Client-Id')).toBe('client-id');
-    expect(connection.getHeader('CF-Access-Client-Secret')).toBe(
-      'client-secret',
-    );
   });
 
   it('rejects an incomplete Cloudflare Access credential pair', () => {

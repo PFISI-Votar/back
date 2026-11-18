@@ -63,11 +63,18 @@ const createService = (deps?: {
         deps?.stats ?? { totalVotes: 25, blankVotes: 0, nullVotes: 0 },
       );
     }),
-    getVotesByCandidate: jest
+    getVotesByCandidates: jest
       .fn()
-      .mockImplementation((_id: number, candidateId: number) => {
+      .mockImplementation((_id: number, candidateIds: number[]) => {
         const map = deps?.votesByCandidate ?? { 100: 15, 200: 10 };
-        return Promise.resolve(map[candidateId] ?? 0);
+        return Promise.resolve(
+          new Map(
+            candidateIds.map((candidateId) => [
+              candidateId,
+              map[candidateId] ?? 0,
+            ]),
+          ),
+        );
       }),
   };
   const ofertaElectoralQueryService = {

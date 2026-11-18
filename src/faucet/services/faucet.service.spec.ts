@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
-import { parseEther } from 'ethers';
+import { JsonRpcProvider, parseEther } from 'ethers';
 import { FaucetService } from './faucet.service';
 import { MailService, MailOptions } from '@/common/mail/mail.service';
 import { RpcProviderFactory } from '@/blockchain/rpc/rpc-provider.factory';
@@ -77,7 +77,12 @@ describe('FaucetService', () => {
           useValue: { get: jest.fn((key: string) => configValues[key]) },
         },
         { provide: MailService, useValue: mailService },
-        RpcProviderFactory,
+        {
+          provide: RpcProviderFactory,
+          useValue: {
+            create: () => new JsonRpcProvider('https://sepolia.example/rpc'),
+          },
+        },
       ],
     }).compile();
 

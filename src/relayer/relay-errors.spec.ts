@@ -4,6 +4,7 @@ import {
   applyGasMargin,
   decodeCastRevert,
   isLikelySubmittedError,
+  isStaleNonceError,
   mapCastFailure,
 } from '@/relayer/relay-errors';
 
@@ -42,14 +43,34 @@ describe('VOTAR-497 relayer errors', () => {
     expect(mapped.isTransient).toBe(true);
   });
 
+  it('detecta nonces stale incluso dentro del error anidado del RPC', () => {
+    expect(
+      isStaleNonceError({
+        error: { message: 'nonce has already been used' },
+      }),
+    ).toBe(true);
+    expect(isStaleNonceError({ code: 'NONCE_EXPIRED' })).toBe(true);
+    expect(isStaleNonceError(new Error('execution reverted'))).toBe(false);
+  });
+
+  it('mapea un nonce stale agotado como fallo transitorio de red', () => {
+    const mapped = mapCastFailure(new Error('nonce has already been used'));
+    expect(mapped).toMatchObject({
+      statusCode: 503,
+      code: 'network',
+      isTransient: true,
+      canRetrySend: true,
+    });
+  });
+
   it('aplica el margen de gas con techo', () => {
     expect(applyGasMargin(100n, 1.1)).toBe(110n);
     expect(applyGasMargin(101n, 1.1)).toBe(112n);
   });
 
   describe('isLikelySubmittedError', () => {
-    it('marca errores de nonce/replacement/timeout como posiblemente enviados', () => {
-      expect(isLikelySubmittedError(new Error('nonce too low'))).toBe(true);
+    it('distingue un nonce rechazado de errores donde la tx pudo salir', () => {
+      expect(isLikelySubmittedError(new Error('nonce too low'))).toBe(false);
       expect(isLikelySubmittedError(new Error('already known'))).toBe(true);
       expect(isLikelySubmittedError(new Error('replacement underpriced'))).toBe(
         true,
@@ -57,7 +78,10 @@ describe('VOTAR-497 relayer errors', () => {
       expect(isLikelySubmittedError(new Error('timeout waiting for tx'))).toBe(
         true,
       );
-      expect(isLikelySubmittedError({ code: 'NONCE_EXPIRED' })).toBe(true);
+      expect(isLikelySubmittedError({ code: 'NONCE_EXPIRED' })).toBe(false);
+      expect(
+        isLikelySubmittedError(new Error('nonce has already been used')),
+      ).toBe(false);
     });
 
     it('no marca reverts de simulación como enviados', () => {

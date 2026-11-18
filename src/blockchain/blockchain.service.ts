@@ -213,6 +213,15 @@ interface MerkleRootStoreContract {
 @Injectable()
 export class BlockchainService {
   private readonly logger = new Logger(BlockchainService.name);
+  /**
+   * ElectionFactory deployments are immutable. Cache the full resolution
+   * promise so concurrent dashboard calls coalesce into one RPC request.
+   * Rejected lookups are evicted, allowing a transient RPC failure to recover.
+   */
+  private readonly electionContractsCache = new Map<
+    number,
+    Promise<ElectionContractAddresses>
+  >();
 
   constructor(
     private readonly configService: ConfigService,
@@ -1012,46 +1021,13 @@ export class BlockchainService {
   }
 
   /**
-   * VOTAR-364: resolves AuditView address for an election.
-   * Prefer ElectionFactory.getElection(...).auditView; fallback ADMIN_MULTISIG_ADDRESS.
+   * VOTAR-364: resolves AuditView from the immutable per-election stack.
+   * ADMIN_MULTISIG_ADDRESS is an EOA, not an AuditView fallback: calling it
+   * returns 0x and surfaces BAD_DATA in the escrutinio poller.
    */
   async resolveAuditViewAddress(electionId: number): Promise<string> {
-    const rpcUrl = this.rpcProviderFactory.getUrls()[0];
-    if (!rpcUrl) {
-      throw new ServiceUnavailableException(
-        'La lectura de resultados on-chain no está configurada (SEPOLIA_RPC_URL).',
-      );
-    }
-    const factoryAddress = this.configService.get<string>(
-      'ELECTION_FACTORY_ADDRESS',
-    );
-    if (factoryAddress) {
-      try {
-        const provider = this.createProvider();
-        const factory = new Contract(
-          factoryAddress,
-          ELECTION_FACTORY_GET_ELECTION_ABI,
-          provider,
-        ) as unknown as ElectionFactoryContract;
-        const deployment = await factory.getElection(electionId);
-        if (
-          deployment.exists &&
-          deployment.auditView &&
-          deployment.auditView.toLowerCase() !== ZERO_ADDRESS
-        ) {
-          return deployment.auditView;
-        }
-      } catch {
-        // Fall through to ADMIN_MULTISIG_ADDRESS fallback.
-      }
-    }
-    const fallback = this.configService.get<string>('ADMIN_MULTISIG_ADDRESS');
-    if (fallback && fallback.toLowerCase() !== ZERO_ADDRESS) {
-      return fallback;
-    }
-    throw new ServiceUnavailableException(
-      'No hay contrato AuditView disponible para este comicio (ElectionFactory sin deployment ni ADMIN_MULTISIG_ADDRESS).',
-    );
+    const addresses = await this.resolveElectionContracts(electionId);
+    return addresses.auditView;
   }
 
   /**
@@ -1141,19 +1117,10 @@ export class BlockchainService {
       auditViewAddress,
       electionId,
     );
-    const votesByCandidateId: Record<number, number> = {};
-    await Promise.all(
-      candidateIds.map(async (candidateId) => {
-        votesByCandidateId[candidateId] = await this.fetchVotesByCandidate(
-          auditViewAddress,
-          electionId,
-          candidateId,
-        );
-      }),
-    );
+    const tallies = await this.getVotesByCandidates(electionId, candidateIds);
     return {
       participation,
-      votesByCandidateId,
+      votesByCandidateId: Object.fromEntries(tallies),
     };
   }
 
@@ -1689,6 +1656,26 @@ export class BlockchainService {
   async resolveElectionContracts(
     idEleccion: number,
   ): Promise<ElectionContractAddresses> {
+    const cached = this.electionContractsCache.get(idEleccion);
+    if (cached) {
+      return cached;
+    }
+
+    const pending = this.resolveElectionContractsUncached(idEleccion);
+    this.electionContractsCache.set(idEleccion, pending);
+    try {
+      return await pending;
+    } catch (error) {
+      if (this.electionContractsCache.get(idEleccion) === pending) {
+        this.electionContractsCache.delete(idEleccion);
+      }
+      throw error;
+    }
+  }
+
+  private async resolveElectionContractsUncached(
+    idEleccion: number,
+  ): Promise<ElectionContractAddresses> {
     this.requireRpcUrl();
     let factory: { direccionContrato: string };
     try {
@@ -1948,6 +1935,62 @@ export class BlockchainService {
           : 'Error desconocido en blockchain';
       throw new ServiceUnavailableException(
         `No se pudo obtener el tally on-chain del candidato ${candidateId}: ${message}`,
+      );
+    }
+  }
+
+  /**
+   * Reads every candidate tally while resolving the immutable election stack
+   * only once. Calls are sent in small batches so a public dashboard refresh
+   * cannot saturate the local RPC gateway with an unbounded Promise.all burst.
+   */
+  async getVotesByCandidates(
+    idEleccion: number,
+    candidateIds: number[],
+  ): Promise<Map<number, number>> {
+    const uniqueIds = [...new Set(candidateIds)];
+    const tallies = new Map<number, number>();
+    if (uniqueIds.length === 0) {
+      return tallies;
+    }
+
+    const addresses = await this.resolveElectionContracts(idEleccion);
+    const provider = this.createProvider();
+    const auditView = new Contract(
+      addresses.auditView,
+      AUDIT_VIEW_CONTRACT_ABI,
+      provider,
+    ) as unknown as {
+      getVotesByCandidate: (
+        electionId: number,
+        candidateId: number,
+      ) => Promise<bigint>;
+    };
+
+    const concurrency = 4;
+    try {
+      for (let offset = 0; offset < uniqueIds.length; offset += concurrency) {
+        const batch = uniqueIds.slice(offset, offset + concurrency);
+        const results = await Promise.all(
+          batch.map(async (candidateId) => ({
+            candidateId,
+            votes: Number(
+              await auditView.getVotesByCandidate(idEleccion, candidateId),
+            ),
+          })),
+        );
+        for (const { candidateId, votes } of results) {
+          tallies.set(candidateId, votes);
+        }
+      }
+      return tallies;
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'Error desconocido en blockchain';
+      throw new ServiceUnavailableException(
+        `No se pudieron obtener los tallies on-chain del comicio ${idEleccion}: ${message}`,
       );
     }
   }
