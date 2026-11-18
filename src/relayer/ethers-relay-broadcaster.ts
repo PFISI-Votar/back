@@ -16,6 +16,7 @@ import { BALLOT_CAST_ABI } from '@/relayer/ballot-cast.abi';
 import {
   applyGasMargin,
   isLikelySubmittedError,
+  isStaleNonceError,
   mapCastFailure,
   RelayCastFailedError,
 } from '@/relayer/relay-errors';
@@ -94,10 +95,28 @@ export class EthersRelayBroadcaster {
       throw new RelayCastFailedError(mapCastFailure(error), false);
     }
 
-    try {
-      const tx = (await contract.castSignedVote(...args, {
+    const send = async (): Promise<ContractTransactionResponse> =>
+      (await contract.castSignedVote(...args, {
         gasLimit,
       })) as ContractTransactionResponse;
+
+    try {
+      let tx: ContractTransactionResponse;
+      try {
+        tx = await send();
+      } catch (error) {
+        if (!isStaleNonceError(error)) {
+          throw error;
+        }
+        // Vercel runs multiple processes with the same relayer wallet. Another
+        // instance may have consumed this process's cached nonce; reload the
+        // pending nonce from the node and retry this rejected send only once.
+        signer.reset();
+        this.logger.warn(
+          `Nonce del relayer desactualizado para comicio ${input.electionId}; se resincroniza y reintenta una vez.`,
+        );
+        tx = await send();
+      }
       this.logger.log(
         `castSignedVote transmitido comicio=${input.electionId} tx=${tx.hash}`,
       );

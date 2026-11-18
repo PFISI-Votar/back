@@ -4,7 +4,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { FetchRequest, JsonRpcProvider, type Provider } from 'ethers';
+import type { Provider } from 'ethers';
 import { FailoverJsonRpcProvider } from './failover-json-rpc.provider';
 import {
   RPC_FAILOVER_LOG_PREFIX,
@@ -76,28 +76,28 @@ export class RpcProviderFactory {
       this.configService.get<boolean>('RPC_CACHE_ENABLED') !== false;
     const accessHeaders = this.getCloudflareAccessHeaders();
 
-    const provider =
-      urls.length === 1
-        ? new JsonRpcProvider(this.createConnection(urls[0], accessHeaders))
-        : new FailoverJsonRpcProvider(urls, {
-            chainId,
-            timeoutMs,
-            maxBlockSkew,
-            retry: { maxRetries, baseDelayMs },
-            cache: cacheEnabled ? {} : false,
-            // Never forward the private service token to third-party backups.
-            headersByUrl: accessHeaders
-              ? { [urls[0]]: accessHeaders }
-              : undefined,
-            logger: {
-              warn: (message, ...optionalParams) => {
-                this.logger.warn(
-                  `${RPC_FAILOVER_LOG_PREFIX} ${message}`,
-                  ...optionalParams,
-                );
-              },
-            },
-          });
+    // Use the resilient transport even with a single URL. Besides provider
+    // rotation, it supplies the timeout, transient retries and response
+    // coalescing needed by the public dashboard and voting endpoints. The
+    // previous single-URL JsonRpcProvider path could leave requests hanging
+    // until the reverse proxy reset the socket (ECONNRESET).
+    const provider = new FailoverJsonRpcProvider(urls, {
+      chainId,
+      timeoutMs,
+      maxBlockSkew,
+      retry: { maxRetries, baseDelayMs },
+      cache: cacheEnabled ? {} : false,
+      // Never forward the private service token to third-party backups.
+      headersByUrl: accessHeaders ? { [urls[0]]: accessHeaders } : undefined,
+      logger: {
+        warn: (message, ...optionalParams) => {
+          this.logger.warn(
+            `${RPC_FAILOVER_LOG_PREFIX} ${message}`,
+            ...optionalParams,
+          );
+        },
+      },
+    });
 
     this.cachedProvider = provider;
     this.cachedUrlsKey = urlsKey;
@@ -123,19 +123,5 @@ export class RpcProviderFactory {
       'CF-Access-Client-Id': clientId,
       'CF-Access-Client-Secret': clientSecret,
     };
-  }
-
-  private createConnection(
-    url: string,
-    headers: Readonly<Record<string, string>> | null,
-  ): string | FetchRequest {
-    if (!headers) {
-      return url;
-    }
-    const request = new FetchRequest(url);
-    for (const [name, value] of Object.entries(headers)) {
-      request.setHeader(name, value);
-    }
-    return request;
   }
 }

@@ -229,15 +229,9 @@ export class ParticipacionPublicService {
       ),
     ];
 
-    const votesByCandidate = new Map<number, number>();
-    await Promise.all(
-      candidateIds.map(async (candidateId) => {
-        const votes = await this.blockchainService.getVotesByCandidate(
-          idEleccion,
-          candidateId,
-        );
-        votesByCandidate.set(candidateId, votes);
-      }),
+    const votesByCandidate = await this.blockchainService.getVotesByCandidates(
+      idEleccion,
+      candidateIds,
     );
 
     return oferta.categorias.map((categoria) => ({

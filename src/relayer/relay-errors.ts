@@ -79,6 +79,43 @@ const body = (
   ...partial,
 });
 
+/**
+ * The node rejected the transaction before accepting it because another
+ * process already consumed the nonce cached by this NonceManager.
+ */
+export const isStaleNonceError = (error: unknown, depth = 0): boolean => {
+  if (!error || depth > 4) {
+    return false;
+  }
+  if (typeof error === 'string') {
+    return /nonce has already been used|nonce too low/i.test(error);
+  }
+  if (typeof error !== 'object') {
+    return false;
+  }
+
+  const record = error as {
+    code?: unknown;
+    message?: unknown;
+    cause?: unknown;
+    error?: unknown;
+  };
+  if (record.code === 'NONCE_EXPIRED') {
+    return true;
+  }
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof record.message === 'string'
+        ? record.message
+        : '';
+  return (
+    /nonce has already been used|nonce too low/i.test(message) ||
+    isStaleNonceError(record.cause, depth + 1) ||
+    isStaleNonceError(record.error, depth + 1)
+  );
+};
+
 export const mapCastFailure = (error: unknown): RelayErrorBody => {
   const revert = decodeCastRevert(error);
   if (revert) {
@@ -113,7 +150,7 @@ export const mapCastFailure = (error: unknown): RelayErrorBody => {
       canResign: true,
     });
   }
-  if (isTransientNetworkMessage(message)) {
+  if (isStaleNonceError(error) || isTransientNetworkMessage(message)) {
     return body({
       statusCode: 503,
       code: 'network',
@@ -149,6 +186,11 @@ const isTransientNetworkMessage = (message: string): boolean =>
  * (nonce/replacement/timeout/already known): no liberar la capacidad.
  */
 export const isLikelySubmittedError = (error: unknown): boolean => {
+  // A stale nonce is a definitive pre-broadcast rejection, unlike a timeout
+  // or replacement error where the transaction may already be in the mempool.
+  if (isStaleNonceError(error)) {
+    return false;
+  }
   const message =
     error instanceof Error
       ? error.message

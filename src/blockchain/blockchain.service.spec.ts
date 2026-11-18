@@ -10,7 +10,7 @@ import { ContratoBlockchainService } from './services/contrato-blockchain.servic
 import { TransaccionBlockchainService } from './services/transaccion-blockchain.service';
 import { RpcProviderFactory } from './rpc/rpc-provider.factory';
 import { EleccionEstado } from '@/eleccion/enums/eleccion-estado.enum';
-import { parseEther } from 'ethers';
+import { JsonRpcProvider, parseEther } from 'ethers';
 
 const mockPublishRoot = jest.fn();
 const mockSetElectionState = jest.fn();
@@ -273,7 +273,16 @@ describe('BlockchainService', () => {
           provide: TransaccionBlockchainService,
           useValue: mockTransaccionBlockchain,
         },
-        RpcProviderFactory,
+        {
+          provide: RpcProviderFactory,
+          useValue: {
+            getUrls: () => {
+              const url: unknown = mockConfig.get('SEPOLIA_RPC_URL');
+              return typeof url === 'string' && url ? [url] : [];
+            },
+            create: () => new JsonRpcProvider('https://sepolia.example.com'),
+          },
+        },
       ],
     }).compile();
 
@@ -1093,6 +1102,37 @@ describe('BlockchainService', () => {
       expect(mockGetVotesByCandidate).toHaveBeenCalledWith(7, 101);
     });
 
+    it('getVotesByCandidates deduplicates ids and reads them in bounded batches', async () => {
+      let active = 0;
+      let maxActive = 0;
+      mockGetVotesByCandidate.mockImplementation(
+        async (_electionId: number, candidateId: number) => {
+          active += 1;
+          maxActive = Math.max(maxActive, active);
+          await Promise.resolve();
+          active -= 1;
+          return BigInt(candidateId);
+        },
+      );
+
+      const actual = await service.getVotesByCandidates(
+        7,
+        [101, 102, 103, 104, 105, 101],
+      );
+
+      expect(actual).toEqual(
+        new Map([
+          [101, 101],
+          [102, 102],
+          [103, 103],
+          [104, 104],
+          [105, 105],
+        ]),
+      );
+      expect(mockGetVotesByCandidate).toHaveBeenCalledTimes(5);
+      expect(maxActive).toBeLessThanOrEqual(4);
+    });
+
     it('getVoteCastTimeline builds hourly buckets from first votes only', async () => {
       const nowSec = Math.floor(Date.now() / 1000);
       mockRegistryQueryFilter.mockResolvedValue([
@@ -1266,6 +1306,76 @@ describe('BlockchainService', () => {
         '0x6666666666666666666666666666666666666666',
       );
       expect(mockGetElection).toHaveBeenCalledWith(9);
+    });
+
+    it('coalesces and caches election contract resolution', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        if (key === 'SEPOLIA_RPC_URL') return 'https://sepolia.example.com';
+        return undefined;
+      });
+      mockContratoBlockchain.getElectionFactory.mockResolvedValue({
+        direccionContrato: '0x3333333333333333333333333333333333333333',
+      });
+      mockGetElection.mockResolvedValue({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        exists: true,
+      });
+
+      const [first, second] = await Promise.all([
+        service.resolveElectionContracts(9),
+        service.resolveElectionContracts(9),
+      ]);
+      const third = await service.resolveElectionContracts(9);
+
+      expect(first).toEqual(second);
+      expect(third).toEqual(first);
+      expect(mockGetElection).toHaveBeenCalledTimes(1);
+    });
+
+    it('evicts a failed election contract resolution so the next request can recover', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        if (key === 'SEPOLIA_RPC_URL') return 'https://sepolia.example.com';
+        return undefined;
+      });
+      mockGetElection
+        .mockRejectedValueOnce(new Error('read ECONNRESET'))
+        .mockResolvedValueOnce({
+          ballot: '0x4444444444444444444444444444444444444444',
+          voteRegistry: '0x5555555555555555555555555555555555555555',
+          auditView: '0x6666666666666666666666666666666666666666',
+          exists: true,
+        });
+
+      await expect(service.resolveElectionContracts(9)).rejects.toThrow(
+        ServiceUnavailableException,
+      );
+      await expect(service.resolveElectionContracts(9)).resolves.toMatchObject({
+        auditView: '0x6666666666666666666666666666666666666666',
+      });
+      expect(mockGetElection).toHaveBeenCalledTimes(2);
+    });
+
+    it('resolveAuditViewAddress never falls back to the admin EOA', async () => {
+      mockConfig.get.mockImplementation((key: string) => {
+        const values: Record<string, string> = {
+          SEPOLIA_RPC_URL: 'https://sepolia.example.com',
+          ADMIN_MULTISIG_ADDRESS: '0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266',
+        };
+        return values[key];
+      });
+      mockGetElection.mockResolvedValue({
+        ballot: '0x4444444444444444444444444444444444444444',
+        voteRegistry: '0x5555555555555555555555555555555555555555',
+        auditView: '0x6666666666666666666666666666666666666666',
+        exists: true,
+      });
+
+      await expect(service.resolveAuditViewAddress(15)).resolves.toBe(
+        '0x6666666666666666666666666666666666666666',
+      );
+      expect(mockGetElection).toHaveBeenCalledWith(15);
     });
 
     it('resolveElectionContracts uses legacy env addresses when no factory is registered', async () => {
